@@ -33,7 +33,9 @@ public interface AdminUserMapper extends BaseMapperX<AdminUserDO> {
                 .betweenIfPresent(AdminUserDO::getCreateTime, reqVO.getCreateTime())
                 .inIfPresent(AdminUserDO::getDeptId, deptIds)
                 .inIfPresent(AdminUserDO::getId, userIds)
-                .orderByDesc(AdminUserDO::getId));
+                // 先按在职状态排序（在职=1/null在前，离职=2在后），再按ID升序
+                .orderByAsc(AdminUserDO::getEmployeeStatus)
+                .orderByAsc(AdminUserDO::getId));
     }
 
     default List<AdminUserDO> selectListByNickname(String nickname) {

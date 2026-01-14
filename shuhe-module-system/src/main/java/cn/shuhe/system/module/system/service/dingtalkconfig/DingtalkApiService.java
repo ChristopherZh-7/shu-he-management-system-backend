@@ -183,6 +183,7 @@ public class DingtalkApiService {
                 user.setMobile(userJson.getStr("mobile"));
                 user.setEmail(userJson.getStr("email"));
                 user.setAvatar(userJson.getStr("avatar"));
+                user.setTitle(userJson.getStr("title"));
                 user.setDeptIdList(userJson.getJSONArray("dept_id_list"));
                 allUsers.add(user);
             }
@@ -232,6 +233,7 @@ public class DingtalkApiService {
             user.setMobile(resultObj.getStr("mobile"));
             user.setEmail(resultObj.getStr("email"));
             user.setAvatar(resultObj.getStr("avatar"));
+            user.setTitle(resultObj.getStr("title"));
             user.setDeptIdList(resultObj.getJSONArray("dept_id_list"));
             return user;
         } catch (Exception e) {
@@ -255,6 +257,8 @@ public class DingtalkApiService {
         private String email;
         /** 头像 */
         private String avatar;
+        /** 职位 */
+        private String title;
         /** 所属部门ID列表 */
         private JSONArray deptIdList;
         /** 入职日期 (从智能人事获取) */

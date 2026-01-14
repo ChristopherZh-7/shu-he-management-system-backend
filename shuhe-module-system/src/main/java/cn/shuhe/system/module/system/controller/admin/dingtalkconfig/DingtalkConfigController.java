@@ -135,4 +135,13 @@ public class DingtalkConfigController {
         return success(true);
     }
 
+    @PostMapping("/sync-post")
+    @Operation(summary = "同步钉钉岗位（从用户职位中提取）")
+    @Parameter(name = "configId", description = "配置编号", required = true)
+    @PreAuthorize("@ss.hasPermission('system:post:create')")
+    public CommonResult<Boolean> syncDingtalkPost(@RequestParam("configId") Long configId) {
+        dingtalkConfigService.syncDingtalkPost(configId);
+        return success(true);
+    }
+
 }

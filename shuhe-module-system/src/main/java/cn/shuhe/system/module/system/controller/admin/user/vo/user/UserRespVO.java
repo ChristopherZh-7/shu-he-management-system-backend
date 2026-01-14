@@ -74,6 +74,10 @@ public class UserRespVO{
 
     // ========== 人事信息字段 ==========
 
+    @Schema(description = "职位", example = "高级工程师")
+    @ExcelProperty("职位")
+    private String position;
+
     @Schema(description = "入职日期", example = "时间戳格式")
     @ExcelProperty("入职日期")
     private LocalDateTime hireDate;

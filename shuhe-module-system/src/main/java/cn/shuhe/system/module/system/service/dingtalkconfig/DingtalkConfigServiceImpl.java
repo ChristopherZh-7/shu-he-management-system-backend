@@ -26,9 +26,11 @@ import cn.shuhe.system.framework.common.util.object.BeanUtils;
 
 import cn.shuhe.system.module.system.dal.mysql.dingtalkconfig.DingtalkConfigMapper;
 import cn.shuhe.system.module.system.dal.mysql.dept.DeptMapper;
+import cn.shuhe.system.module.system.dal.mysql.dept.PostMapper;
 import cn.shuhe.system.module.system.dal.mysql.dingtalkmapping.DingtalkMappingMapper;
 import cn.shuhe.system.module.system.dal.mysql.user.AdminUserMapper;
 import cn.shuhe.system.module.system.dal.dataobject.user.AdminUserDO;
+import cn.shuhe.system.module.system.dal.dataobject.dept.PostDO;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -49,6 +51,29 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
     private static final String MAPPING_TYPE_DEPT = "DEPT";
     private static final String MAPPING_TYPE_USER = "USER";
     
+    /**
+     * 标准化手机号格式
+     * 钉钉返回的手机号可能带有国际区号前缀（如 +86-17683991468）
+     * 需要去掉前缀，只保留纯手机号
+     */
+    private String normalizeMobile(String mobile) {
+        if (StrUtil.isEmpty(mobile)) {
+            return mobile;
+        }
+        // 去掉 +86- 或 +86 前缀
+        if (mobile.startsWith("+86-")) {
+            return mobile.substring(4);
+        }
+        if (mobile.startsWith("+86")) {
+            return mobile.substring(3);
+        }
+        // 去掉其他国际区号格式（如 86-）
+        if (mobile.startsWith("86-")) {
+            return mobile.substring(3);
+        }
+        return mobile;
+    }
+    
     /** 在职状态: 1-在职, 2-离职 */
     private static final Integer EMPLOYEE_STATUS_ON_JOB = 1;
     private static final Integer EMPLOYEE_STATUS_DIMISSION = 2;
@@ -64,6 +89,9 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
     
     @Resource
     private AdminUserMapper adminUserMapper;
+    
+    @Resource
+    private PostMapper postMapper;
     
     @Resource
     private PasswordEncoder passwordEncoder;
@@ -301,14 +329,19 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                         localDeptId = deptIdMapping.get(firstDeptId);
                     }
                     
+                    // 根据职位查找或创建岗位
+                    Set<Long> postIds = getOrCreatePostByTitle(dingtalkUser.getTitle());
+                    
                     if (mapping != null) {
                         // 更新已有用户
                         AdminUserDO existingUser = adminUserMapper.selectById(mapping.getLocalId());
                         if (existingUser != null) {
                             existingUser.setNickname(dingtalkUser.getName());
-                            existingUser.setMobile(dingtalkUser.getMobile());
+                            existingUser.setMobile(normalizeMobile(dingtalkUser.getMobile()));
                             existingUser.setEmail(dingtalkUser.getEmail());
                             existingUser.setAvatar(dingtalkUser.getAvatar());
+                            existingUser.setPosition(dingtalkUser.getTitle());
+                            existingUser.setPostIds(postIds);
                             existingUser.setEmployeeStatus(EMPLOYEE_STATUS_ON_JOB);
                             existingUser.setStatus(CommonStatusEnum.ENABLE.getStatus());
                             if (localDeptId != null) {
@@ -333,9 +366,11 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                                     .username(username)
                                     .password(passwordEncoder.encode("123456"))
                                     .nickname(dingtalkUser.getName())
-                                    .mobile(dingtalkUser.getMobile())
+                                    .mobile(normalizeMobile(dingtalkUser.getMobile()))
                                     .email(dingtalkUser.getEmail())
                                     .avatar(dingtalkUser.getAvatar())
+                                    .position(dingtalkUser.getTitle())
+                                    .postIds(postIds)
                                     .deptId(localDeptId)
                                     .status(CommonStatusEnum.ENABLE.getStatus())
                                     .employeeStatus(EMPLOYEE_STATUS_ON_JOB)
@@ -365,9 +400,11 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                                 .username(username)
                                 .password(passwordEncoder.encode("123456")) // 默认密码
                                 .nickname(dingtalkUser.getName())
-                                .mobile(dingtalkUser.getMobile())
+                                .mobile(normalizeMobile(dingtalkUser.getMobile()))
                                 .email(dingtalkUser.getEmail())
                                 .avatar(dingtalkUser.getAvatar())
+                                .position(dingtalkUser.getTitle())
+                                .postIds(postIds)
                                 .deptId(localDeptId)
                                 .status(CommonStatusEnum.ENABLE.getStatus())
                                 .employeeStatus(EMPLOYEE_STATUS_ON_JOB)
@@ -498,58 +535,62 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                     }
                     if (mapping == null) {
                         // 创建离职员工 - 优先使用花名册姓名，其次使用用户详情姓名
-                        String name = null;
-                        if (hrmInfo != null && StrUtil.isNotEmpty(hrmInfo.getName())) {
-                            name = hrmInfo.getName();
-                        } else if (userInfo != null && StrUtil.isNotEmpty(userInfo.getName())) {
-                            name = userInfo.getName();
-                        } else {
-                            name = dimissionUserId; // 最后回退到userid
-                            log.warn("离职员工 {} 无法获取姓名，使用userid作为姓名", dimissionUserId);
+                        try {
+                            String name = null;
+                            if (hrmInfo != null && StrUtil.isNotEmpty(hrmInfo.getName())) {
+                                name = hrmInfo.getName();
+                            } else if (userInfo != null && StrUtil.isNotEmpty(userInfo.getName())) {
+                                name = userInfo.getName();
+                            } else {
+                                name = dimissionUserId; // 最后回退到userid
+                                log.warn("离职员工 {} 无法获取姓名，使用userid作为姓名", dimissionUserId);
+                            }
+                            
+                            String baseName = cn.shuhe.system.module.system.util.PinyinUtils.toPinyin(name);
+                            if (baseName.isEmpty()) {
+                                baseName = dimissionUserId;
+                            }
+                            String username = baseName;
+                            int suffix = 1;
+                            while (adminUserMapper.selectByUsername(username) != null) {
+                                username = baseName + suffix;
+                                suffix++;
+                            }
+                            
+                            // 合并用户信息来源（手机号需要标准化格式）
+                            String mobile = normalizeMobile(hrmInfo != null && StrUtil.isNotEmpty(hrmInfo.getMobile()) ? hrmInfo.getMobile() 
+                                    : (userInfo != null ? userInfo.getMobile() : null));
+                            String email = hrmInfo != null && StrUtil.isNotEmpty(hrmInfo.getEmail()) ? hrmInfo.getEmail()
+                                    : (userInfo != null ? userInfo.getEmail() : null);
+                            String avatar = hrmInfo != null && StrUtil.isNotEmpty(hrmInfo.getAvatar()) ? hrmInfo.getAvatar()
+                                    : (userInfo != null ? userInfo.getAvatar() : null);
+                            
+                            AdminUserDO newUser = AdminUserDO.builder()
+                                    .username(username)
+                                    .password(passwordEncoder.encode("123456"))
+                                    .nickname(name)
+                                    .mobile(mobile)
+                                    .email(email)
+                                    .avatar(avatar)
+                                    .status(CommonStatusEnum.DISABLE.getStatus()) // 离职员工账号禁用
+                                    .employeeStatus(EMPLOYEE_STATUS_DIMISSION)
+                                    .hireDate(hrmInfo != null ? parseDate(hrmInfo.getConfirmJoinTime()) : null)
+                                    .resignDate(hrmInfo != null ? parseDate(hrmInfo.getLastWorkDay()) : null)
+                                    .build();
+                            adminUserMapper.insert(newUser);
+                            
+                            // 创建映射关系
+                            DingtalkMappingDO newMapping = DingtalkMappingDO.builder()
+                                    .configId(configId)
+                                    .type(MAPPING_TYPE_USER)
+                                    .localId(newUser.getId())
+                                    .dingtalkId(dimissionUserId)
+                                    .build();
+                            dingtalkMappingMapper.insert(newMapping);
+                            dimissionCreateCount++;
+                        } catch (Exception e) {
+                            log.warn("创建离职员工失败，跳过该用户: dingtalkId={}, error={}", dimissionUserId, e.getMessage());
                         }
-                        
-                        String baseName = cn.shuhe.system.module.system.util.PinyinUtils.toPinyin(name);
-                        if (baseName.isEmpty()) {
-                            baseName = dimissionUserId;
-                        }
-                        String username = baseName;
-                        int suffix = 1;
-                        while (adminUserMapper.selectByUsername(username) != null) {
-                            username = baseName + suffix;
-                            suffix++;
-                        }
-                        
-                        // 合并用户信息来源
-                        String mobile = hrmInfo != null && StrUtil.isNotEmpty(hrmInfo.getMobile()) ? hrmInfo.getMobile() 
-                                : (userInfo != null ? userInfo.getMobile() : null);
-                        String email = hrmInfo != null && StrUtil.isNotEmpty(hrmInfo.getEmail()) ? hrmInfo.getEmail()
-                                : (userInfo != null ? userInfo.getEmail() : null);
-                        String avatar = hrmInfo != null && StrUtil.isNotEmpty(hrmInfo.getAvatar()) ? hrmInfo.getAvatar()
-                                : (userInfo != null ? userInfo.getAvatar() : null);
-                        
-                        AdminUserDO newUser = AdminUserDO.builder()
-                                .username(username)
-                                .password(passwordEncoder.encode("123456"))
-                                .nickname(name)
-                                .mobile(mobile)
-                                .email(email)
-                                .avatar(avatar)
-                                .status(CommonStatusEnum.DISABLE.getStatus()) // 离职员工账号禁用
-                                .employeeStatus(EMPLOYEE_STATUS_DIMISSION)
-                                .hireDate(hrmInfo != null ? parseDate(hrmInfo.getConfirmJoinTime()) : null)
-                                .resignDate(hrmInfo != null ? parseDate(hrmInfo.getLastWorkDay()) : null)
-                                .build();
-                        adminUserMapper.insert(newUser);
-                        
-                        // 创建映射关系
-                        DingtalkMappingDO newMapping = DingtalkMappingDO.builder()
-                                .configId(configId)
-                                .type(MAPPING_TYPE_USER)
-                                .localId(newUser.getId())
-                                .dingtalkId(dimissionUserId)
-                                .build();
-                        dingtalkMappingMapper.insert(newMapping);
-                        dimissionCreateCount++;
                     }
                 }
                 log.info("离职员工同步完成：新增 {} 个，更新 {} 个，花名册匹配成功 {} 个", 
@@ -613,6 +654,52 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
     }
     
     /**
+     * 根据职位名称查找或创建岗位
+     * @param title 职位名称
+     * @return 岗位ID集合
+     */
+    private Set<Long> getOrCreatePostByTitle(String title) {
+        if (StrUtil.isEmpty(title)) {
+            return null;
+        }
+        
+        // 查找是否存在同名岗位
+        PostDO existingPost = postMapper.selectByName(title);
+        if (existingPost != null) {
+            Set<Long> postIds = new HashSet<>();
+            postIds.add(existingPost.getId());
+            return postIds;
+        }
+        
+        // 不存在则创建新岗位
+        PostDO newPost = new PostDO();
+        newPost.setName(title);
+        // 生成岗位编码：使用拼音
+        String code = cn.shuhe.system.module.system.util.PinyinUtils.toPinyin(title);
+        if (code.isEmpty()) {
+            code = "post" + System.currentTimeMillis();
+        }
+        // 确保编码唯一
+        String baseCode = code;
+        int suffix = 1;
+        while (postMapper.selectByCode(code) != null) {
+            code = baseCode + suffix;
+            suffix++;
+        }
+        newPost.setCode(code);
+        newPost.setSort(100);
+        newPost.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        newPost.setRemark("从钉钉同步自动创建");
+        postMapper.insert(newPost);
+        
+        log.info("自动创建岗位: name={}, code={}, id={}", title, code, newPost.getId());
+        
+        Set<Long> postIds = new HashSet<>();
+        postIds.add(newPost.getId());
+        return postIds;
+    }
+
+    /**
      * 解析日期字符串为LocalDateTime
      */
     private LocalDateTime parseDate(String dateStr) {
@@ -635,6 +722,87 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
         } catch (Exception e) {
             log.warn("解析日期失败: {}", dateStr);
             return null;
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void syncDingtalkPost(Long configId) {
+        // 1. 校验配置存在
+        DingtalkConfigDO config = validateDingtalkConfigExists(configId);
+        log.info("开始同步钉钉岗位，配置ID: {}, 配置名称: {}", configId, config.getName());
+        
+        try {
+            // 2. 获取钉钉access_token
+            String accessToken = dingtalkApiService.getAccessToken(config);
+            log.info("获取钉钉access_token成功");
+            
+            // 3. 获取钉钉部门列表
+            List<DingtalkApiService.DingtalkDept> depts = dingtalkApiService.getDeptList(accessToken, 1L);
+            
+            // 4. 收集所有用户的职位
+            Set<String> allTitles = new HashSet<>();
+            Set<String> processedUserIds = new HashSet<>();
+            
+            for (DingtalkApiService.DingtalkDept dept : depts) {
+                List<DingtalkApiService.DingtalkUser> users = dingtalkApiService.getUserList(accessToken, dept.getDeptId());
+                
+                for (DingtalkApiService.DingtalkUser user : users) {
+                    if (processedUserIds.contains(user.getUserid())) {
+                        continue;
+                    }
+                    processedUserIds.add(user.getUserid());
+                    
+                    if (StrUtil.isNotEmpty(user.getTitle())) {
+                        allTitles.add(user.getTitle());
+                    }
+                }
+            }
+            
+            log.info("从钉钉收集到 {} 个不同的职位", allTitles.size());
+            
+            // 5. 对比现有岗位，创建新岗位
+            int createCount = 0;
+            int existCount = 0;
+            int maxSort = 100; // 新岗位的排序从100开始
+            
+            for (String title : allTitles) {
+                PostDO existingPost = postMapper.selectByName(title);
+                if (existingPost != null) {
+                    existCount++;
+                    continue;
+                }
+                
+                // 创建新岗位
+                PostDO newPost = new PostDO();
+                newPost.setName(title);
+                // 生成岗位编码：使用拼音
+                String code = cn.shuhe.system.module.system.util.PinyinUtils.toPinyin(title);
+                if (code.isEmpty()) {
+                    code = "post" + System.currentTimeMillis();
+                }
+                // 确保编码唯一
+                String baseCode = code;
+                int suffix = 1;
+                while (postMapper.selectByCode(code) != null) {
+                    code = baseCode + suffix;
+                    suffix++;
+                }
+                newPost.setCode(code);
+                newPost.setSort(maxSort++);
+                newPost.setStatus(CommonStatusEnum.ENABLE.getStatus());
+                newPost.setRemark("从钉钉同步");
+                postMapper.insert(newPost);
+                createCount++;
+                
+                log.debug("创建岗位: name={}, code={}", title, code);
+            }
+            
+            log.info("钉钉岗位同步完成：新增 {} 个，已存在 {} 个", createCount, existCount);
+            
+        } catch (Exception e) {
+            log.error("同步钉钉岗位失败", e);
+            throw new RuntimeException("同步钉钉岗位失败: " + e.getMessage());
         }
     }
 

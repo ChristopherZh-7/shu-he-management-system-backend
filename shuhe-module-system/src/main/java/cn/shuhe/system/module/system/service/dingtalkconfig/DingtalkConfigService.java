@@ -88,4 +88,11 @@ public interface DingtalkConfigService {
      */
     void syncDingtalkUser(Long configId);
 
+    /**
+     * 同步钉钉岗位（从用户职位中提取）
+     *
+     * @param configId 配置编号
+     */
+    void syncDingtalkPost(Long configId);
+
 }

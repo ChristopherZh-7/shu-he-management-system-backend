@@ -96,6 +96,10 @@ public class AdminUserDO extends BaseDO {
     // ========== 人事信息字段 ==========
     
     /**
+     * 职位
+     */
+    private String position;
+    /**
      * 入职日期
      */
     private LocalDateTime hireDate;
