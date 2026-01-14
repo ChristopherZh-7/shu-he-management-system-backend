@@ -1,0 +1,2 @@
+cn.shuhe.system.framework.quartz.config.ShuheQuartzAutoConfiguration
+cn.shuhe.system.framework.quartz.config.ShuheAsyncAutoConfiguration

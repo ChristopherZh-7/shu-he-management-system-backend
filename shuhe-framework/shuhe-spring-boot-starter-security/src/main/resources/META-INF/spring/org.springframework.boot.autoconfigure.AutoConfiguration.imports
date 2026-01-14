@@ -1,0 +1,3 @@
+cn.shuhe.system.framework.security.config.ShuheSecurityAutoConfiguration
+cn.shuhe.system.framework.security.config.ShuheWebSecurityConfigurerAdapter
+cn.shuhe.system.framework.operatelog.config.ShuheOperateLogConfiguration

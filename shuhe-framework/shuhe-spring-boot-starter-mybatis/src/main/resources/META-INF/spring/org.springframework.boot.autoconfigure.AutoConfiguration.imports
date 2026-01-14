@@ -1,0 +1,3 @@
+cn.shuhe.system.framework.datasource.config.ShuheDataSourceAutoConfiguration
+cn.shuhe.system.framework.mybatis.config.ShuheMybatisAutoConfiguration
+cn.shuhe.system.framework.translate.config.ShuheTranslateAutoConfiguration

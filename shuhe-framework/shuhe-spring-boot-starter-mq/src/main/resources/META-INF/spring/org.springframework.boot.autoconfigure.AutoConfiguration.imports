@@ -1,0 +1,3 @@
+cn.shuhe.system.framework.mq.redis.config.ShuheRedisMQProducerAutoConfiguration
+cn.shuhe.system.framework.mq.redis.config.ShuheRedisMQConsumerAutoConfiguration
+cn.shuhe.system.framework.mq.rabbitmq.config.ShuheRabbitMQAutoConfiguration

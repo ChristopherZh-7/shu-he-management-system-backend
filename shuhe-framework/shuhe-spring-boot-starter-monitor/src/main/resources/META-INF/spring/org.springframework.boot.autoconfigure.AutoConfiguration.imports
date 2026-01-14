@@ -1,0 +1,2 @@
+cn.shuhe.system.framework.tracer.config.ShuheTracerAutoConfiguration
+cn.shuhe.system.framework.tracer.config.ShuheMetricsAutoConfiguration

@@ -1,0 +1,7 @@
+cn.shuhe.system.framework.apilog.config.ShuheApiLogAutoConfiguration
+cn.shuhe.system.framework.jackson.config.ShuheJacksonAutoConfiguration
+cn.shuhe.system.framework.swagger.config.ShuheSwaggerAutoConfiguration
+cn.shuhe.system.framework.web.config.ShuheWebAutoConfiguration
+cn.shuhe.system.framework.xss.config.ShuheXssAutoConfiguration
+cn.shuhe.system.framework.banner.config.ShuheBannerAutoConfiguration
+cn.shuhe.system.framework.encrypt.config.ShuheApiEncryptAutoConfiguration

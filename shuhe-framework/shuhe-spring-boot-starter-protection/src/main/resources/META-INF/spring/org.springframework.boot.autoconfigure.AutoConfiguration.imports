@@ -1,0 +1,4 @@
+cn.shuhe.system.framework.idempotent.config.ShuheIdempotentConfiguration
+cn.shuhe.system.framework.lock4j.config.ShuheLock4jConfiguration
+cn.shuhe.system.framework.ratelimiter.config.ShuheRateLimiterConfiguration
+cn.shuhe.system.framework.signature.config.ShuheApiSignatureAutoConfiguration
