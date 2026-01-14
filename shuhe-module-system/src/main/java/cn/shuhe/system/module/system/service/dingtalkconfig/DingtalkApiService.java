@@ -562,4 +562,67 @@ public class DingtalkApiService {
         /** 最后工作日/离职日期 (yyyy-MM-dd) */
         private String lastWorkDay;
     }
+
+    // ==================== 消息通知 ====================
+
+    private static final String DINGTALK_MESSAGE_SEND_URL = "https://oapi.dingtalk.com/topapi/message/corpconversation/asyncsend_v2";
+
+    /**
+     * 发送钉钉工作通知
+     *
+     * @param accessToken access_token
+     * @param agentId 应用agentId
+     * @param userIdList 接收人钉钉用户ID列表
+     * @param title 消息标题
+     * @param content 消息内容（markdown格式）
+     * @return 是否成功
+     */
+    public boolean sendWorkNotice(String accessToken, String agentId, List<String> userIdList, String title, String content) {
+        if (userIdList == null || userIdList.isEmpty()) {
+            log.warn("发送钉钉通知失败：接收人列表为空");
+            return false;
+        }
+        
+        String url = DINGTALK_MESSAGE_SEND_URL + "?access_token=" + accessToken;
+        
+        // 构建消息体 - 使用 markdown 格式
+        Map<String, Object> msg = new HashMap<>();
+        msg.put("msgtype", "markdown");
+        
+        Map<String, String> markdown = new HashMap<>();
+        markdown.put("title", title);
+        markdown.put("text", content);
+        msg.put("markdown", markdown);
+        
+        Map<String, Object> params = new HashMap<>();
+        params.put("agent_id", agentId);
+        params.put("userid_list", String.join(",", userIdList));
+        params.put("msg", msg);
+        
+        try {
+            String result = HttpUtil.post(url, JSONUtil.toJsonStr(params));
+            log.debug("钉钉消息发送API返回: {}", result);
+            JSONObject json = JSONUtil.parseObj(result);
+            
+            int errcode = json.getInt("errcode", -1);
+            if (errcode != 0) {
+                String errmsg = json.getStr("errmsg", "未知错误");
+                log.error("发送钉钉工作通知失败: errcode={}, errmsg={}", errcode, errmsg);
+                return false;
+            }
+            
+            log.info("发送钉钉工作通知成功，接收人: {}, 标题: {}", userIdList, title);
+            return true;
+        } catch (Exception e) {
+            log.error("发送钉钉工作通知异常", e);
+            return false;
+        }
+    }
+
+    /**
+     * 发送钉钉工作通知（简化版，发给单个用户）
+     */
+    public boolean sendWorkNotice(String accessToken, String agentId, String userId, String title, String content) {
+        return sendWorkNotice(accessToken, agentId, Arrays.asList(userId), title, content);
+    }
 }

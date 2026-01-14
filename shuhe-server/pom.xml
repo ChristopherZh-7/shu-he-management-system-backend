@@ -108,6 +108,13 @@
             <version>${revision}</version>
         </dependency>
 
+        <!-- 工单相关模块 -->
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-module-ticket</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
         <!-- IoT 物联网相关模块。默认注释，保证编译速度 -->
 <!--        <dependency>-->
 <!--            <groupId>cn.shuhe</groupId>-->

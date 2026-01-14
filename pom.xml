@@ -24,7 +24,8 @@
         <module>shuhe-module-crm</module>
 <!--        <module>shuhe-module-erp</module>-->
         <module>shuhe-module-ai</module>
-<!--        <module>shuhe-module-iot</module>-->
+        <module>shuhe-module-ticket</module>
+        <!--        <module>shuhe-module-iot</module>-->
     </modules>
 
     <name>${project.artifactId}</name>

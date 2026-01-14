@@ -189,6 +189,7 @@ logging:
     cn.shuhe.system.module.iot.dal.tdengine: DEBUG
     cn.shuhe.system.module.iot.service.rule: debug
     cn.shuhe.system.module.ai.dal.mysql: debug
+    cn.shuhe.system.module.ticket.dal.mysql: debug # 工单模块
     org.springframework.context.support.PostProcessorRegistrationDelegate: ERROR # TODO 芋艿：先禁用，Spring Boot 3.X 存在部分错误的 WARN 提示
 
 debug: false

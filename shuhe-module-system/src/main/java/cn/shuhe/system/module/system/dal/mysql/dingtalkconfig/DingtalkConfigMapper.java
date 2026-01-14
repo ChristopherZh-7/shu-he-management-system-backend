@@ -33,4 +33,14 @@ public interface DingtalkConfigMapper extends BaseMapperX<DingtalkConfigDO> {
                 .orderByDesc(DingtalkConfigDO::getId));
     }
 
+    /**
+     * 根据状态查询钉钉配置列表
+     *
+     * @param status 状态（0-启用）
+     * @return 配置列表
+     */
+    default List<DingtalkConfigDO> selectListByStatus(Integer status) {
+        return selectList(DingtalkConfigDO::getStatus, status);
+    }
+
 }

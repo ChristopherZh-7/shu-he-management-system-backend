@@ -27,4 +27,17 @@ public interface DingtalkMappingMapper extends BaseMapperX<DingtalkMappingDO> {
                 .orderByDesc(DingtalkMappingDO::getId));
     }
 
+    /**
+     * 根据本地ID和类型查询钉钉映射
+     *
+     * @param localId 本地ID
+     * @param type 类型（USER/DEPT）
+     * @return 钉钉映射
+     */
+    default DingtalkMappingDO selectByLocalId(Long localId, String type) {
+        return selectOne(new LambdaQueryWrapperX<DingtalkMappingDO>()
+                .eq(DingtalkMappingDO::getLocalId, localId)
+                .eq(DingtalkMappingDO::getType, type));
+    }
+
 }
