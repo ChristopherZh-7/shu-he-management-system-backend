@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>cn.shuhe</groupId>
+        <artifactId>shuhe</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>shuhe-module-project</artifactId>
+    <packaging>jar</packaging>
+
+    <name>${project.artifactId}</name>
+    <description>
+        project 模块，项目管理模块。
+        主要实现：项目创建、项目成员管理、任务管理、进度跟踪等功能。
+        支持安全服务、安全运营、数据安全三个部门的项目管理。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-module-system</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-module-infra</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
+        <!-- Web 相关 -->
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- DB 相关 -->
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-spring-boot-starter-mybatis</artifactId>
+        </dependency>
+
+        <!-- 工具类相关 -->
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-spring-boot-starter-excel</artifactId>
+        </dependency>
+
+        <!-- Test 测试相关 -->
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-spring-boot-starter-test</artifactId>
+        </dependency>
+    </dependencies>
+</project>

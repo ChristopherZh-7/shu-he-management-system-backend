@@ -47,4 +47,7 @@ public class CrmContractPageReqVO extends PageParam {
     @Schema(description = "过期类型", example = "1")
     private Integer expiryType; // 过期类型，为 null 时则表示全部
 
+    @Schema(description = "领取状态", example = "0")
+    private Integer claimStatus; // 领取状态：0=待领取，1=已领取
+
 }

@@ -25,6 +25,7 @@
 <!--        <module>shuhe-module-erp</module>-->
         <module>shuhe-module-ai</module>
         <module>shuhe-module-ticket</module>
+        <module>shuhe-module-project</module>
         <!--        <module>shuhe-module-iot</module>-->
     </modules>
 

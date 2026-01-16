@@ -202,4 +202,21 @@ public interface CrmContractService {
      */
     List<CrmContractDO> getContractListByCustomerIdOwnerUserId(Long customerId, Long ownerUserId);
 
+    /**
+     * 领取合同
+     *
+     * @param id     合同编号
+     * @param userId 用户编号
+     */
+    void claimContract(Long id, Long userId);
+
+    /**
+     * 获得待领取合同分页（基于当前用户部门）
+     *
+     * @param pageReqVO 分页查询
+     * @param userId    用户编号
+     * @return 合同分页
+     */
+    PageResult<CrmContractDO> getPendingClaimContractPage(CrmContractPageReqVO pageReqVO, Long userId);
+
 }

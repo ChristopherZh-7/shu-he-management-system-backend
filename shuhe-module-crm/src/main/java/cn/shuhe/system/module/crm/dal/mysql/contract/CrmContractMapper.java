@@ -113,4 +113,16 @@ public interface CrmContractMapper extends BaseMapperX<CrmContractDO> {
                 .eq(CrmContractDO::getOwnerUserId, ownerUserId));
     }
 
+    /**
+     * 查询待领取合同分页（基于部门）
+     */
+    default PageResult<CrmContractDO> selectPageByClaimStatusAndDeptId(CrmContractPageReqVO pageReqVO, Long deptId) {
+        return selectPage(pageReqVO, new LambdaQueryWrapperX<CrmContractDO>()
+                .eq(CrmContractDO::getClaimStatus, 0) // 待领取
+                .likeIfPresent(CrmContractDO::getNo, pageReqVO.getNo())
+                .likeIfPresent(CrmContractDO::getName, pageReqVO.getName())
+                .apply("JSON_CONTAINS(assign_dept_ids, CAST({0} AS JSON))", deptId) // 分派部门包含当前用户部门
+                .orderByDesc(CrmContractDO::getId));
+    }
+
 }

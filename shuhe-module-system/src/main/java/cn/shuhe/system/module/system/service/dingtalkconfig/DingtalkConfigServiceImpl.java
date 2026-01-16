@@ -29,8 +29,10 @@ import cn.shuhe.system.module.system.dal.mysql.dept.DeptMapper;
 import cn.shuhe.system.module.system.dal.mysql.dept.PostMapper;
 import cn.shuhe.system.module.system.dal.mysql.dingtalkmapping.DingtalkMappingMapper;
 import cn.shuhe.system.module.system.dal.mysql.user.AdminUserMapper;
+import cn.shuhe.system.module.system.dal.mysql.dept.UserPostMapper;
 import cn.shuhe.system.module.system.dal.dataobject.user.AdminUserDO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.PostDO;
+import cn.shuhe.system.module.system.dal.dataobject.dept.UserPostDO;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -92,6 +94,9 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
     
     @Resource
     private PostMapper postMapper;
+
+    @Resource
+    private UserPostMapper userPostMapper;
     
     @Resource
     private PasswordEncoder passwordEncoder;
@@ -348,6 +353,8 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                                 existingUser.setDeptId(localDeptId);
                             }
                             adminUserMapper.updateById(existingUser);
+                            // 同步岗位关联表 system_user_post
+                            syncUserPosts(existingUser.getId(), postIds);
                             updateCount++;
                         } else {
                             // 映射存在但用户被删除了，重新创建用户
@@ -376,6 +383,8 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                                     .employeeStatus(EMPLOYEE_STATUS_ON_JOB)
                                     .build();
                             adminUserMapper.insert(newUser);
+                            // 同步岗位关联表 system_user_post
+                            syncUserPosts(newUser.getId(), postIds);
                             
                             // 更新映射关系
                             mapping.setLocalId(newUser.getId());
@@ -410,6 +419,8 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                                 .employeeStatus(EMPLOYEE_STATUS_ON_JOB)
                                 .build();
                         adminUserMapper.insert(newUser);
+                        // 同步岗位关联表 system_user_post
+                        syncUserPosts(newUser.getId(), postIds);
                         
                         // 创建映射关系
                         DingtalkMappingDO newMapping = DingtalkMappingDO.builder()
@@ -650,6 +661,52 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
             config.setLastSyncResult("用户同步失败：" + e.getMessage());
             dingtalkConfigMapper.updateById(config);
             throw new RuntimeException("钉钉用户同步失败：" + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 同步用户岗位关联表
+     * @param userId 用户ID
+     * @param postIds 岗位ID集合
+     */
+    private void syncUserPosts(Long userId, Set<Long> postIds) {
+        if (userId == null) {
+            return;
+        }
+        // 获取当前用户已有的岗位ID
+        Set<Long> dbPostIds = new HashSet<>();
+        List<UserPostDO> existingPosts = userPostMapper.selectListByUserId(userId);
+        if (existingPosts != null) {
+            for (UserPostDO up : existingPosts) {
+                dbPostIds.add(up.getPostId());
+            }
+        }
+        
+        Set<Long> newPostIds = CollUtil.emptyIfNull(postIds);
+        
+        // 计算需要新增的岗位
+        Set<Long> createPostIds = new HashSet<>(newPostIds);
+        createPostIds.removeAll(dbPostIds);
+        
+        // 计算需要删除的岗位
+        Set<Long> deletePostIds = new HashSet<>(dbPostIds);
+        deletePostIds.removeAll(newPostIds);
+        
+        // 执行新增
+        if (!createPostIds.isEmpty()) {
+            List<UserPostDO> insertList = new ArrayList<>();
+            for (Long postId : createPostIds) {
+                UserPostDO userPost = new UserPostDO();
+                userPost.setUserId(userId);
+                userPost.setPostId(postId);
+                insertList.add(userPost);
+            }
+            userPostMapper.insertBatch(insertList);
+        }
+        
+        // 执行删除
+        if (!deletePostIds.isEmpty()) {
+            userPostMapper.deleteByUserIdAndPostId(userId, deletePostIds);
         }
     }
     

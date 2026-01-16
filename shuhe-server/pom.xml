@@ -115,6 +115,13 @@
             <version>${revision}</version>
         </dependency>
 
+        <!-- 项目管理模块 -->
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-module-project</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
         <!-- IoT 物联网相关模块。默认注释，保证编译速度 -->
 <!--        <dependency>-->
 <!--            <groupId>cn.shuhe</groupId>-->

@@ -39,16 +39,14 @@ public class CrmContractSaveReqVO {
     @DiffLogField(name = "商机", function = CrmBusinessParseFunction.NAME)
     private Long businessId;
 
-    @Schema(description = "负责人的用户编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "17144")
+    @Schema(description = "负责人的用户编号", example = "17144")
     @DiffLogField(name = "负责人", function = SysAdminUserParseFunction.NAME)
-    @NotNull(message = "负责人不能为空")
-    private Long ownerUserId;
+    private Long ownerUserId; // 初始创建时为空，由后端自动设置为当前用户
 
-    @Schema(description = "下单日期", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "下单日期")
     @DiffLogField(name = "下单日期")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
-    @NotNull(message = "下单日期不能为空")
-    private LocalDateTime orderDate;
+    private LocalDateTime orderDate; // 可选字段
 
     @Schema(description = "开始时间")
     @DiffLogField(name = "开始时间")
@@ -60,10 +58,9 @@ public class CrmContractSaveReqVO {
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime endTime;
 
-    @Schema(description = "整单折扣", requiredMode = Schema.RequiredMode.REQUIRED, example = "55.00")
+    @Schema(description = "整单折扣", example = "55.00")
     @DiffLogField(name = "整单折扣")
-    @NotNull(message = "整单折扣不能为空")
-    private BigDecimal discountPercent;
+    private BigDecimal discountPercent; // 可选字段
 
     @Schema(description = "合同金额", example = "5617")
     @DiffLogField(name = "合同金额")
@@ -80,6 +77,14 @@ public class CrmContractSaveReqVO {
     @Schema(description = "备注", example = "你猜")
     @DiffLogField(name = "备注")
     private String remark;
+
+    @Schema(description = "合同附件URL")
+    @DiffLogField(name = "合同附件")
+    private String attachment;
+
+    @Schema(description = "分派部门IDs", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "分派部门不能为空")
+    private List<Long> assignDeptIds;
 
     @Schema(description = "产品列表")
     private List<Product> products;

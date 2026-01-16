@@ -120,4 +120,29 @@ public class CrmContractDO extends BaseDO {
      */
     private String remark;
 
+    /**
+     * 合同附件URL
+     */
+    private String attachment;
+
+    /**
+     * 分派部门IDs（JSON数组）
+     */
+    private String assignDeptIds;
+
+    /**
+     * 领取状态：0=待领取，1=已领取
+     */
+    private Integer claimStatus;
+
+    /**
+     * 领取人用户ID
+     */
+    private Long claimUserId;
+
+    /**
+     * 领取时间
+     */
+    private LocalDateTime claimTime;
+
 }

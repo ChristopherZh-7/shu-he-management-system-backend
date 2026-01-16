@@ -108,6 +108,27 @@ public class CrmContractRespVO {
     @ExcelProperty("备注")
     private String remark;
 
+    @Schema(description = "合同附件URL")
+    private String attachment;
+
+    @Schema(description = "分派部门IDs")
+    private String assignDeptIds;
+
+    @Schema(description = "分派部门名称")
+    private String assignDeptNames;
+
+    @Schema(description = "领取状态：0=待领取，1=已领取")
+    private Integer claimStatus;
+
+    @Schema(description = "领取人用户ID")
+    private Long claimUserId;
+
+    @Schema(description = "领取人名称")
+    private String claimUserName;
+
+    @Schema(description = "领取时间")
+    private LocalDateTime claimTime;
+
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;

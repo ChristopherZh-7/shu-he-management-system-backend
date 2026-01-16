@@ -2,6 +2,7 @@ package cn.shuhe.system.module.crm.service.contract;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.collection.ListUtil;
+import java.util.ArrayList;
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.util.ObjUtil;
 import cn.shuhe.system.framework.common.pojo.PageResult;
@@ -31,7 +32,15 @@ import cn.shuhe.system.module.crm.service.permission.bo.CrmPermissionCreateReqBO
 import cn.shuhe.system.module.crm.service.permission.bo.CrmPermissionTransferReqBO;
 import cn.shuhe.system.module.crm.service.product.CrmProductService;
 import cn.shuhe.system.module.crm.service.receivable.CrmReceivableService;
+import cn.shuhe.system.module.system.api.dept.DeptApi;
+import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
+import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
+import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkApiService;
+import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkConfigService;
+import cn.shuhe.system.module.system.dal.dataobject.dingtalkconfig.DingtalkConfigDO;
+import cn.shuhe.system.module.system.dal.dataobject.dingtalkmapping.DingtalkMappingDO;
+import cn.shuhe.system.module.system.dal.mysql.dingtalkmapping.DingtalkMappingMapper;
 import com.mzt.logapi.context.LogRecordContext;
 import com.mzt.logapi.service.impl.DiffParseFunction;
 import com.mzt.logapi.starter.annotation.LogRecord;
@@ -94,15 +103,25 @@ public class CrmContractServiceImpl implements CrmContractService {
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
+    private DeptApi deptApi;
+    @Resource
     private BpmProcessInstanceApi bpmProcessInstanceApi;
+    @Resource
+    private DingtalkApiService dingtalkApiService;
+    @Resource
+    private DingtalkConfigService dingtalkConfigService;
+    @Resource
+    private DingtalkMappingMapper dingtalkMappingMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     @LogRecord(type = CRM_CONTRACT_TYPE, subType = CRM_CONTRACT_CREATE_SUB_TYPE, bizNo = "{{#contract.id}}",
             success = CRM_CONTRACT_CREATE_SUCCESS)
     public Long createContract(CrmContractSaveReqVO createReqVO, Long userId) {
-        // 1.1 校验产品项的有效性
-        List<CrmContractProductDO> contractProducts = validateContractProducts(createReqVO.getProducts());
+        // 1.1 校验产品项的有效性（允许为空）
+        List<CrmContractProductDO> contractProducts = CollUtil.isEmpty(createReqVO.getProducts()) 
+                ? new ArrayList<>() 
+                : validateContractProducts(createReqVO.getProducts());
         // 1.2 校验关联字段
         validateRelationDataExists(createReqVO);
         // 1.3 生成序号
@@ -113,6 +132,20 @@ public class CrmContractServiceImpl implements CrmContractService {
 
         // 2.1 插入合同
         CrmContractDO contract = BeanUtils.toBean(createReqVO, CrmContractDO.class).setNo(no);
+        // 设置负责人为当前用户（如果未指定）
+        if (contract.getOwnerUserId() == null) {
+            contract.setOwnerUserId(userId);
+        }
+        // 设置审批状态为草稿
+        contract.setAuditStatus(CrmAuditStatusEnum.DRAFT.getStatus());
+        // 处理分派部门IDs转JSON
+        if (createReqVO.getAssignDeptIds() != null && !createReqVO.getAssignDeptIds().isEmpty()) {
+            contract.setAssignDeptIds(cn.hutool.json.JSONUtil.toJsonStr(createReqVO.getAssignDeptIds()));
+            contract.setClaimStatus(0); // 待领取
+        } else {
+            contract.setClaimStatus(1); // 无分派则直接已领取
+        }
+        // 计算总价（处理产品为空的情况）
         calculateTotalPrice(contract, contractProducts);
         contractMapper.insert(contract);
         // 2.2 插入合同关联商品
@@ -126,7 +159,12 @@ public class CrmContractServiceImpl implements CrmContractService {
                 .setBizType(CrmBizTypeEnum.CRM_CONTRACT.getType()).setBizId(contract.getId())
                 .setLevel(CrmPermissionLevelEnum.OWNER.getLevel()));
 
-        // 4. 记录操作日志上下文
+        // 4. 发送钉钉通知给分派部门的人员
+        if (createReqVO.getAssignDeptIds() != null && !createReqVO.getAssignDeptIds().isEmpty()) {
+            sendDingtalkNotifyToAssignedDepts(contract, createReqVO.getAssignDeptIds());
+        }
+
+        // 5. 记录操作日志上下文
         LogRecordContext.putVariable("contract", contract);
         return contract.getId();
     }
@@ -216,9 +254,20 @@ public class CrmContractServiceImpl implements CrmContractService {
     }
 
     private void calculateTotalPrice(CrmContractDO contract, List<CrmContractProductDO> contractProducts) {
-        contract.setTotalProductPrice(getSumValue(contractProducts, CrmContractProductDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO));
-        BigDecimal discountPrice = MoneyUtils.priceMultiplyPercent(contract.getTotalProductPrice(), contract.getDiscountPercent());
-        contract.setTotalPrice(contract.getTotalProductPrice().subtract(discountPrice));
+        // 计算产品总价（如果有产品的话）
+        BigDecimal totalProductPrice = getSumValue(contractProducts, CrmContractProductDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO);
+        contract.setTotalProductPrice(totalProductPrice);
+        
+        // 如果已经设置了合同总价（手动输入），则使用该值；否则根据产品计算
+        if (contract.getTotalPrice() != null && contract.getTotalPrice().compareTo(BigDecimal.ZERO) > 0) {
+            // 使用手动输入的合同总价
+            return;
+        }
+        
+        // 根据产品计算总价
+        BigDecimal discountPercent = contract.getDiscountPercent() != null ? contract.getDiscountPercent() : BigDecimal.ZERO;
+        BigDecimal discountPrice = MoneyUtils.priceMultiplyPercent(totalProductPrice, discountPercent);
+        contract.setTotalPrice(totalProductPrice.subtract(discountPrice != null ? discountPrice : BigDecimal.ZERO));
     }
 
     @Override
@@ -411,6 +460,126 @@ public class CrmContractServiceImpl implements CrmContractService {
     @Override
     public List<CrmContractDO> getContractListByCustomerIdOwnerUserId(Long customerId, Long ownerUserId) {
         return contractMapper.selectListByCustomerIdOwnerUserId(customerId, ownerUserId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void claimContract(Long id, Long userId) {
+        // 1. 校验合同是否存在
+        CrmContractDO contract = validateContractExists(id);
+        // 2. 校验是否已被领取
+        if (contract.getClaimStatus() != null && contract.getClaimStatus() == 1) {
+            throw exception(CONTRACT_ALREADY_CLAIMED);
+        }
+        // 3. 更新合同领取状态
+        contractMapper.updateById(new CrmContractDO()
+                .setId(id)
+                .setClaimStatus(1)
+                .setClaimUserId(userId)
+                .setClaimTime(LocalDateTime.now())
+                .setOwnerUserId(userId)); // 领取后负责人为领取人
+
+        // 4. 创建数据权限（如果不存在）
+        crmPermissionService.createPermission(new CrmPermissionCreateReqBO()
+                .setUserId(userId)
+                .setBizType(CrmBizTypeEnum.CRM_CONTRACT.getType())
+                .setBizId(id)
+                .setLevel(CrmPermissionLevelEnum.OWNER.getLevel()));
+    }
+
+    @Override
+    public PageResult<CrmContractDO> getPendingClaimContractPage(CrmContractPageReqVO pageReqVO, Long userId) {
+        // 获取用户所在部门
+        Long deptId = adminUserApi.getUser(userId).getDeptId();
+        if (deptId == null) {
+            return PageResult.empty();
+        }
+        return contractMapper.selectPageByClaimStatusAndDeptId(pageReqVO, deptId);
+    }
+
+    /**
+     * 发送钉钉通知给分派部门的人员
+     */
+    private void sendDingtalkNotifyToAssignedDepts(CrmContractDO contract, List<Long> deptIds) {
+        log.info("【合同通知】开始发送钉钉通知，合同编号={}, 分派部门={}", contract.getNo(), deptIds);
+        
+        // 获取钉钉配置
+        List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
+        if (configs.isEmpty()) {
+            log.warn("【合同通知】没有可用的钉钉配置，跳过通知");
+            return;
+        }
+        DingtalkConfigDO config = configs.get(0);
+        
+        if (cn.hutool.core.util.StrUtil.isEmpty(config.getAgentId())) {
+            log.warn("【合同通知】钉钉配置缺少agentId，跳过通知");
+            return;
+        }
+        
+        // 获取 access_token
+        String accessToken = dingtalkApiService.getAccessToken(config);
+        if (cn.hutool.core.util.StrUtil.isEmpty(accessToken)) {
+            log.warn("【合同通知】获取accessToken失败，跳过通知");
+            return;
+        }
+        
+        // 获取分派部门名称
+        List<DeptRespDTO> depts = deptApi.getDeptList(deptIds);
+        String deptNames = depts.stream().map(DeptRespDTO::getName).reduce((a, b) -> a + "、" + b).orElse("");
+        
+        // 获取部门下的所有用户
+        for (Long deptId : deptIds) {
+            List<AdminUserRespDTO> users = adminUserApi.getUserListByDeptIds(java.util.Collections.singletonList(deptId));
+            if (users == null || users.isEmpty()) {
+                log.debug("【合同通知】部门 {} 没有用户", deptId);
+                continue;
+            }
+            
+            // 获取用户的钉钉ID列表
+            List<String> dingtalkUserIds = new java.util.ArrayList<>();
+            for (AdminUserRespDTO user : users) {
+                DingtalkMappingDO mapping = dingtalkMappingMapper.selectByLocalId(user.getId(), "USER");
+                if (mapping != null && cn.hutool.core.util.StrUtil.isNotEmpty(mapping.getDingtalkId())) {
+                    dingtalkUserIds.add(mapping.getDingtalkId());
+                }
+            }
+            
+            if (dingtalkUserIds.isEmpty()) {
+                log.debug("【合同通知】部门 {} 的用户没有钉钉映射", deptId);
+                continue;
+            }
+            
+            // 构建消息内容
+            String title = "📋 您有新的合同待领取";
+            String content = String.format(
+                    "### %s\n\n" +
+                    "**合同编号：** %s\n\n" +
+                    "**合同名称：** %s\n\n" +
+                    "**分派部门：** %s\n\n" +
+                    "---\n" +
+                    "请登录系统领取合同",
+                    title,
+                    contract.getNo(),
+                    contract.getName(),
+                    deptNames
+            );
+            
+            // 发送钉钉工作通知
+            boolean success = dingtalkApiService.sendWorkNotice(
+                    accessToken,
+                    config.getAgentId(),
+                    dingtalkUserIds,
+                    title,
+                    content
+            );
+            
+            if (success) {
+                log.info("【合同通知】发送成功：contractNo={}, deptId={}, userCount={}", 
+                        contract.getNo(), deptId, dingtalkUserIds.size());
+            } else {
+                log.error("【合同通知】发送失败：contractNo={}, deptId={}", contract.getNo(), deptId);
+            }
+        }
     }
 
 }

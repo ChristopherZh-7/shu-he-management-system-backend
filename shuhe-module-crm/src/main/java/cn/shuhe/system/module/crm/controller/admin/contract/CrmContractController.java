@@ -186,9 +186,9 @@ public class CrmContractController {
         // 1.1 获取客户列表
         Map<Long, CrmCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(contractList, CrmContractDO::getCustomerId));
-        // 1.2 获取创建人、负责人列表
+        // 1.2 获取创建人、负责人、领取人列表
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(contractList,
-                contact -> Stream.of(NumberUtils.parseLong(contact.getCreator()), contact.getOwnerUserId())));
+                contact -> Stream.of(NumberUtils.parseLong(contact.getCreator()), contact.getOwnerUserId(), contact.getClaimUserId())));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(userMap.values(), AdminUserRespDTO::getDeptId));
         // 1.3 获取联系人
         Map<Long, CrmContactDO> contactMap = convertMap(contactService.getContactList(convertSet(contractList,
@@ -216,7 +216,48 @@ public class CrmContractController {
             findAndThen(businessMap, contractVO.getBusinessId(), business -> contractVO.setBusinessName(business.getName()));
             // 2.5 设置已回款金额
             contractVO.setTotalReceivablePrice(receivablePriceMap.getOrDefault(contractVO.getId(), BigDecimal.ZERO));
+            // 2.6 设置领取人信息
+            findAndThen(userMap, contractVO.getClaimUserId(), user -> contractVO.setClaimUserName(user.getNickname()));
+            // 2.7 设置分派部门名称（需要解析 JSON）
+            if (contractVO.getAssignDeptIds() != null) {
+                contractVO.setAssignDeptNames(buildAssignDeptNames(contractVO.getAssignDeptIds(), deptMap));
+            }
         });
+    }
+
+    private String buildAssignDeptNames(String assignDeptIds, Map<Long, DeptRespDTO> deptMap) {
+        if (assignDeptIds == null || assignDeptIds.isEmpty()) {
+            return "";
+        }
+        try {
+            List<Long> deptIds = cn.hutool.json.JSONUtil.toList(assignDeptIds, Long.class);
+            return deptIds.stream()
+                    .map(deptId -> deptMap.get(deptId))
+                    .filter(dept -> dept != null)
+                    .map(DeptRespDTO::getName)
+                    .reduce((a, b) -> a + ", " + b)
+                    .orElse("");
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    @PutMapping("/claim")
+    @Operation(summary = "领取合同")
+    @Parameter(name = "id", description = "合同编号", required = true)
+    @PreAuthorize("@ss.hasPermission('crm:contract:update')")
+    public CommonResult<Boolean> claimContract(@RequestParam("id") Long id) {
+        contractService.claimContract(id, getLoginUserId());
+        return success(true);
+    }
+
+    @GetMapping("/page-pending-claim")
+    @Operation(summary = "获得待领取合同分页（基于当前用户部门）")
+    @PreAuthorize("@ss.hasPermission('crm:contract:query')")
+    public CommonResult<PageResult<CrmContractRespVO>> getPendingClaimContractPage(@Valid CrmContractPageReqVO pageVO) {
+        pageVO.setClaimStatus(0); // 待领取
+        PageResult<CrmContractDO> pageResult = contractService.getPendingClaimContractPage(pageVO, getLoginUserId());
+        return success(BeanUtils.toBean(pageResult, CrmContractRespVO.class).setList(buildContractDetailList(pageResult.getList())));
     }
 
     @GetMapping("/audit-count")
