@@ -1,6 +1,5 @@
 package cn.shuhe.system.module.crm.service.permission;
 
-
 import cn.shuhe.system.module.crm.controller.admin.permission.vo.CrmPermissionSaveReqVO;
 import cn.shuhe.system.module.crm.controller.admin.permission.vo.CrmPermissionUpdateReqVO;
 import cn.shuhe.system.module.crm.dal.dataobject.permission.CrmPermissionDO;

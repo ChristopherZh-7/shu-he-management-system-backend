@@ -13,6 +13,13 @@ public interface ErrorCodeConstants {
     ErrorCode PROJECT_NOT_EXISTS = new ErrorCode(1_030_001_000, "项目不存在");
     ErrorCode PROJECT_NAME_DUPLICATE = new ErrorCode(1_030_001_001, "项目名称已存在");
     ErrorCode PROJECT_STATUS_ERROR = new ErrorCode(1_030_001_002, "项目状态错误");
+    ErrorCode PROJECT_HAS_SERVICE_ITEMS = new ErrorCode(1_030_001_003, "项目下存在服务项，无法删除");
+
+    // ========== 服务项模块 1-030-007-000 ==========
+    ErrorCode SERVICE_ITEM_NOT_EXISTS = new ErrorCode(1_030_007_000, "服务项不存在");
+    ErrorCode SERVICE_ITEM_NAME_DUPLICATE = new ErrorCode(1_030_007_001, "服务项名称已存在");
+    ErrorCode SERVICE_ITEM_STATUS_ERROR = new ErrorCode(1_030_007_002, "服务项状态错误");
+    ErrorCode SERVICE_ITEM_DEPT_NOT_SET = new ErrorCode(1_030_007_003, "创建服务项失败：当前用户未设置所属部门");
 
     // ========== 项目成员 1-030-002-000 ==========
     ErrorCode PROJECT_MEMBER_NOT_EXISTS = new ErrorCode(1_030_002_000, "项目成员不存在");

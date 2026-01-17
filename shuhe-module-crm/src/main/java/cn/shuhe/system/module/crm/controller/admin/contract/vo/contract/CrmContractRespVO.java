@@ -129,6 +129,28 @@ public class CrmContractRespVO {
     @Schema(description = "领取时间")
     private LocalDateTime claimTime;
 
+    @Schema(description = "分派部门详细信息列表（包含领取状态）")
+    private List<AssignDeptInfo> assignDeptInfoList;
+
+    @Schema(description = "分派部门信息")
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AssignDeptInfo {
+        @Schema(description = "部门ID")
+        private Long deptId;
+        @Schema(description = "部门名称")
+        private String deptName;
+        @Schema(description = "是否已领取")
+        private Boolean claimed;
+        @Schema(description = "领取人用户ID")
+        private Long claimUserId;
+        @Schema(description = "领取人名称")
+        private String claimUserName;
+        @Schema(description = "领取时间")
+        private LocalDateTime claimTime;
+    }
+
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;

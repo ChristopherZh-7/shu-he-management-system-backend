@@ -58,4 +58,12 @@ public interface DeptApi {
      */
     List<DeptRespDTO> getChildDeptList(Long id);
 
+    /**
+     * 获得指定用户作为负责人的部门列表
+     *
+     * @param userId 用户编号
+     * @return 部门列表
+     */
+    List<DeptRespDTO> getDeptListByLeaderUserId(Long userId);
+
 }

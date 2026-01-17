@@ -6,14 +6,13 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-
 /**
- * 项目 DO
+ * 项目 DO（顶层项目）
+ * 
+ * 项目是第一层级，一个项目下可以有多个服务项（ServiceItemDO）
  */
-@TableName("project_info")
-@KeySequence("project_info_seq")
+@TableName("project")
+@KeySequence("project_seq")
 @Data
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
@@ -29,30 +28,20 @@ public class ProjectDO extends BaseDO {
     private Long id;
 
     /**
-     * 项目编号
-     */
-    private String code;
-
-    /**
      * 项目名称
      */
     private String name;
+
+    /**
+     * 项目编号
+     */
+    private String code;
 
     /**
      * 部门类型
      * 1-安全服务 2-安全运营 3-数据安全
      */
     private Integer deptType;
-
-    /**
-     * 服务类型（字典值）
-     */
-    private String serviceType;
-
-    /**
-     * 项目描述
-     */
-    private String description;
 
     // ========== 客户信息 ==========
 
@@ -76,81 +65,17 @@ public class ProjectDO extends BaseDO {
      */
     private String contractNo;
 
-    // ========== 时间信息 ==========
-
-    /**
-     * 计划开始时间
-     */
-    private LocalDateTime planStartTime;
-
-    /**
-     * 计划结束时间
-     */
-    private LocalDateTime planEndTime;
-
-    /**
-     * 实际开始时间
-     */
-    private LocalDateTime actualStartTime;
-
-    /**
-     * 实际结束时间
-     */
-    private LocalDateTime actualEndTime;
-
-    // ========== 人员信息 ==========
-
-    /**
-     * 项目经理 ID
-     */
-    private Long managerId;
-
-    /**
-     * 项目经理姓名
-     */
-    private String managerName;
-
-    /**
-     * 所属部门 ID
-     */
-    private Long deptId;
-
-    // ========== 状态进度 ==========
+    // ========== 状态 ==========
 
     /**
      * 项目状态
-     * 0-草稿 1-进行中 2-已暂停 3-已完成 4-已取消
+     * 0-草稿 1-进行中 2-已完成
      */
     private Integer status;
 
     /**
-     * 进度百分比 0-100
+     * 项目描述
      */
-    private Integer progress;
-
-    /**
-     * 优先级
-     * 0-低 1-中 2-高
-     */
-    private Integer priority;
-
-    // ========== 商务信息 ==========
-
-    /**
-     * 项目金额
-     */
-    private BigDecimal amount;
-
-    // ========== 扩展字段 ==========
-
-    /**
-     * 标签（JSON 数组）
-     */
-    private String tags;
-
-    /**
-     * 备注
-     */
-    private String remark;
+    private String description;
 
 }

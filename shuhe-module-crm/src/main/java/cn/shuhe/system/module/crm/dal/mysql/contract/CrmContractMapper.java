@@ -49,7 +49,8 @@ public interface CrmContractMapper extends BaseMapperX<CrmContractDO> {
                 .orderByDesc(CrmContractDO::getId));
     }
 
-    default PageResult<CrmContractDO> selectPage(CrmContractPageReqVO pageReqVO, Long userId, CrmContractConfigDO config) {
+    default PageResult<CrmContractDO> selectPage(CrmContractPageReqVO pageReqVO, Long userId,
+            CrmContractConfigDO config) {
         MPJLambdaWrapperX<CrmContractDO> query = new MPJLambdaWrapperX<>();
         // 拼接数据权限的查询条件
         CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CONTRACT.getType(),
@@ -123,6 +124,38 @@ public interface CrmContractMapper extends BaseMapperX<CrmContractDO> {
                 .likeIfPresent(CrmContractDO::getName, pageReqVO.getName())
                 .apply("JSON_CONTAINS(assign_dept_ids, CAST({0} AS JSON))", deptId) // 分派部门包含当前用户部门
                 .orderByDesc(CrmContractDO::getId));
+    }
+
+    /**
+     * 查询待领取合同分页（基于负责人的部门ID列表）
+     * 只要合同的分派部门中有任意一个是当前用户负责的部门，且该部门未被领取，就能查到
+     * 
+     * 新 JSON 结构: [{"deptId":101,"claimed":false,...},
+     * {"deptId":102,"claimed":true,...}]
+     */
+    default PageResult<CrmContractDO> selectPageByClaimStatusAndLeaderDeptIds(CrmContractPageReqVO pageReqVO,
+            List<Long> leaderDeptIds) {
+        LambdaQueryWrapperX<CrmContractDO> query = new LambdaQueryWrapperX<CrmContractDO>()
+                .eq(CrmContractDO::getClaimStatus, 0) // 待领取（全局状态，表示还有部门未领取）
+                .likeIfPresent(CrmContractDO::getNo, pageReqVO.getNo())
+                .likeIfPresent(CrmContractDO::getName, pageReqVO.getName())
+                .orderByDesc(CrmContractDO::getId);
+
+        // 构建 OR 条件：assign_dept_ids 包含任意一个负责人的部门，且该部门未领取
+        // 使用 LIKE 搜索包含该部门ID的合同
+        query.and(wrapper -> {
+            for (int i = 0; i < leaderDeptIds.size(); i++) {
+                Long deptId = leaderDeptIds.get(i);
+                // 匹配: "deptId":101, 格式
+                if (i == 0) {
+                    wrapper.like(CrmContractDO::getAssignDeptIds, "\"deptId\":" + deptId + ",");
+                } else {
+                    wrapper.or().like(CrmContractDO::getAssignDeptIds, "\"deptId\":" + deptId + ",");
+                }
+            }
+        });
+
+        return selectPage(pageReqVO, query);
     }
 
 }

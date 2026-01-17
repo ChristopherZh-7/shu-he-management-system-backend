@@ -30,4 +30,10 @@ public interface ProjectMemberMapper extends BaseMapperX<ProjectMemberDO> {
                 .eq(ProjectMemberDO::getProjectId, projectId));
     }
 
+    default List<Long> selectProjectIdsByUserId(Long userId) {
+        List<ProjectMemberDO> members = selectList(new LambdaQueryWrapperX<ProjectMemberDO>()
+                .eq(ProjectMemberDO::getUserId, userId));
+        return members.stream().map(ProjectMemberDO::getProjectId).toList();
+    }
+
 }

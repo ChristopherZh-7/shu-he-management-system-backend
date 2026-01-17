@@ -44,4 +44,10 @@ public class DeptApiImpl implements DeptApi {
         return BeanUtils.toBean(childDeptList, DeptRespDTO.class);
     }
 
+    @Override
+    public List<DeptRespDTO> getDeptListByLeaderUserId(Long userId) {
+        List<DeptDO> deptList = deptService.getDeptListByLeaderUserId(userId);
+        return BeanUtils.toBean(deptList, DeptRespDTO.class);
+    }
+
 }

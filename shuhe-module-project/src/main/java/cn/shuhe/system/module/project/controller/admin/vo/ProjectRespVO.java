@@ -3,9 +3,7 @@ package cn.shuhe.system.module.project.controller.admin.vo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Schema(description = "管理后台 - 项目 Response VO")
 @Data
@@ -14,20 +12,14 @@ public class ProjectRespVO {
     @Schema(description = "项目ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Long id;
 
-    @Schema(description = "项目编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "PRJ-2026-001")
-    private String code;
-
-    @Schema(description = "项目名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "某银行渗透测试")
+    @Schema(description = "项目名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "某银行安全测试项目")
     private String name;
+
+    @Schema(description = "项目编号", example = "PRJ-1-20260116-0001")
+    private String code;
 
     @Schema(description = "部门类型：1安全服务 2安全运营 3数据安全", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Integer deptType;
-
-    @Schema(description = "服务类型", example = "penetration_test")
-    private String serviceType;
-
-    @Schema(description = "项目描述", example = "对某银行系统进行渗透测试")
-    private String description;
 
     // ========== 客户信息 ==========
 
@@ -43,54 +35,18 @@ public class ProjectRespVO {
     @Schema(description = "合同编号", example = "HT-2026-001")
     private String contractNo;
 
-    // ========== 时间信息 ==========
+    // ========== 状态 ==========
 
-    @Schema(description = "计划开始时间")
-    private LocalDateTime planStartTime;
-
-    @Schema(description = "计划结束时间")
-    private LocalDateTime planEndTime;
-
-    @Schema(description = "实际开始时间")
-    private LocalDateTime actualStartTime;
-
-    @Schema(description = "实际结束时间")
-    private LocalDateTime actualEndTime;
-
-    // ========== 人员信息 ==========
-
-    @Schema(description = "项目经理ID", example = "1")
-    private Long managerId;
-
-    @Schema(description = "项目经理姓名", example = "张三")
-    private String managerName;
-
-    @Schema(description = "所属部门ID", example = "100")
-    private Long deptId;
-
-    // ========== 状态进度 ==========
-
-    @Schema(description = "项目状态：0草稿 1进行中 2已暂停 3已完成 4已取消", example = "1")
+    @Schema(description = "项目状态：0草稿 1进行中 2已完成", example = "1")
     private Integer status;
 
-    @Schema(description = "进度百分比 0-100", example = "50")
-    private Integer progress;
+    @Schema(description = "项目描述", example = "某银行安全测试项目描述")
+    private String description;
 
-    @Schema(description = "优先级：0低 1中 2高", example = "1")
-    private Integer priority;
+    // ========== 统计信息 ==========
 
-    // ========== 商务信息 ==========
-
-    @Schema(description = "项目金额", example = "50000.00")
-    private BigDecimal amount;
-
-    // ========== 扩展字段 ==========
-
-    @Schema(description = "标签列表", example = "[\"渗透\", \"银行\"]")
-    private List<String> tags;
-
-    @Schema(description = "备注", example = "备注信息")
-    private String remark;
+    @Schema(description = "服务项数量", example = "3")
+    private Integer serviceItemCount;
 
     // ========== 通用字段 ==========
 

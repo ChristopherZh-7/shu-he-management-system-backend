@@ -117,11 +117,12 @@ public class CrmContractController {
         }
         CrmContractRespVO contractVO = buildContractDetailList(singletonList(contract)).get(0);
         // 拼接产品项
-        List<CrmContractProductDO> businessProducts = contractService.getContractProductListByContractId(contractVO.getId());
+        List<CrmContractProductDO> businessProducts = contractService
+                .getContractProductListByContractId(contractVO.getId());
         Map<Long, CrmProductDO> productMap = productService.getProductMap(
                 convertSet(businessProducts, CrmContractProductDO::getProductId));
-        contractVO.setProducts(BeanUtils.toBean(businessProducts, CrmContractRespVO.Product.class, businessProductVO ->
-                MapUtils.findAndThen(productMap, businessProductVO.getProductId(),
+        contractVO.setProducts(BeanUtils.toBean(businessProducts, CrmContractRespVO.Product.class,
+                businessProductVO -> MapUtils.findAndThen(productMap, businessProductVO.getProductId(),
                         product -> businessProductVO.setProductName(product.getName())
                                 .setProductNo(product.getNo()).setProductUnit(product.getUnit()))));
         return contractVO;
@@ -132,7 +133,8 @@ public class CrmContractController {
     @PreAuthorize("@ss.hasPermission('crm:contract:query')")
     public CommonResult<PageResult<CrmContractRespVO>> getContractPage(@Valid CrmContractPageReqVO pageVO) {
         PageResult<CrmContractDO> pageResult = contractService.getContractPage(pageVO, getLoginUserId());
-        return success(BeanUtils.toBean(pageResult, CrmContractRespVO.class).setList(buildContractDetailList(pageResult.getList())));
+        return success(BeanUtils.toBean(pageResult, CrmContractRespVO.class)
+                .setList(buildContractDetailList(pageResult.getList())));
     }
 
     @GetMapping("/page-by-customer")
@@ -140,7 +142,8 @@ public class CrmContractController {
     public CommonResult<PageResult<CrmContractRespVO>> getContractPageByCustomer(@Valid CrmContractPageReqVO pageVO) {
         Assert.notNull(pageVO.getCustomerId(), "客户编号不能为空");
         PageResult<CrmContractDO> pageResult = contractService.getContractPageByCustomerId(pageVO);
-        return success(BeanUtils.toBean(pageResult, CrmContractRespVO.class).setList(buildContractDetailList(pageResult.getList())));
+        return success(BeanUtils.toBean(pageResult, CrmContractRespVO.class)
+                .setList(buildContractDetailList(pageResult.getList())));
     }
 
     @GetMapping("/page-by-business")
@@ -148,7 +151,8 @@ public class CrmContractController {
     public CommonResult<PageResult<CrmContractRespVO>> getContractPageByBusiness(@Valid CrmContractPageReqVO pageVO) {
         Assert.notNull(pageVO.getBusinessId(), "商机编号不能为空");
         PageResult<CrmContractDO> pageResult = contractService.getContractPageByBusinessId(pageVO);
-        return success(BeanUtils.toBean(pageResult, CrmContractRespVO.class).setList(buildContractDetailList(pageResult.getList())));
+        return success(BeanUtils.toBean(pageResult, CrmContractRespVO.class)
+                .setList(buildContractDetailList(pageResult.getList())));
     }
 
     @GetMapping("/export-excel")
@@ -156,7 +160,7 @@ public class CrmContractController {
     @PreAuthorize("@ss.hasPermission('crm:contract:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportContractExcel(@Valid CrmContractPageReqVO exportReqVO,
-                                    HttpServletResponse response) throws IOException {
+            HttpServletResponse response) throws IOException {
         PageResult<CrmContractDO> pageResult = contractService.getContractPage(exportReqVO, getLoginUserId());
         // 导出 Excel
         ExcelUtils.write(response, "合同.xls", "数据", CrmContractRespVO.class,
@@ -188,7 +192,8 @@ public class CrmContractController {
                 convertSet(contractList, CrmContractDO::getCustomerId));
         // 1.2 获取创建人、负责人、领取人列表
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(contractList,
-                contact -> Stream.of(NumberUtils.parseLong(contact.getCreator()), contact.getOwnerUserId(), contact.getClaimUserId())));
+                contact -> Stream.of(NumberUtils.parseLong(contact.getCreator()), contact.getOwnerUserId(),
+                        contact.getClaimUserId())));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(userMap.values(), AdminUserRespDTO::getDeptId));
         // 1.3 获取联系人
         Map<Long, CrmContactDO> contactMap = convertMap(contactService.getContactList(convertSet(contractList,
@@ -202,52 +207,59 @@ public class CrmContractController {
         // 2. 拼接数据
         return BeanUtils.toBean(contractList, CrmContractRespVO.class, contractVO -> {
             // 2.1 设置客户信息
-            findAndThen(customerMap, contractVO.getCustomerId(), customer -> contractVO.setCustomerName(customer.getName()));
+            findAndThen(customerMap, contractVO.getCustomerId(),
+                    customer -> contractVO.setCustomerName(customer.getName()));
             // 2.2 设置用户信息
-            findAndThen(userMap, Long.parseLong(contractVO.getCreator()), user -> contractVO.setCreatorName(user.getNickname()));
+            findAndThen(userMap, Long.parseLong(contractVO.getCreator()),
+                    user -> contractVO.setCreatorName(user.getNickname()));
             MapUtils.findAndThen(userMap, contractVO.getOwnerUserId(), user -> {
                 contractVO.setOwnerUserName(user.getNickname());
-                MapUtils.findAndThen(deptMap, user.getDeptId(), dept -> contractVO.setOwnerUserDeptName(dept.getName()));
+                MapUtils.findAndThen(deptMap, user.getDeptId(),
+                        dept -> contractVO.setOwnerUserDeptName(dept.getName()));
             });
             findAndThen(userMap, contractVO.getSignUserId(), user -> contractVO.setSignUserName(user.getNickname()));
             // 2.3 设置联系人信息
-            findAndThen(contactMap, contractVO.getSignContactId(), contact -> contractVO.setSignContactName(contact.getName()));
+            findAndThen(contactMap, contractVO.getSignContactId(),
+                    contact -> contractVO.setSignContactName(contact.getName()));
             // 2.4 设置商机信息
-            findAndThen(businessMap, contractVO.getBusinessId(), business -> contractVO.setBusinessName(business.getName()));
+            findAndThen(businessMap, contractVO.getBusinessId(),
+                    business -> contractVO.setBusinessName(business.getName()));
             // 2.5 设置已回款金额
             contractVO.setTotalReceivablePrice(receivablePriceMap.getOrDefault(contractVO.getId(), BigDecimal.ZERO));
             // 2.6 设置领取人信息
             findAndThen(userMap, contractVO.getClaimUserId(), user -> contractVO.setClaimUserName(user.getNickname()));
-            // 2.7 设置分派部门名称（需要解析 JSON）
+            // 2.7 设置分派部门详细信息（解析新 JSON 结构）
             if (contractVO.getAssignDeptIds() != null) {
-                contractVO.setAssignDeptNames(buildAssignDeptNames(contractVO.getAssignDeptIds(), deptMap));
+                List<CrmContractRespVO.AssignDeptInfo> deptInfoList = buildAssignDeptInfoList(
+                        contractVO.getAssignDeptIds());
+                contractVO.setAssignDeptInfoList(deptInfoList);
+                // 兼容旧字段
+                contractVO.setAssignDeptNames(deptInfoList.stream()
+                        .map(CrmContractRespVO.AssignDeptInfo::getDeptName)
+                        .reduce((a, b) -> a + ", " + b).orElse(""));
             }
         });
     }
 
-    private String buildAssignDeptNames(String assignDeptIds, Map<Long, DeptRespDTO> deptMap) {
+    private List<CrmContractRespVO.AssignDeptInfo> buildAssignDeptInfoList(String assignDeptIds) {
         if (assignDeptIds == null || assignDeptIds.isEmpty()) {
-            return "";
+            return Collections.emptyList();
         }
         try {
-            List<Long> deptIds = cn.hutool.json.JSONUtil.toList(assignDeptIds, Long.class);
-            return deptIds.stream()
-                    .map(deptId -> deptMap.get(deptId))
-                    .filter(dept -> dept != null)
-                    .map(DeptRespDTO::getName)
-                    .reduce((a, b) -> a + ", " + b)
-                    .orElse("");
+            return cn.hutool.json.JSONUtil.toList(assignDeptIds, CrmContractRespVO.AssignDeptInfo.class);
         } catch (Exception e) {
-            return "";
+            return Collections.emptyList();
         }
     }
 
     @PutMapping("/claim")
-    @Operation(summary = "领取合同")
+    @Operation(summary = "领取合同（按部门领取）")
     @Parameter(name = "id", description = "合同编号", required = true)
+    @Parameter(name = "deptId", description = "部门编号", required = true)
     @PreAuthorize("@ss.hasPermission('crm:contract:update')")
-    public CommonResult<Boolean> claimContract(@RequestParam("id") Long id) {
-        contractService.claimContract(id, getLoginUserId());
+    public CommonResult<Boolean> claimContract(@RequestParam("id") Long id,
+            @RequestParam("deptId") Long deptId) {
+        contractService.claimContract(id, deptId, getLoginUserId());
         return success(true);
     }
 
@@ -257,7 +269,8 @@ public class CrmContractController {
     public CommonResult<PageResult<CrmContractRespVO>> getPendingClaimContractPage(@Valid CrmContractPageReqVO pageVO) {
         pageVO.setClaimStatus(0); // 待领取
         PageResult<CrmContractDO> pageResult = contractService.getPendingClaimContractPage(pageVO, getLoginUserId());
-        return success(BeanUtils.toBean(pageResult, CrmContractRespVO.class).setList(buildContractDetailList(pageResult.getList())));
+        return success(BeanUtils.toBean(pageResult, CrmContractRespVO.class)
+                .setList(buildContractDetailList(pageResult.getList())));
     }
 
     @GetMapping("/audit-count")
