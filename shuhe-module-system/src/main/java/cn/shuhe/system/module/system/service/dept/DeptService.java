@@ -121,4 +121,12 @@ public interface DeptService {
      */
     void validateDeptList(Collection<Long> ids);
 
+    /**
+     * 根据部门类型获取部门列表
+     *
+     * @param deptType 部门类型
+     * @return 部门列表
+     */
+    List<DeptDO> getDeptListByDeptType(Integer deptType);
+
 }

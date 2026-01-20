@@ -150,6 +150,28 @@ public class ServiceItemDO extends BaseDO {
      */
     private BigDecimal amount;
 
+    // ========== 服务频次配置 ==========
+
+    /**
+     * 频次类型
+     * 0-按需（不限制）1-按月 2-按季 3-按年
+     */
+    private Integer frequencyType;
+
+    /**
+     * 每周期最大执行次数
+     * 配合 frequencyType 使用：
+     * - 按月 + maxCount=2 表示每月最多执行2次
+     * - 按季 + maxCount=4 表示每季度最多执行4次
+     * - 按需时此字段无效
+     */
+    private Integer maxCount;
+
+    /**
+     * 历史执行总次数（用于统计）
+     */
+    private Integer usedCount;
+
     // ========== 扩展字段 ==========
 
     /**

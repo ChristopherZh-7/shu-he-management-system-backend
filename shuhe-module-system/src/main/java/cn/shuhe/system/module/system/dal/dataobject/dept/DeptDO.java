@@ -63,4 +63,11 @@ public class DeptDO extends BaseDO {
      */
     private Integer status;
 
+    /**
+     * 部门类型
+     *
+     * 1-安全服务 2-安全运营 3-数据安全
+     */
+    private Integer deptType;
+
 }

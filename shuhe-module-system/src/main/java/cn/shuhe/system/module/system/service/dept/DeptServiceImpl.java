@@ -235,4 +235,12 @@ public class DeptServiceImpl implements DeptService {
         });
     }
 
+    @Override
+    public List<DeptDO> getDeptListByDeptType(Integer deptType) {
+        if (deptType == null) {
+            return Collections.emptyList();
+        }
+        return deptMapper.selectListByDeptType(deptType);
+    }
+
 }

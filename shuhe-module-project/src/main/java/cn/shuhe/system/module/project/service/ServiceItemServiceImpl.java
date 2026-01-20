@@ -36,16 +36,41 @@ import static cn.shuhe.system.module.project.enums.ErrorCodeConstants.*;
 @Slf4j
 public class ServiceItemServiceImpl implements ServiceItemService {
 
+    /** 频次类型：按需（不限制） */
+    private static final int FREQUENCY_TYPE_ON_DEMAND = 0;
+
     @Resource
     private ServiceItemMapper serviceItemMapper;
+
+    @Resource
+    private cn.shuhe.system.module.project.dal.mysql.ProjectMapper projectMapper;
+
+    @Resource
+    private cn.shuhe.system.module.project.dal.mysql.ProjectRoundMapper projectRoundMapper;
+
+    @Resource
+    private cn.shuhe.system.module.project.dal.mysql.ContractTimeMapper contractTimeMapper;
+
+    @Resource
+    @org.springframework.context.annotation.Lazy // 延迟加载，避免与 ProjectRoundServiceImpl 循环依赖
+    private ProjectRoundService projectRoundService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createServiceItem(ServiceItemSaveReqVO createReqVO) {
-        // 1. 生成服务项编号
+        // 1. 从项目获取客户和合同信息
+        cn.shuhe.system.module.project.dal.dataobject.ProjectDO project = null;
+        if (createReqVO.getProjectId() != null) {
+            project = projectMapper.selectById(createReqVO.getProjectId());
+            if (project == null) {
+                throw exception(PROJECT_NOT_EXISTS);
+            }
+        }
+
+        // 2. 生成服务项编号
         String code = generateServiceItemCode(createReqVO.getDeptType());
 
-        // 2. 转换并保存
+        // 3. 转换并保存
         ServiceItemDO serviceItem = BeanUtils.toBean(createReqVO, ServiceItemDO.class);
         serviceItem.setCode(code);
         serviceItem.setProgress(0); // 初始进度为0
@@ -55,7 +80,25 @@ public class ServiceItemServiceImpl implements ServiceItemService {
         if (serviceItem.getPriority() == null) {
             serviceItem.setPriority(1); // 默认中优先级
         }
-        // 如果未提供名称，自动生成
+        
+        // 4. 自动从项目获取客户和合同信息
+        if (project != null) {
+            serviceItem.setCustomerId(project.getCustomerId());
+            serviceItem.setCustomerName(project.getCustomerName());
+            serviceItem.setContractId(project.getContractId());
+            serviceItem.setContractNo(project.getContractNo());
+            
+            // 5. 自动从合同获取计划开始/结束时间
+            if (project.getContractId() != null) {
+                java.util.Map<String, LocalDateTime> contractTime = contractTimeMapper.selectContractTime(project.getContractId());
+                if (contractTime != null) {
+                    serviceItem.setPlanStartTime(contractTime.get("startTime"));
+                    serviceItem.setPlanEndTime(contractTime.get("endTime"));
+                }
+            }
+        }
+        
+        // 6. 如果未提供名称，自动生成
         if (StrUtil.isBlank(serviceItem.getName())) {
             serviceItem.setName(generateServiceItemName(createReqVO, code));
         }
@@ -89,7 +132,17 @@ public class ServiceItemServiceImpl implements ServiceItemService {
         // 1. 校验存在
         validateServiceItemExists(id);
 
-        // 2. 删除
+        // 2. 级联删除关联的轮次
+        List<cn.shuhe.system.module.project.dal.dataobject.ProjectRoundDO> rounds = 
+                projectRoundMapper.selectListByServiceItemId(id);
+        if (rounds != null && !rounds.isEmpty()) {
+            for (cn.shuhe.system.module.project.dal.dataobject.ProjectRoundDO round : rounds) {
+                projectRoundService.deleteProjectRound(round.getId());
+            }
+            log.info("【删除服务项】服务项 {} 关联的 {} 个轮次已删除", id, rounds.size());
+        }
+
+        // 3. 删除服务项
         serviceItemMapper.deleteById(id);
     }
 
@@ -273,6 +326,98 @@ public class ServiceItemServiceImpl implements ServiceItemService {
                 .failureCount(failureRecords.size())
                 .failureRecords(failureRecords)
                 .build();
+    }
+
+    // ========== 服务执行次数管理 ==========
+
+    @Override
+    public boolean canStartExecution(Long serviceItemId) {
+        ServiceItemDO serviceItem = validateServiceItemExists(serviceItemId);
+        Integer frequencyType = serviceItem.getFrequencyType();
+        
+        // 按需(0)：不限制，始终可以执行
+        if (frequencyType == null || frequencyType == FREQUENCY_TYPE_ON_DEMAND) {
+            return true;
+        }
+        
+        // 获取合同期内最大次数，默认1次
+        int maxCount = serviceItem.getMaxCount() != null ? serviceItem.getMaxCount() : 1;
+        
+        // 检查该服务项已开始执行的轮次数量（状态为执行中或已完成）
+        int executedCount = projectRoundMapper.selectStartedCountByServiceItemId(serviceItemId);
+        
+        if (executedCount >= maxCount) {
+            log.info("【服务项执行限制】服务项 {} 已执行 {} 次，已达合同期内上限 {} 次",
+                    serviceItemId, executedCount, maxCount);
+            return false;
+        }
+        
+        return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int incrementUsedCount(Long serviceItemId) {
+        ServiceItemDO serviceItem = validateServiceItemExists(serviceItemId);
+        
+        // 检查当前周期是否可以执行
+        if (!canStartExecution(serviceItemId)) {
+            throw exception(SERVICE_ITEM_EXECUTION_LIMIT_EXCEEDED);
+        }
+        
+        // 增加历史执行总次数（用于统计）
+        int newUsedCount = (serviceItem.getUsedCount() != null ? serviceItem.getUsedCount() : 0) + 1;
+        ServiceItemDO updateObj = new ServiceItemDO();
+        updateObj.setId(serviceItemId);
+        updateObj.setUsedCount(newUsedCount);
+        serviceItemMapper.updateById(updateObj);
+        
+        log.info("【服务项执行】服务项 {} 历史执行总次数更新为 {}", serviceItemId, newUsedCount);
+        return newUsedCount;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int decrementUsedCount(Long serviceItemId) {
+        ServiceItemDO serviceItem = validateServiceItemExists(serviceItemId);
+        
+        // 减少历史执行总次数（用于统计），最小为0
+        int currentCount = serviceItem.getUsedCount() != null ? serviceItem.getUsedCount() : 0;
+        int newUsedCount = Math.max(0, currentCount - 1);
+        
+        ServiceItemDO updateObj = new ServiceItemDO();
+        updateObj.setId(serviceItemId);
+        updateObj.setUsedCount(newUsedCount);
+        serviceItemMapper.updateById(updateObj);
+        
+        log.info("【服务项执行】服务项 {} 历史执行总次数更新为 {}（减少）", serviceItemId, newUsedCount);
+        return newUsedCount;
+    }
+
+    @Override
+    public int getExecutedCount(Long serviceItemId) {
+        // 直接从数据库查询已开始执行的轮次数量（状态为执行中1或已完成2）
+        return projectRoundMapper.selectStartedCountByServiceItemId(serviceItemId);
+    }
+
+    @Override
+    public int getRemainingCount(Long serviceItemId) {
+        ServiceItemDO serviceItem = validateServiceItemExists(serviceItemId);
+        Integer frequencyType = serviceItem.getFrequencyType();
+        
+        // 按需，不限
+        if (frequencyType == null || frequencyType == FREQUENCY_TYPE_ON_DEMAND) {
+            return -1;
+        }
+        
+        int maxCount = serviceItem.getMaxCount() != null ? serviceItem.getMaxCount() : 1;
+        int executedCount = projectRoundMapper.selectCountByServiceItemId(serviceItemId);
+        return Math.max(0, maxCount - executedCount);
+    }
+
+    @Override
+    public List<ServiceItemDO> getServiceItemListByContractId(Long contractId) {
+        return serviceItemMapper.selectListByContractId(contractId);
     }
 
 }

@@ -34,6 +34,20 @@ public class ProjectRoundDO extends BaseDO {
     private Long projectId;
 
     /**
+     * 服务项ID
+     * 
+     * 关联 {@link ServiceItemDO#getId()}
+     */
+    private Long serviceItemId;
+
+    /**
+     * 工作流流程实例ID
+     * 
+     * 关联 BPM 流程实例，审批通过后自动创建轮次
+     */
+    private String processInstanceId;
+
+    /**
      * 轮次序号（第几次）
      */
     private Integer roundNo;

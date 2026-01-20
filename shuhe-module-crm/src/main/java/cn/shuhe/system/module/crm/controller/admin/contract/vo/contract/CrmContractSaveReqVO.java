@@ -48,14 +48,16 @@ public class CrmContractSaveReqVO {
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime orderDate; // 可选字段
 
-    @Schema(description = "开始时间")
+    @Schema(description = "开始时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @DiffLogField(name = "开始时间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
+    @NotNull(message = "合同开始时间不能为空")
     private LocalDateTime startTime;
 
-    @Schema(description = "结束时间")
+    @Schema(description = "结束时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @DiffLogField(name = "结束时间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
+    @NotNull(message = "合同结束时间不能为空")
     private LocalDateTime endTime;
 
     @Schema(description = "整单折扣", example = "55.00")

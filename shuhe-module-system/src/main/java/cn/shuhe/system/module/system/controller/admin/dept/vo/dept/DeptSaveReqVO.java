@@ -46,4 +46,7 @@ public class DeptSaveReqVO {
     @InEnum(value = CommonStatusEnum.class, message = "修改状态必须是 {value}")
     private Integer status;
 
+    @Schema(description = "部门类型：1-安全服务 2-安全运营 3-数据安全", example = "1")
+    private Integer deptType;
+
 }

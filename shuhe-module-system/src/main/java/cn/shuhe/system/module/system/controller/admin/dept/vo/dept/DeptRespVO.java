@@ -33,6 +33,9 @@ public class DeptRespVO {
     @Schema(description = "状态,见 CommonStatusEnum 枚举", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Integer status;
 
+    @Schema(description = "部门类型：1-安全服务 2-安全运营 3-数据安全", example = "1")
+    private Integer deptType;
+
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED, example = "时间戳格式")
     private LocalDateTime createTime;
 

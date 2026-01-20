@@ -18,6 +18,9 @@ public class ProjectRoundSaveReqVO {
     @NotNull(message = "项目ID不能为空")
     private Long projectId;
 
+    @Schema(description = "服务项ID", example = "1")
+    private Long serviceItemId;
+
     @Schema(description = "轮次名称", example = "第1次渗透测试")
     private String name;
 

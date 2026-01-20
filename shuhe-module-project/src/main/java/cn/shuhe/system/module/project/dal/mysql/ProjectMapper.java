@@ -1,5 +1,6 @@
 package cn.shuhe.system.module.project.dal.mysql;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.mybatis.core.mapper.BaseMapperX;
 import cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -8,6 +9,7 @@ import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * 项目 Mapper（顶层项目）
@@ -48,6 +50,34 @@ public interface ProjectMapper extends BaseMapperX<ProjectDO> {
                 .likeIfPresent(ProjectDO::getCode, reqVO.getCode())
                 .likeIfPresent(ProjectDO::getCustomerName, reqVO.getCustomerName())
                 .orderByDesc(ProjectDO::getId));
+    }
+
+    /**
+     * 根据部门类型或项目ID列表查询分页
+     * 用于部门负责人查看：可以看到负责部门类型下的所有项目 + 自己参与的项目
+     */
+    default PageResult<ProjectDO> selectPageByDeptTypesOrIds(ProjectPageReqVO reqVO, Set<Integer> deptTypes, List<Long> projectIds) {
+        LambdaQueryWrapperX<ProjectDO> wrapper = new LambdaQueryWrapperX<ProjectDO>()
+                .eqIfPresent(ProjectDO::getStatus, reqVO.getStatus())
+                .likeIfPresent(ProjectDO::getName, reqVO.getName())
+                .likeIfPresent(ProjectDO::getCode, reqVO.getCode())
+                .likeIfPresent(ProjectDO::getCustomerName, reqVO.getCustomerName());
+
+        // 条件：部门类型在列表中 OR 项目ID在列表中
+        wrapper.and(w -> {
+            w.in(ProjectDO::getDeptType, deptTypes);
+            if (CollUtil.isNotEmpty(projectIds)) {
+                w.or().in(ProjectDO::getId, projectIds);
+            }
+        });
+
+        // 如果查询条件指定了 deptType，则进一步过滤
+        if (reqVO.getDeptType() != null) {
+            wrapper.eq(ProjectDO::getDeptType, reqVO.getDeptType());
+        }
+
+        wrapper.orderByDesc(ProjectDO::getId);
+        return selectPage(reqVO, wrapper);
     }
 
 }

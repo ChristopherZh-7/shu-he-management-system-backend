@@ -4,6 +4,8 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import org.springframework.context.ApplicationEvent;
 
+import java.util.Map;
+
 /**
  * 流程实例的状态（结果）发生变化的 Event
  *
@@ -38,6 +40,11 @@ public class BpmProcessInstanceStatusEvent extends ApplicationEvent {
      * 例如说，请假
      */
     private String businessKey;
+
+    /**
+     * 流程变量
+     */
+    private Map<String, Object> processVariables;
 
     public BpmProcessInstanceStatusEvent(Object source) {
         super(source);

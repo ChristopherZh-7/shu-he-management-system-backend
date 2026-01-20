@@ -90,4 +90,8 @@ public class UserRespVO{
     @ExcelProperty("在职状态")
     private Integer employeeStatus;
 
+    @Schema(description = "职级", example = "中级P2-1")
+    @ExcelProperty("职级")
+    private String positionLevel;
+
 }

@@ -416,7 +416,8 @@ public class DingtalkApiService {
         // 需要的花名册字段
         // sys00-name: 姓名, sys01-confirmJoinTime: 入职时间, sys01-regularTime: 转正日期
         // 离职相关字段（钉钉API可能不返回）: sys01-terminateTime, sys02-lastWorkDay, sys02-quitDate, sys02-terminationDate
-        params.put("field_filter_list", "sys00-name,sys00-mobile,sys00-email,sys01-confirmJoinTime,sys01-regularTime,sys01-terminateTime,sys02-lastWorkDay,sys02-quitDate,sys02-terminationDate,sys00-avatar");
+        // 需要的花名册字段，包含职级 sys01-positionLevel（注意职级在sys01分组下）
+        params.put("field_filter_list", "sys00-name,sys00-mobile,sys00-email,sys01-confirmJoinTime,sys01-regularTime,sys01-terminateTime,sys02-lastWorkDay,sys02-quitDate,sys02-terminationDate,sys00-avatar,sys01-positionLevel");
 
         log.info("调用钉钉花名册API, agentId={}, userIds={}", agentId, userIds);
         String result = HttpUtil.post(url, JSONUtil.toJsonStr(params));
@@ -458,10 +459,19 @@ public class DingtalkApiService {
                         if (fieldValueList != null && !fieldValueList.isEmpty()) {
                             JSONObject firstValue = fieldValueList.getJSONObject(0);
                             if (firstValue != null) {
-                                String fieldValue = firstValue.getStr("value");
-                                if (StrUtil.isEmpty(fieldValue)) {
-                                    // 有些字段用 label 而不是 value
+                                String fieldValue;
+                                // 对于职级字段，使用 label（可读名称）而不是 value（数字代码）
+                                if ("sys01-positionLevel".equals(fieldCode)) {
                                     fieldValue = firstValue.getStr("label");
+                                    if (StrUtil.isEmpty(fieldValue)) {
+                                        fieldValue = firstValue.getStr("value");
+                                    }
+                                } else {
+                                    fieldValue = firstValue.getStr("value");
+                                    if (StrUtil.isEmpty(fieldValue)) {
+                                        // 有些字段用 label 而不是 value
+                                        fieldValue = firstValue.getStr("label");
+                                    }
                                 }
                                 parseHrmField(info, fieldCode, fieldValue);
                             }
@@ -485,8 +495,8 @@ public class DingtalkApiService {
                 }
             }
             
-            log.debug("解析花名册用户: userid={}, name={}, mobile={}", 
-                    info.getUserid(), info.getName(), info.getMobile());
+            log.debug("解析花名册用户: userid={}, name={}, mobile={}, positionLevel={}", 
+                    info.getUserid(), info.getName(), info.getMobile(), info.getPositionLevel());
             infoList.add(info);
         }
         return infoList;
@@ -535,6 +545,10 @@ public class DingtalkApiService {
                     info.setLastWorkDay(fieldValue);
                 }
                 break;
+            case "sys01-positionLevel":
+                // 职级（岗位职级，属于sys01分组）
+                info.setPositionLevel(fieldValue);
+                break;
             default:
                 break;
         }
@@ -561,6 +575,8 @@ public class DingtalkApiService {
         private String regularTime;
         /** 最后工作日/离职日期 (yyyy-MM-dd) */
         private String lastWorkDay;
+        /** 职级 */
+        private String positionLevel;
     }
 
     // ==================== 消息通知 ====================

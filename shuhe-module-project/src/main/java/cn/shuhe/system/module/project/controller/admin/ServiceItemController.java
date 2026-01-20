@@ -205,6 +205,10 @@ public class ServiceItemController {
         if (serviceItem != null && serviceItem.getTags() != null) {
             respVO.setTags(JSONUtil.toList(serviceItem.getTags(), String.class));
         }
+        // 设置实时已执行次数（从数据库查询）
+        if (serviceItem != null) {
+            respVO.setUsedCount(serviceItemService.getExecutedCount(id));
+        }
         return success(respVO);
     }
 
@@ -225,12 +229,15 @@ public class ServiceItemController {
 
         PageResult<ServiceItemDO> pageResult = serviceItemService.getServiceItemPage(pageReqVO);
         PageResult<ServiceItemRespVO> result = BeanUtils.toBean(pageResult, ServiceItemRespVO.class);
-        // 处理标签
+        // 处理标签和实时已执行次数
         for (int i = 0; i < pageResult.getList().size(); i++) {
             ServiceItemDO serviceItem = pageResult.getList().get(i);
+            ServiceItemRespVO respVO = result.getList().get(i);
             if (serviceItem.getTags() != null) {
-                result.getList().get(i).setTags(JSONUtil.toList(serviceItem.getTags(), String.class));
+                respVO.setTags(JSONUtil.toList(serviceItem.getTags(), String.class));
             }
+            // 设置实时已执行次数（从数据库查询）
+            respVO.setUsedCount(serviceItemService.getExecutedCount(serviceItem.getId()));
         }
         return success(result);
     }
@@ -254,12 +261,15 @@ public class ServiceItemController {
         // 按项目ID和顶级部门ID过滤
         List<ServiceItemDO> list = serviceItemService.getServiceItemListByProjectIdAndDeptId(projectId, deptId);
         List<ServiceItemRespVO> result = BeanUtils.toBean(list, ServiceItemRespVO.class);
-        // 处理标签
+        // 处理标签和实时已执行次数
         for (int i = 0; i < list.size(); i++) {
             ServiceItemDO serviceItem = list.get(i);
+            ServiceItemRespVO respVO = result.get(i);
             if (serviceItem.getTags() != null) {
-                result.get(i).setTags(JSONUtil.toList(serviceItem.getTags(), String.class));
+                respVO.setTags(JSONUtil.toList(serviceItem.getTags(), String.class));
             }
+            // 设置实时已执行次数（从数据库查询）
+            respVO.setUsedCount(serviceItemService.getExecutedCount(serviceItem.getId()));
         }
         return success(result);
     }

@@ -50,4 +50,10 @@ public class DeptApiImpl implements DeptApi {
         return BeanUtils.toBean(deptList, DeptRespDTO.class);
     }
 
+    @Override
+    public List<DeptRespDTO> getDeptListByDeptType(Integer deptType) {
+        List<DeptDO> deptList = deptService.getDeptListByDeptType(deptType);
+        return BeanUtils.toBean(deptList, DeptRespDTO.class);
+    }
+
 }

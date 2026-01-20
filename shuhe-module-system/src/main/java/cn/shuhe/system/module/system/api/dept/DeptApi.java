@@ -66,4 +66,12 @@ public interface DeptApi {
      */
     List<DeptRespDTO> getDeptListByLeaderUserId(Long userId);
 
+    /**
+     * 根据部门类型获取部门列表
+     *
+     * @param deptType 部门类型
+     * @return 部门列表
+     */
+    List<DeptRespDTO> getDeptListByDeptType(Integer deptType);
+
 }

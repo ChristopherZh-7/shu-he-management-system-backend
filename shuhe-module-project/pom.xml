@@ -29,6 +29,11 @@
             <artifactId>shuhe-module-infra</artifactId>
             <version>${revision}</version>
         </dependency>
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-module-bpm</artifactId>
+            <version>${revision}</version>
+        </dependency>
 
         <!-- Web 相关 -->
         <dependency>

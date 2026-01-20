@@ -136,6 +136,16 @@ public interface CrmContractService {
     PageResult<CrmContractDO> getContractPageByCustomerId(CrmContractPageReqVO pageReqVO);
 
     /**
+     * 获得合同精简列表，基于指定客户
+     *
+     * 无数据权限校验，用于下拉选项等场景
+     *
+     * @param customerId 客户编号
+     * @return 合同列表
+     */
+    List<CrmContractDO> getContractSimpleListByCustomerId(Long customerId);
+
+    /**
      * 获得合同分页，基于指定商机
      *
      * 数据权限：基于 {@link CrmBusinessDO} 读取

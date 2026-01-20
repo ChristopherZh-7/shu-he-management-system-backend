@@ -33,6 +33,7 @@ import cn.shuhe.system.module.system.dal.mysql.dept.UserPostMapper;
 import cn.shuhe.system.module.system.dal.dataobject.user.AdminUserDO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.PostDO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.UserPostDO;
+import cn.shuhe.system.module.system.service.cost.PositionLevelHistoryService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -103,6 +104,9 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
     
     @Resource
     private DingtalkApiService dingtalkApiService;
+    
+    @Resource
+    private PositionLevelHistoryService positionLevelHistoryService;
 
     @Override
     public Long createDingtalkConfig(DingtalkConfigSaveReqVO createReqVO) {
@@ -198,6 +202,9 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                 // 获取本地父部门ID
                 Long localParentId = dingtalkIdToLocalId.getOrDefault(dingtalkDept.getParentId(), 0L);
                 
+                // 根据部门名称自动推断部门类型
+                Integer deptType = guessDeptTypeByName(dingtalkDept.getName());
+                
                 if (mapping != null) {
                     // 更新已有部门
                     DeptDO existingDept = deptMapper.selectById(mapping.getLocalId());
@@ -205,6 +212,10 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                         existingDept.setName(dingtalkDept.getName());
                         existingDept.setParentId(localParentId);
                         existingDept.setSort(dingtalkDept.getOrder());
+                        // 如果部门类型为空，则自动设置
+                        if (existingDept.getDeptType() == null && deptType != null) {
+                            existingDept.setDeptType(deptType);
+                        }
                         deptMapper.updateById(existingDept);
                         dingtalkIdToLocalId.put(dingtalkDept.getDeptId(), existingDept.getId());
                         updateCount++;
@@ -215,6 +226,7 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                     newDept.setName(dingtalkDept.getName());
                     newDept.setParentId(localParentId);
                     newDept.setSort(dingtalkDept.getOrder());
+                    newDept.setDeptType(deptType); // 自动设置部门类型
                     newDept.setStatus(CommonStatusEnum.ENABLE.getStatus());
                     deptMapper.insert(newDept);
                     
@@ -247,6 +259,29 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
             dingtalkConfigMapper.updateById(config);
             throw new RuntimeException("钉钉部门同步失败：" + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 根据部门名称推断部门类型
+     * 1-安全服务 2-安全运营 3-数据安全
+     */
+    private Integer guessDeptTypeByName(String deptName) {
+        if (deptName == null) {
+            return null;
+        }
+        // 安全服务：包含"安全技术"、"安服"、"渗透"等关键词
+        if (deptName.contains("安全技术") || deptName.contains("安服") || deptName.contains("渗透")) {
+            return 1;
+        }
+        // 安全运营：包含"安全运营"、"运营服务"等关键词
+        if (deptName.contains("安全运营") || deptName.contains("运营服务")) {
+            return 2;
+        }
+        // 数据安全：包含"数据安全"等关键词
+        if (deptName.contains("数据安全")) {
+            return 3;
+        }
+        return null;
     }
 
     private DingtalkConfigDO validateDingtalkConfigExists(Long id) {
@@ -523,10 +558,19 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                             }
                             // 如果两个API都获取不到姓名，不更新nickname和username，保留现有值
                             
-                            // 更新入职/离职日期（仅从花名册获取）
+                            // 更新入职/离职日期、职级（仅从花名册获取）
                             if (hrmInfo != null) {
                                 existingUser.setHireDate(parseDate(hrmInfo.getConfirmJoinTime()));
                                 existingUser.setResignDate(parseDate(hrmInfo.getLastWorkDay()));
+                                if (StrUtil.isNotEmpty(hrmInfo.getPositionLevel())) {
+                                    // 记录职级变更
+                                    String oldLevel = existingUser.getPositionLevel();
+                                    String newLevel = hrmInfo.getPositionLevel();
+                                    if (!StrUtil.equals(oldLevel, newLevel)) {
+                                        positionLevelHistoryService.recordPositionChange(existingUser.getId(), oldLevel, newLevel);
+                                    }
+                                    existingUser.setPositionLevel(newLevel);
+                                }
                             }
                             
                             adminUserMapper.updateById(existingUser);
@@ -587,6 +631,7 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                                     .employeeStatus(EMPLOYEE_STATUS_DIMISSION)
                                     .hireDate(hrmInfo != null ? parseDate(hrmInfo.getConfirmJoinTime()) : null)
                                     .resignDate(hrmInfo != null ? parseDate(hrmInfo.getLastWorkDay()) : null)
+                                    .positionLevel(hrmInfo != null ? hrmInfo.getPositionLevel() : null)
                                     .build();
                             adminUserMapper.insert(newUser);
                             
@@ -635,13 +680,29 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                         
                         if (mapping != null) {
                             AdminUserDO user = adminUserMapper.selectById(mapping.getLocalId());
-                            if (user != null && StrUtil.isNotEmpty(hrmInfo.getConfirmJoinTime())) {
-                                user.setHireDate(parseDate(hrmInfo.getConfirmJoinTime()));
-                                adminUserMapper.updateById(user);
+                            if (user != null) {
+                                boolean needUpdate = false;
+                                if (StrUtil.isNotEmpty(hrmInfo.getConfirmJoinTime())) {
+                                    user.setHireDate(parseDate(hrmInfo.getConfirmJoinTime()));
+                                    needUpdate = true;
+                                }
+                                // 同步职级，并记录变更
+                                if (StrUtil.isNotEmpty(hrmInfo.getPositionLevel())) {
+                                    String oldLevel = user.getPositionLevel();
+                                    String newLevel = hrmInfo.getPositionLevel();
+                                    if (!StrUtil.equals(oldLevel, newLevel)) {
+                                        positionLevelHistoryService.recordPositionChange(user.getId(), oldLevel, newLevel);
+                                    }
+                                    user.setPositionLevel(newLevel);
+                                    needUpdate = true;
+                                }
+                                if (needUpdate) {
+                                    adminUserMapper.updateById(user);
+                                }
                             }
                         }
                     }
-                    log.info("已更新在职员工花名册信息");
+                    log.info("已更新在职员工花名册信息（包含职级）");
                 }
             } catch (Exception e) {
                 log.warn("获取在职员工花名册信息失败（可能没有智能人事权限）: {}", e.getMessage());

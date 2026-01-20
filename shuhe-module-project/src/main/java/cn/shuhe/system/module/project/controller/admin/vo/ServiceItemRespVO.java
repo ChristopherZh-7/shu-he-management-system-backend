@@ -87,6 +87,17 @@ public class ServiceItemRespVO {
     @Schema(description = "服务项金额", example = "50000.00")
     private BigDecimal amount;
 
+    // ========== 服务频次配置 ==========
+
+    @Schema(description = "频次类型：0按需(不限) 1按月 2按季 3按年", example = "1")
+    private Integer frequencyType;
+
+    @Schema(description = "每周期最大执行次数（按需时无效）", example = "2")
+    private Integer maxCount;
+
+    @Schema(description = "历史执行总次数", example = "5")
+    private Integer usedCount;
+
     // ========== 扩展字段 ==========
 
     @Schema(description = "标签列表", example = "[\"渗透\", \"银行\"]")

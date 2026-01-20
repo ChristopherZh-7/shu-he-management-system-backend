@@ -159,8 +159,7 @@ public class OAuth2TokenServiceImplTest extends BaseDbAndRedisUnitTest {
         OAuth2RefreshTokenDO refreshTokenDO = randomPojo(OAuth2RefreshTokenDO.class, o ->
                 o.setRefreshToken(refreshToken).setClientId(clientId)
                         .setExpiresTime(LocalDateTime.now().plusDays(1))
-                        .setUserType(UserTypeEnum.ADMIN.getValue())
-                        .setTenantId(0L));
+                        .setUserType(UserTypeEnum.ADMIN.getValue()));
         oauth2RefreshTokenMapper.insert(refreshTokenDO);
         // mock 数据（访问令牌）
         OAuth2AccessTokenDO accessTokenDO = randomPojo(OAuth2AccessTokenDO.class).setRefreshToken(refreshToken)

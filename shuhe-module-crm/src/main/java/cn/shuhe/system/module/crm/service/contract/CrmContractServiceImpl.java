@@ -120,6 +120,8 @@ public class CrmContractServiceImpl implements CrmContractService {
     @Resource
     private ProjectService projectService;
     @Resource
+    private cn.shuhe.system.module.project.service.ServiceItemService serviceItemService;
+    @Resource
     private CrmCustomerMapper customerMapper;
 
     @Override
@@ -311,12 +313,30 @@ public class CrmContractServiceImpl implements CrmContractService {
             throw exception(CONTRACT_DELETE_FAIL);
         }
 
-        // 2.1 删除合同
+        // 2. 级联删除关联数据
+        // 2.1 删除关联的服务项
+        List<cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO> serviceItems = 
+                serviceItemService.getServiceItemListByContractId(id);
+        if (CollUtil.isNotEmpty(serviceItems)) {
+            for (cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO serviceItem : serviceItems) {
+                serviceItemService.deleteServiceItem(serviceItem.getId());
+            }
+            log.info("【删除合同】合同 {} 关联的 {} 个服务项已删除", id, serviceItems.size());
+        }
+        
+        // 2.2 删除关联的项目（领取记录）
+        ProjectDO project = projectService.getProjectByContractId(id);
+        if (project != null) {
+            projectService.deleteProject(project.getId());
+            log.info("【删除合同】合同 {} 关联的项目 {} 已删除", id, project.getId());
+        }
+
+        // 3.1 删除合同
         contractMapper.deleteById(id);
-        // 2.2 删除数据权限
+        // 3.2 删除数据权限
         crmPermissionService.deletePermission(CrmBizTypeEnum.CRM_CONTRACT.getType(), id);
 
-        // 3. 记录操作日志上下文
+        // 4. 记录操作日志上下文
         LogRecordContext.putVariable("contractName", contract.getName());
     }
 
@@ -442,6 +462,12 @@ public class CrmContractServiceImpl implements CrmContractService {
     @CrmPermission(bizType = CrmBizTypeEnum.CRM_CUSTOMER, bizId = "#pageReqVO.customerId", level = CrmPermissionLevelEnum.READ)
     public PageResult<CrmContractDO> getContractPageByCustomerId(CrmContractPageReqVO pageReqVO) {
         return contractMapper.selectPageByCustomerId(pageReqVO);
+    }
+
+    @Override
+    public List<CrmContractDO> getContractSimpleListByCustomerId(Long customerId) {
+        // 无数据权限校验，用于下拉选项等场景
+        return contractMapper.selectList(CrmContractDO::getCustomerId, customerId);
     }
 
     @Override

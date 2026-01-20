@@ -34,4 +34,16 @@ public interface DeptMapper extends BaseMapperX<DeptDO> {
         return selectList(DeptDO::getLeaderUserId, id);
     }
 
+    /**
+     * 根据部门类型查询部门列表
+     *
+     * @param deptType 部门类型
+     * @return 部门列表
+     */
+    default List<DeptDO> selectListByDeptType(Integer deptType) {
+        return selectList(new LambdaQueryWrapperX<DeptDO>()
+                .eq(DeptDO::getDeptType, deptType)
+                .orderByAsc(DeptDO::getSort));
+    }
+
 }

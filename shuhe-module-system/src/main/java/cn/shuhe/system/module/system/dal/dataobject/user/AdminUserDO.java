@@ -112,5 +112,9 @@ public class AdminUserDO extends BaseDO {
      * 1-在职 2-离职
      */
     private Integer employeeStatus;
+    /**
+     * 职级
+     */
+    private String positionLevel;
 
 }

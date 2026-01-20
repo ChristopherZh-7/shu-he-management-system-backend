@@ -53,4 +53,10 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
         return selectOne(ServiceItemDO::getCode, code);
     }
 
+    default List<ServiceItemDO> selectListByContractId(Long contractId) {
+        return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getContractId, contractId)
+                .orderByDesc(ServiceItemDO::getId));
+    }
+
 }

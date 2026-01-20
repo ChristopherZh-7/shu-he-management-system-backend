@@ -4,7 +4,6 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.lang.Assert;
 import cn.shuhe.system.framework.apilog.core.annotation.ApiAccessLog;
 import cn.shuhe.system.framework.common.pojo.CommonResult;
-import cn.shuhe.system.framework.common.pojo.PageParam;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.collection.MapUtils;
 import cn.shuhe.system.framework.common.util.number.NumberUtils;
@@ -292,16 +291,15 @@ public class CrmContractController {
     @Parameter(name = "customerId", description = "客户编号", required = true)
     @PreAuthorize("@ss.hasPermission('crm:contract:query')")
     public CommonResult<List<CrmContractRespVO>> getContractSimpleList(@RequestParam("customerId") Long customerId) {
-        CrmContractPageReqVO pageReqVO = new CrmContractPageReqVO().setCustomerId(customerId);
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE); // 不分页
-        PageResult<CrmContractDO> pageResult = contractService.getContractPageByCustomerId(pageReqVO);
-        if (CollUtil.isEmpty(pageResult.getList())) {
+        // 使用无 CRM 权限校验的方法，因为这只是用于下拉选项
+        List<CrmContractDO> contractList = contractService.getContractSimpleListByCustomerId(customerId);
+        if (CollUtil.isEmpty(contractList)) {
             return success(Collections.emptyList());
         }
         // 拼接数据
         Map<Long, BigDecimal> receivablePriceMap = receivableService.getReceivablePriceMapByContractId(
-                convertSet(pageResult.getList(), CrmContractDO::getId));
-        return success(convertList(pageResult.getList(), contract -> new CrmContractRespVO() // 只返回 id、name 等精简字段
+                convertSet(contractList, CrmContractDO::getId));
+        return success(convertList(contractList, contract -> new CrmContractRespVO() // 只返回 id、name 等精简字段
                 .setId(contract.getId()).setName(contract.getName()).setAuditStatus(contract.getAuditStatus())
                 .setTotalPrice(contract.getTotalPrice())
                 .setTotalReceivablePrice(receivablePriceMap.getOrDefault(contract.getId(), BigDecimal.ZERO))));

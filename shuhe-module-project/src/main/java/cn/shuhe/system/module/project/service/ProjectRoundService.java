@@ -50,6 +50,14 @@ public interface ProjectRoundService {
     List<ProjectRoundDO> getProjectRoundList(Long projectId);
 
     /**
+     * 获得服务项的轮次列表
+     *
+     * @param serviceItemId 服务项编号
+     * @return 轮次列表
+     */
+    List<ProjectRoundDO> getProjectRoundListByServiceItemId(Long serviceItemId);
+
+    /**
      * 更新轮次状态
      *
      * @param id 轮次编号
@@ -64,5 +72,42 @@ public interface ProjectRoundService {
      * @param progress 进度
      */
     void updateRoundProgress(Long id, Integer progress);
+
+    /**
+     * 根据服务项创建新的轮次（工作流审批通过后调用）
+     *
+     * @param serviceItemId 服务项ID
+     * @param processInstanceId 工作流实例ID
+     * @return 轮次编号
+     */
+    Long createRoundByServiceItem(Long serviceItemId, String processInstanceId);
+
+    /**
+     * 根据服务项创建执行轮次（带计划时间）
+     *
+     * @param serviceItemId 服务项ID
+     * @param processInstanceId 工作流实例ID
+     * @param planStartTime 计划开始时间
+     * @param planEndTime 计划结束时间
+     * @return 轮次编号
+     */
+    Long createRoundByServiceItem(Long serviceItemId, String processInstanceId, 
+            java.time.LocalDateTime planStartTime, java.time.LocalDateTime planEndTime);
+
+    /**
+     * 获得服务项的轮次列表
+     *
+     * @param serviceItemId 服务项ID
+     * @return 轮次列表
+     */
+    List<ProjectRoundDO> getRoundListByServiceItemId(Long serviceItemId);
+
+    /**
+     * 获得服务项的轮次数量
+     *
+     * @param serviceItemId 服务项ID
+     * @return 轮次数量
+     */
+    int getRoundCountByServiceItemId(Long serviceItemId);
 
 }
