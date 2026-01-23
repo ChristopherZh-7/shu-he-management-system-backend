@@ -43,4 +43,14 @@ public interface ErrorCodeConstants {
     ErrorCode PROJECT_VULNERABILITY_NOT_EXISTS = new ErrorCode(1_030_006_000, "漏洞不存在");
     ErrorCode PROJECT_VULNERABILITY_DUPLICATE = new ErrorCode(1_030_006_001, "漏洞已存在");
 
+    // ========== 外出请求 1-030-008-000 ==========
+    ErrorCode OUTSIDE_REQUEST_NOT_EXISTS = new ErrorCode(1_030_008_000, "外出请求不存在");
+    ErrorCode OUTSIDE_REQUEST_TARGET_DEPT_NOT_EXISTS = new ErrorCode(1_030_008_001, "目标部门不存在");
+    ErrorCode OUTSIDE_REQUEST_CANNOT_UPDATE = new ErrorCode(1_030_008_002, "外出请求已审批，无法修改");
+    ErrorCode OUTSIDE_REQUEST_CANNOT_DELETE = new ErrorCode(1_030_008_003, "外出请求已审批，无法删除");
+
+    // ========== 报告生成 1-030-009-000 ==========
+    ErrorCode REPORT_TEMPLATE_NOT_EXISTS = new ErrorCode(1_030_009_000, "报告模板不存在");
+    ErrorCode REPORT_GENERATE_FAILED = new ErrorCode(1_030_009_001, "报告生成失败");
+
 }

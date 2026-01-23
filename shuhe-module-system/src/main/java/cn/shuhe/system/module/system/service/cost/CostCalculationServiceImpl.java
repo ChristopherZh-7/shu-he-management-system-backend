@@ -69,7 +69,7 @@ public class CostCalculationServiceImpl implements CostCalculationService {
 
     /**
      * 安全运营 工资表
-     * P1-1=6000, P1每级+500, P2每级+1000, P3每级+2000
+     * P1-1=5500, P1-1到P2-1每级+500, P2-1到P3-1每级+1000, P3每级+2000
      */
     private static final Map<String, BigDecimal> SALARY_OPERATION = new LinkedHashMap<>();
 
@@ -86,15 +86,15 @@ public class CostCalculationServiceImpl implements CostCalculationService {
         SALARY_SERVICE_DATA.put("P3-3", new BigDecimal("17000"));
 
         // 安全运营工资表
-        SALARY_OPERATION.put("P1-1", new BigDecimal("6000"));
-        SALARY_OPERATION.put("P1-2", new BigDecimal("6500"));
-        SALARY_OPERATION.put("P1-3", new BigDecimal("7000"));
-        SALARY_OPERATION.put("P2-1", new BigDecimal("8000"));
-        SALARY_OPERATION.put("P2-2", new BigDecimal("9000"));
-        SALARY_OPERATION.put("P2-3", new BigDecimal("10000"));
-        SALARY_OPERATION.put("P3-1", new BigDecimal("12000"));
-        SALARY_OPERATION.put("P3-2", new BigDecimal("14000"));
-        SALARY_OPERATION.put("P3-3", new BigDecimal("16000"));
+        SALARY_OPERATION.put("P1-1", new BigDecimal("5500"));
+        SALARY_OPERATION.put("P1-2", new BigDecimal("6000"));
+        SALARY_OPERATION.put("P1-3", new BigDecimal("6500"));
+        SALARY_OPERATION.put("P2-1", new BigDecimal("7000"));
+        SALARY_OPERATION.put("P2-2", new BigDecimal("8000"));
+        SALARY_OPERATION.put("P2-3", new BigDecimal("9000"));
+        SALARY_OPERATION.put("P3-1", new BigDecimal("10000"));
+        SALARY_OPERATION.put("P3-2", new BigDecimal("12000"));
+        SALARY_OPERATION.put("P3-3", new BigDecimal("14000"));
     }
 
     @Resource

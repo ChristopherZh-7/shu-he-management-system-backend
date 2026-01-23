@@ -28,6 +28,10 @@ public class DeptRespDTO {
      */
     private Long leaderUserId;
     /**
+     * 负责人名称（用于显示）
+     */
+    private String leaderUserName;
+    /**
      * 部门状态
      *
      * 枚举 {@link CommonStatusEnum}

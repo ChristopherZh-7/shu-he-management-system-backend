@@ -25,6 +25,7 @@ public class DingtalkApiService {
     // 钉钉API地址
     private static final String DINGTALK_GET_TOKEN_URL = "https://oapi.dingtalk.com/gettoken";
     private static final String DINGTALK_DEPT_LIST_URL = "https://oapi.dingtalk.com/topapi/v2/department/listsub";
+    private static final String DINGTALK_DEPT_GET_URL = "https://oapi.dingtalk.com/topapi/v2/department/get";
     private static final String DINGTALK_USER_LIST_URL = "https://oapi.dingtalk.com/topapi/v2/user/list";
     private static final String DINGTALK_USER_GET_URL = "https://oapi.dingtalk.com/topapi/v2/user/get";
     // 智能人事API
@@ -131,6 +132,61 @@ public class DingtalkApiService {
         private Long parentId;
         /** 排序 */
         private Integer order;
+        /** 部门主管用户ID列表 */
+        private List<String> deptManagerUseridList;
+    }
+
+    /**
+     * 获取部门详情（包含部门主管信息）
+     *
+     * @param accessToken access_token
+     * @param deptId 部门ID
+     * @return 部门详情
+     */
+    public DingtalkDept getDeptDetail(String accessToken, Long deptId) {
+        String url = DINGTALK_DEPT_GET_URL + "?access_token=" + accessToken;
+        
+        Map<String, Object> params = new HashMap<>();
+        params.put("dept_id", deptId);
+        
+        try {
+            String result = HttpUtil.post(url, JSONUtil.toJsonStr(params));
+            log.debug("钉钉部门详情API返回: deptId={}, result={}", deptId, result);
+            JSONObject json = JSONUtil.parseObj(result);
+            
+            int errcode = json.getInt("errcode", -1);
+            if (errcode != 0) {
+                log.warn("获取钉钉部门详情失败: deptId={}, errcode={}, errmsg={}", 
+                        deptId, errcode, json.getStr("errmsg", "未知错误"));
+                return null;
+            }
+            
+            JSONObject resultObj = json.getJSONObject("result");
+            if (resultObj == null) {
+                return null;
+            }
+            
+            DingtalkDept dept = new DingtalkDept();
+            dept.setDeptId(resultObj.getLong("dept_id"));
+            dept.setName(resultObj.getStr("name"));
+            dept.setParentId(resultObj.getLong("parent_id"));
+            dept.setOrder(resultObj.getInt("order", 0));
+            
+            // 获取部门主管列表
+            JSONArray managerList = resultObj.getJSONArray("dept_manager_userid_list");
+            if (managerList != null && !managerList.isEmpty()) {
+                List<String> managers = new ArrayList<>();
+                for (int i = 0; i < managerList.size(); i++) {
+                    managers.add(managerList.getStr(i));
+                }
+                dept.setDeptManagerUseridList(managers);
+            }
+            
+            return dept;
+        } catch (Exception e) {
+            log.warn("获取钉钉部门详情异常: deptId={}, error={}", deptId, e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -640,5 +696,327 @@ public class DingtalkApiService {
      */
     public boolean sendWorkNotice(String accessToken, String agentId, String userId, String title, String content) {
         return sendWorkNotice(accessToken, agentId, Arrays.asList(userId), title, content);
+    }
+
+    // ==================== 互动卡片消息 ====================
+
+    /**
+     * 发送互动卡片消息（ActionCard，带按钮）
+     *
+     * @param accessToken access_token
+     * @param agentId 应用agentId
+     * @param userId 接收人钉钉用户ID
+     * @param title 消息标题
+     * @param content 消息内容（markdown格式）
+     * @param buttonTitle 按钮文字
+     * @param buttonUrl 按钮跳转URL
+     * @return 是否成功
+     */
+    public boolean sendActionCardMessage(String accessToken, String agentId, String userId, 
+                                          String title, String content, 
+                                          String buttonTitle, String buttonUrl) {
+        return sendActionCardMessage(accessToken, agentId, Arrays.asList(userId), title, content, buttonTitle, buttonUrl);
+    }
+
+    /**
+     * 发送互动卡片消息给多人（ActionCard，带按钮）
+     *
+     * @param accessToken access_token
+     * @param agentId 应用agentId
+     * @param userIdList 接收人钉钉用户ID列表
+     * @param title 消息标题
+     * @param content 消息内容（markdown格式）
+     * @param buttonTitle 按钮文字
+     * @param buttonUrl 按钮跳转URL
+     * @return 是否成功
+     */
+    public boolean sendActionCardMessage(String accessToken, String agentId, List<String> userIdList,
+                                          String title, String content,
+                                          String buttonTitle, String buttonUrl) {
+        if (userIdList == null || userIdList.isEmpty()) {
+            log.warn("发送钉钉ActionCard消息失败：接收人列表为空");
+            return false;
+        }
+
+        String url = DINGTALK_MESSAGE_SEND_URL + "?access_token=" + accessToken;
+
+        // 构建 ActionCard 消息体
+        Map<String, Object> msg = new HashMap<>();
+        msg.put("msgtype", "action_card");
+
+        Map<String, Object> actionCard = new HashMap<>();
+        actionCard.put("title", title);
+        actionCard.put("markdown", content);
+        actionCard.put("single_title", buttonTitle);
+        actionCard.put("single_url", buttonUrl);
+        msg.put("action_card", actionCard);
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("agent_id", agentId);
+        params.put("userid_list", String.join(",", userIdList));
+        params.put("msg", msg);
+
+        try {
+            String result = HttpUtil.post(url, JSONUtil.toJsonStr(params));
+            log.debug("钉钉ActionCard消息发送API返回: {}", result);
+            JSONObject json = JSONUtil.parseObj(result);
+
+            int errcode = json.getInt("errcode", -1);
+            if (errcode != 0) {
+                String errmsg = json.getStr("errmsg", "未知错误");
+                log.error("发送钉钉ActionCard消息失败: errcode={}, errmsg={}", errcode, errmsg);
+                return false;
+            }
+
+            log.info("发送钉钉ActionCard消息成功，接收人: {}, 标题: {}", userIdList, title);
+            return true;
+        } catch (Exception e) {
+            log.error("发送钉钉ActionCard消息异常", e);
+            return false;
+        }
+    }
+
+    // ==================== OA审批流程 ====================
+
+    private static final String DINGTALK_PROCESS_CREATE_URL = "https://oapi.dingtalk.com/topapi/processinstance/create";
+    private static final String DINGTALK_PROCESS_FORM_SCHEMA_URL = "https://oapi.dingtalk.com/topapi/workbench/process/get_by_code";
+
+    /**
+     * OA审批表单字段
+     */
+    @lombok.Data
+    @lombok.Builder
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class OaFormField {
+        /** 字段名称（组件名称） */
+        private String name;
+        /** 字段值 */
+        private String value;
+    }
+
+    /**
+     * 获取OA审批表单Schema（用于查看表单组件类型）
+     * 
+     * API文档：https://dingtalk.apifox.cn/api-140991760
+     * 
+     * @param accessToken access_token
+     * @param processCode 流程模板唯一标识（process_code）
+     * @return 表单Schema的JSON字符串，包含所有组件的类型信息
+     */
+    public String getFormSchema(String accessToken, String processCode) {
+        // 注意：钉钉新版API使用 topapi/workbench/process/get_by_code
+        // 或者使用 topapi/process/form/get 获取表单结构
+        String url = "https://oapi.dingtalk.com/topapi/process/form/get?access_token=" + accessToken;
+        
+        Map<String, Object> params = new HashMap<>();
+        params.put("process_code", processCode);
+        
+        try {
+            String requestBody = JSONUtil.toJsonStr(params);
+            log.info("获取表单Schema请求: processCode={}", processCode);
+            String result = HttpUtil.post(url, requestBody);
+            log.info("获取表单Schema返回: {}", result);
+            
+            JSONObject json = JSONUtil.parseObj(result);
+            int errcode = json.getInt("errcode", -1);
+            if (errcode != 0) {
+                String errmsg = json.getStr("errmsg", "未知错误");
+                log.error("获取表单Schema失败: errcode={}, errmsg={}", errcode, errmsg);
+                return null;
+            }
+            
+            // 返回完整的schema信息，包含所有组件的类型
+            return result;
+        } catch (Exception e) {
+            log.error("获取表单Schema异常", e);
+            return null;
+        }
+    }
+
+    /**
+     * 发起钉钉OA审批流程
+     *
+     * @param accessToken access_token
+     * @param processCode 流程模板唯一标识（在钉钉管理后台获取）
+     * @param originatorUserId 发起人钉钉用户ID
+     * @param deptId 发起人部门ID（钉钉部门ID）
+     * @param formFields 表单字段列表
+     * @return OA审批实例ID，失败返回null
+     */
+    public String startOaApprovalProcess(String accessToken, String processCode, 
+                                          String originatorUserId, Long deptId,
+                                          List<OaFormField> formFields) {
+        String url = DINGTALK_PROCESS_CREATE_URL + "?access_token=" + accessToken;
+
+        // 定义"外出"套件(DDBizSuite)包含的字段映射关系
+        // key: 字段的label名称, value: 对应的biz_alias
+        Map<String, String> suiteFieldMapping = new HashMap<>();
+        suiteFieldMapping.put("外出类型", "type");
+        suiteFieldMapping.put("开始时间", "startTime");
+        suiteFieldMapping.put("结束时间", "finishTime");
+        suiteFieldMapping.put("时长", "duration");
+        
+        // 套件名称：使用biz_alias而不是label（根据schema，biz_alias="goout"）
+        String suiteName = "goout";
+        
+        // 构建表单组件值
+        JSONArray formComponentValues = new JSONArray();
+        
+        // 用于收集套件内的字段
+        JSONObject suiteFields = new JSONObject();
+        boolean hasSuiteFields = false;
+        
+        for (OaFormField field : formFields) {
+            String fieldName = field.getName();
+            String fieldValue = field.getValue();
+            
+            // 判断是否属于"外出"套件的字段
+            if (suiteFieldMapping.containsKey(fieldName)) {
+                // 属于套件的字段，收集到suiteFields中
+                String bizAlias = suiteFieldMapping.get(fieldName);
+                
+                // 处理时间字段格式
+                if (("开始时间".equals(fieldName) || "结束时间".equals(fieldName)) 
+                        && StrUtil.isNotEmpty(fieldValue)) {
+                    // DDDateField使用字符串格式：yyyy-MM-dd HH:mm
+                    // 如果是时间戳格式（纯数字），也转换为字符串（兼容处理）
+                    if (StrUtil.isNumeric(fieldValue)) {
+                        try {
+                            Long timestamp = Long.parseLong(fieldValue);
+                            // 时间戳转换为日期时间字符串格式
+                            java.time.Instant instant = java.time.Instant.ofEpochMilli(timestamp);
+                            java.time.LocalDateTime dateTime = java.time.LocalDateTime.ofInstant(
+                                instant, java.time.ZoneId.systemDefault());
+                            String dateTimeStr = dateTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+                            suiteFields.put(bizAlias, dateTimeStr);
+                            log.debug("套件时间字段 {} (biz_alias={}) 从时间戳转换为日期时间格式: {}", fieldName, bizAlias, dateTimeStr);
+                        } catch (Exception e) {
+                            // 转换失败，使用原值
+                            suiteFields.put(bizAlias, fieldValue);
+                            log.debug("套件时间字段 {} (biz_alias={}) 使用原值: {}", fieldName, bizAlias, fieldValue);
+                        }
+                    } else {
+                        // 日期时间格式字符串（如 yyyy-MM-dd HH:mm）
+                        suiteFields.put(bizAlias, fieldValue);
+                        log.debug("套件时间字段 {} (biz_alias={}) 使用日期时间字符串格式: {}", fieldName, bizAlias, fieldValue);
+                    }
+                } else {
+                    // 其他套件字段（外出类型、时长等）
+                    suiteFields.put(bizAlias, fieldValue);
+                    log.debug("套件字段 {} (biz_alias={}) 值: {}", fieldName, bizAlias, fieldValue);
+                }
+                hasSuiteFields = true;
+            } else {
+                // 不属于套件的独立字段，直接添加
+                JSONObject fieldJson = new JSONObject();
+                fieldJson.put("name", fieldName);
+                fieldJson.put("value", fieldValue);
+                log.debug("添加独立表单字段: name={}, value={}", fieldName, fieldValue);
+                formComponentValues.add(fieldJson);
+            }
+        }
+        
+        // 如果有套件字段，将套件作为整体添加到form_component_values
+        if (hasSuiteFields) {
+            JSONObject suiteJson = new JSONObject();
+            suiteJson.put("name", suiteName);
+            // 将套件内的字段组合成JSON字符串
+            String suiteValue = JSONUtil.toJsonStr(suiteFields);
+            suiteJson.put("value", suiteValue);
+            log.info("添加套件字段: name={}, value={}", suiteName, suiteValue);
+            formComponentValues.add(suiteJson);
+        }
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("process_code", processCode);
+        params.put("originator_user_id", originatorUserId);
+        params.put("dept_id", deptId);
+        params.put("form_component_values", formComponentValues);
+
+        try {
+            String requestBody = JSONUtil.toJsonStr(params);
+            log.info("钉钉OA审批发起API请求: {}", requestBody);
+            String result = HttpUtil.post(url, requestBody);
+            log.info("钉钉OA审批发起API返回: {}", result);
+            JSONObject json = JSONUtil.parseObj(result);
+
+            int errcode = json.getInt("errcode", -1);
+            if (errcode != 0) {
+                String errmsg = json.getStr("errmsg", "未知错误");
+                log.error("发起钉钉OA审批失败: errcode={}, errmsg={}", errcode, errmsg);
+                return null;
+            }
+
+            JSONObject resultObj = json.getJSONObject("result");
+            if (resultObj != null) {
+                String processInstanceId = resultObj.getStr("process_instance_id");
+                log.info("发起钉钉OA审批成功，processInstanceId={}", processInstanceId);
+                return processInstanceId;
+            }
+
+            // 兼容直接返回 process_instance_id 的情况
+            String processInstanceId = json.getStr("process_instance_id");
+            if (StrUtil.isNotEmpty(processInstanceId)) {
+                log.info("发起钉钉OA审批成功，processInstanceId={}", processInstanceId);
+                return processInstanceId;
+            }
+
+            log.warn("发起钉钉OA审批返回结果异常: {}", result);
+            return null;
+        } catch (Exception e) {
+            log.error("发起钉钉OA审批异常", e);
+            return null;
+        }
+    }
+
+    /**
+     * 发起外出申请OA审批（便捷方法）
+     *
+     * @param accessToken access_token
+     * @param processCode 外出申请流程的process_code
+     * @param originatorUserId 发起人钉钉用户ID
+     * @param deptId 发起人部门ID
+     * @param outsideType 外出类型
+     * @param startTime 开始时间（格式：yyyy-MM-dd HH:mm:ss）
+     * @param endTime 结束时间（格式：yyyy-MM-dd HH:mm:ss）
+     * @param duration 时长（小时）
+     * @param projectName 关联项目
+     * @param reason 外出事由
+     * @param destination 外出地点
+     * @return OA审批实例ID
+     */
+    public String startOutsideApproval(String accessToken, String processCode,
+                                        String originatorUserId, Long deptId,
+                                        String outsideType, String startTime, String endTime,
+                                        String duration, String projectName,
+                                        String reason, String destination) {
+        List<OaFormField> formFields = new ArrayList<>();
+        
+        // 注意：字段名称需要与钉钉OA表单中的组件名称完全一致
+        // 以下是常见的字段名，用户需要根据实际钉钉配置调整
+        if (StrUtil.isNotEmpty(outsideType)) {
+            formFields.add(OaFormField.builder().name("外出类型").value(outsideType).build());
+        }
+        if (StrUtil.isNotEmpty(startTime)) {
+            formFields.add(OaFormField.builder().name("开始时间").value(startTime).build());
+        }
+        if (StrUtil.isNotEmpty(endTime)) {
+            formFields.add(OaFormField.builder().name("结束时间").value(endTime).build());
+        }
+        if (StrUtil.isNotEmpty(duration)) {
+            formFields.add(OaFormField.builder().name("时长").value(duration).build());
+        }
+        if (StrUtil.isNotEmpty(projectName)) {
+            formFields.add(OaFormField.builder().name("关联项目").value(projectName).build());
+        }
+        if (StrUtil.isNotEmpty(reason)) {
+            formFields.add(OaFormField.builder().name("外出事由").value(reason).build());
+        }
+        if (StrUtil.isNotEmpty(destination)) {
+            formFields.add(OaFormField.builder().name("外出地点").value(destination).build());
+        }
+
+        return startOaApprovalProcess(accessToken, processCode, originatorUserId, deptId, formFields);
     }
 }

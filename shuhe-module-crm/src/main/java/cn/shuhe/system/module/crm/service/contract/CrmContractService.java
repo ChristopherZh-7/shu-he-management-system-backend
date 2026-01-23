@@ -75,10 +75,11 @@ public interface CrmContractService {
     /**
      * 更新合同流程审批结果
      *
-     * @param id        合同编号
-     * @param bpmResult BPM 审批结果
+     * @param id               合同编号
+     * @param bpmResult        BPM 审批结果
+     * @param processVariables 流程变量（包含审批时选择的分派部门等）
      */
-    void updateContractAuditStatus(Long id, Integer bpmResult);
+    void updateContractAuditStatus(Long id, Integer bpmResult, java.util.Map<String, Object> processVariables);
 
     /**
      * 获得合同

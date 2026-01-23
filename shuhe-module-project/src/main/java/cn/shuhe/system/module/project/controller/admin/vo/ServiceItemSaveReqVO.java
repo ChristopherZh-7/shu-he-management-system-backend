@@ -94,4 +94,7 @@ public class ServiceItemSaveReqVO {
     @Schema(description = "备注", example = "备注信息")
     private String remark;
 
+    @Schema(description = "是否可见：0隐藏 1可见（默认）", example = "1")
+    private Integer visible;
+
 }

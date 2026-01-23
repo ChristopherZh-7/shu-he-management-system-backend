@@ -341,4 +341,40 @@ public class ServiceItemController {
         return success(result);
     }
 
+    @GetMapping("/outside-list")
+    @Operation(summary = "获得外出服务项列表（根据项目ID）", description = "用于外出请求发起页面选择服务项，不受可见性过滤")
+    @Parameter(name = "projectId", description = "项目ID", required = true)
+    @PreAuthorize("@ss.hasPermission('project:service-item:query')")
+    public CommonResult<List<ServiceItemRespVO>> getOutsideServiceItemList(@RequestParam("projectId") Long projectId) {
+        List<ServiceItemDO> list = serviceItemService.getOutsideServiceItemListByProjectId(projectId);
+        List<ServiceItemRespVO> result = BeanUtils.toBean(list, ServiceItemRespVO.class);
+        // 处理标签
+        for (int i = 0; i < list.size(); i++) {
+            ServiceItemDO serviceItem = list.get(i);
+            ServiceItemRespVO respVO = result.get(i);
+            if (serviceItem.getTags() != null) {
+                respVO.setTags(JSONUtil.toList(serviceItem.getTags(), String.class));
+            }
+        }
+        return success(result);
+    }
+
+    @GetMapping("/outside-list-by-dept")
+    @Operation(summary = "获得外出服务项列表（根据部门ID）", description = "用于外出请求发起页面，先选目标部门再选服务项")
+    @Parameter(name = "deptId", description = "部门ID", required = true)
+    @PreAuthorize("@ss.hasPermission('project:service-item:query')")
+    public CommonResult<List<ServiceItemRespVO>> getOutsideServiceItemListByDept(@RequestParam("deptId") Long deptId) {
+        List<ServiceItemDO> list = serviceItemService.getOutsideServiceItemListByDeptId(deptId);
+        List<ServiceItemRespVO> result = BeanUtils.toBean(list, ServiceItemRespVO.class);
+        // 处理标签和填充项目名称
+        for (int i = 0; i < list.size(); i++) {
+            ServiceItemDO serviceItem = list.get(i);
+            ServiceItemRespVO respVO = result.get(i);
+            if (serviceItem.getTags() != null) {
+                respVO.setTags(JSONUtil.toList(serviceItem.getTags(), String.class));
+            }
+        }
+        return success(result);
+    }
+
 }

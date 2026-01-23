@@ -84,9 +84,8 @@ public class CrmContractSaveReqVO {
     @DiffLogField(name = "合同附件")
     private String attachment;
 
-    @Schema(description = "分派部门IDs", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "分派部门不能为空")
-    private List<Long> assignDeptIds;
+    @Schema(description = "分派部门IDs")
+    private List<Long> assignDeptIds;  // 分派部门在审批流程中选择，新建合同时为可选
 
     @Schema(description = "产品列表")
     private List<Product> products;

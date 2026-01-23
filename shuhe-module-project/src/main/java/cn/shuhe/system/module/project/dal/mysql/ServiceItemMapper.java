@@ -28,10 +28,24 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
                 .likeIfPresent(ServiceItemDO::getCode, reqVO.getCode())
                 .likeIfPresent(ServiceItemDO::getCustomerName, reqVO.getCustomerName())
                 .betweenIfPresent(ServiceItemDO::getCreateTime, reqVO.getCreateTime())
+                .eq(ServiceItemDO::getVisible, 1)  // 只返回可见的服务项
                 .orderByDesc(ServiceItemDO::getId));
     }
 
+    /**
+     * 根据项目ID查询服务项列表（只返回可见的服务项）
+     */
     default List<ServiceItemDO> selectListByProjectId(Long projectId) {
+        return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getProjectId, projectId)
+                .eq(ServiceItemDO::getVisible, 1)  // 只返回可见的服务项
+                .orderByDesc(ServiceItemDO::getId));
+    }
+
+    /**
+     * 根据项目ID查询所有服务项列表（包含隐藏的）
+     */
+    default List<ServiceItemDO> selectAllListByProjectId(Long projectId) {
         return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
                 .eq(ServiceItemDO::getProjectId, projectId)
                 .orderByDesc(ServiceItemDO::getId));
@@ -41,12 +55,14 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
         return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
                 .eq(ServiceItemDO::getProjectId, projectId)
                 .eqIfPresent(ServiceItemDO::getDeptId, deptId)
+                .eq(ServiceItemDO::getVisible, 1)  // 只返回可见的服务项
                 .orderByDesc(ServiceItemDO::getId));
     }
 
     default Long selectCountByProjectId(Long projectId) {
         return selectCount(new LambdaQueryWrapperX<ServiceItemDO>()
-                .eq(ServiceItemDO::getProjectId, projectId));
+                .eq(ServiceItemDO::getProjectId, projectId)
+                .eq(ServiceItemDO::getVisible, 1));  // 只统计可见的服务项
     }
 
     default ServiceItemDO selectByCode(String code) {
@@ -56,6 +72,29 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
     default List<ServiceItemDO> selectListByContractId(Long contractId) {
         return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
                 .eq(ServiceItemDO::getContractId, contractId)
+                .eq(ServiceItemDO::getVisible, 1)  // 只返回可见的服务项
+                .orderByDesc(ServiceItemDO::getId));
+    }
+
+    /**
+     * 查询外出类型的服务项（根据部门ID，不管 visible）
+     * 用于外出请求发起页面选择服务项
+     */
+    default List<ServiceItemDO> selectOutsideServiceItemListByDeptId(Long deptId) {
+        return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getDeptId, deptId)
+                .eq(ServiceItemDO::getServiceType, "outside")
+                .orderByDesc(ServiceItemDO::getId));
+    }
+
+    /**
+     * 查询外出类型的服务项（根据项目ID，不管 visible）
+     * 用于外出请求发起页面选择服务项
+     */
+    default List<ServiceItemDO> selectOutsideServiceItemListByProjectId(Long projectId) {
+        return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getProjectId, projectId)
+                .eq(ServiceItemDO::getServiceType, "outside")
                 .orderByDesc(ServiceItemDO::getId));
     }
 

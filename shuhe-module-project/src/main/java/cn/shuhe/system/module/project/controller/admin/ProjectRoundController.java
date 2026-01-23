@@ -7,15 +7,22 @@ import cn.shuhe.system.module.project.controller.admin.vo.ProjectRoundRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectRoundSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundDO;
 import cn.shuhe.system.module.project.service.ProjectRoundService;
+import cn.shuhe.system.module.project.service.ReportGenerateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -29,6 +36,9 @@ public class ProjectRoundController {
 
     @Resource
     private ProjectRoundService projectRoundService;
+
+    @Resource
+    private ReportGenerateService reportGenerateService;
 
     @PostMapping("/create")
     @Operation(summary = "创建项目轮次")
@@ -121,6 +131,73 @@ public class ProjectRoundController {
                                                      @RequestParam("progress") Integer progress) {
         projectRoundService.updateRoundProgress(id, progress);
         return success(true);
+    }
+
+    // ==================== 报告生成 ====================
+
+    @GetMapping("/report-templates")
+    @Operation(summary = "获取可用的报告模板列表")
+    @Parameter(name = "type", description = "模板类型：pentest（渗透测试）, retest（复测）", required = false)
+    @PreAuthorize("@ss.hasPermission('project:info:query')")
+    public CommonResult<List<ReportGenerateService.ReportTemplate>> getReportTemplates(
+            @RequestParam(value = "type", required = false) String type) {
+        return success(reportGenerateService.getReportTemplates(type));
+    }
+
+    @GetMapping("/export-pentest-report")
+    @Operation(summary = "导出渗透测试报告", description = "根据模板生成 Word 报告并下载")
+    @Parameter(name = "id", description = "轮次ID", required = true)
+    @Parameter(name = "templateCode", description = "模板编码", required = true)
+    @PreAuthorize("@ss.hasPermission('project:info:query')")
+    public void exportPentestReport(
+            @RequestParam("id") Long id,
+            @RequestParam("templateCode") String templateCode,
+            HttpServletResponse response) throws IOException {
+        // 生成报告
+        byte[] reportData = reportGenerateService.generateRoundPentestReport(id, templateCode);
+
+        // 获取轮次信息用于文件名
+        ProjectRoundDO round = projectRoundService.getProjectRound(id);
+        String roundName = round.getName() != null ? round.getName() : "第" + round.getRoundNo() + "次执行";
+        String fileName = String.format("渗透测试报告_%s.docx", roundName);
+
+        // 设置响应头
+        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=" + URLEncoder.encode(fileName, StandardCharsets.UTF_8));
+        response.setContentLength(reportData.length);
+
+        // 写入响应
+        response.getOutputStream().write(reportData);
+        response.getOutputStream().flush();
+    }
+
+    @GetMapping("/export-retest-report")
+    @Operation(summary = "导出复测报告", description = "根据模板生成 Word 复测报告并下载")
+    @Parameter(name = "id", description = "轮次ID", required = true)
+    @Parameter(name = "templateCode", description = "模板编码", required = true)
+    @PreAuthorize("@ss.hasPermission('project:info:query')")
+    public void exportRetestReport(
+            @RequestParam("id") Long id,
+            @RequestParam("templateCode") String templateCode,
+            HttpServletResponse response) throws IOException {
+        // 生成报告
+        byte[] reportData = reportGenerateService.generateRoundRetestReport(id, templateCode);
+
+        // 获取轮次信息用于文件名
+        ProjectRoundDO round = projectRoundService.getProjectRound(id);
+        String roundName = round.getName() != null ? round.getName() : "第" + round.getRoundNo() + "次执行";
+        String fileName = String.format("复测报告_%s.docx", roundName);
+
+        // 设置响应头
+        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=" + URLEncoder.encode(fileName, StandardCharsets.UTF_8));
+        response.setContentLength(reportData.length);
+
+        // 写入响应
+        response.getOutputStream().write(reportData);
+        response.getOutputStream().flush();
     }
 
 }

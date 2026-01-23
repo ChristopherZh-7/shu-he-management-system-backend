@@ -188,7 +188,16 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
             // 假设本地根部门ID为0
             dingtalkIdToLocalId.put(1L, 0L);
             
-            // 6. 按层级同步部门（先同步父部门，再同步子部门）
+            // 6. 获取用户映射（钉钉用户ID -> 本地用户ID）
+            List<DingtalkMappingDO> userMappings = dingtalkMappingMapper.selectList(
+                    DingtalkMappingDO::getConfigId, configId,
+                    DingtalkMappingDO::getType, MAPPING_TYPE_USER
+            );
+            Map<String, Long> dingtalkUserIdToLocalId = userMappings.stream()
+                    .collect(Collectors.toMap(DingtalkMappingDO::getDingtalkId, DingtalkMappingDO::getLocalId));
+            log.info("获取用户映射成功，共 {} 个用户映射", dingtalkUserIdToLocalId.size());
+            
+            // 7. 按层级同步部门（先同步父部门，再同步子部门）
             // 按父部门ID排序，确保父部门先被创建
             dingtalkDepts.sort(Comparator.comparingLong(DingtalkApiService.DingtalkDept::getParentId));
             
@@ -205,6 +214,27 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                 // 根据部门名称自动推断部门类型
                 Integer deptType = guessDeptTypeByName(dingtalkDept.getName());
                 
+                // 获取部门详情（包含主管信息）
+                Long leaderUserId = null;
+                try {
+                    DingtalkApiService.DingtalkDept deptDetail = dingtalkApiService.getDeptDetail(accessToken, dingtalkDept.getDeptId());
+                    if (deptDetail != null && deptDetail.getDeptManagerUseridList() != null 
+                            && !deptDetail.getDeptManagerUseridList().isEmpty()) {
+                        // 取第一个主管作为负责人
+                        String dingtalkManagerId = deptDetail.getDeptManagerUseridList().get(0);
+                        leaderUserId = dingtalkUserIdToLocalId.get(dingtalkManagerId);
+                        if (leaderUserId != null) {
+                            log.debug("部门 {} 的负责人: 钉钉用户ID={}, 本地用户ID={}", 
+                                    dingtalkDept.getName(), dingtalkManagerId, leaderUserId);
+                        } else {
+                            log.debug("部门 {} 的负责人钉钉用户ID={} 未找到本地映射", 
+                                    dingtalkDept.getName(), dingtalkManagerId);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("获取部门 {} 详情失败: {}", dingtalkDept.getName(), e.getMessage());
+                }
+                
                 if (mapping != null) {
                     // 更新已有部门
                     DeptDO existingDept = deptMapper.selectById(mapping.getLocalId());
@@ -215,6 +245,10 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                         // 如果部门类型为空，则自动设置
                         if (existingDept.getDeptType() == null && deptType != null) {
                             existingDept.setDeptType(deptType);
+                        }
+                        // 设置部门负责人
+                        if (leaderUserId != null) {
+                            existingDept.setLeaderUserId(leaderUserId);
                         }
                         deptMapper.updateById(existingDept);
                         dingtalkIdToLocalId.put(dingtalkDept.getDeptId(), existingDept.getId());
@@ -227,6 +261,7 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                     newDept.setParentId(localParentId);
                     newDept.setSort(dingtalkDept.getOrder());
                     newDept.setDeptType(deptType); // 自动设置部门类型
+                    newDept.setLeaderUserId(leaderUserId); // 设置部门负责人
                     newDept.setStatus(CommonStatusEnum.ENABLE.getStatus());
                     deptMapper.insert(newDept);
                     
@@ -244,7 +279,7 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                 }
             }
             
-            // 7. 更新配置的最后同步时间和结果
+            // 8. 更新配置的最后同步时间和结果
             config.setLastSyncTime(LocalDateTime.now());
             config.setLastSyncResult(String.format("同步成功：新增 %d 个部门，更新 %d 个部门", createCount, updateCount));
             dingtalkConfigMapper.updateById(config);

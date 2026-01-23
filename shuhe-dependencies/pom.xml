@@ -49,7 +49,7 @@
         <flowable.version>7.2.0</flowable.version>
         <!-- 工具类相关 -->
         <anji-plus-captcha.version>1.4.0</anji-plus-captcha.version>
-        <jsoup.version>1.21.2</jsoup.version>
+        <jsoup.version>1.18.3</jsoup.version>
         <lombok.version>1.18.42</lombok.version>
         <mapstruct.version>1.6.3</mapstruct.version>
         <hutool-5.version>5.8.42</hutool-5.version>
@@ -74,6 +74,7 @@
         <justauth.version>1.16.7</justauth.version>
         <justauth-starter.version>1.4.0</justauth-starter.version>
         <jimureport.version>2.1.3</jimureport.version>
+        <poi-tl.version>1.12.2</poi-tl.version>
         <jimubi.version>2.3.0</jimubi.version>
         <weixin-java.version>4.7.9-20251224.161447</weixin-java.version>
         <alipay-sdk-java.version>4.40.607.ALL</alipay-sdk-java.version>
@@ -607,6 +608,19 @@
                 <groupId>com.github.binarywang</groupId>
                 <artifactId>wx-java-miniapp-spring-boot-starter</artifactId>
                 <version>${weixin-java.version}</version>
+            </dependency>
+
+            <!-- Word 模板报告生成 -->
+            <dependency>
+                <groupId>com.deepoove</groupId>
+                <artifactId>poi-tl</artifactId>
+                <version>${poi-tl.version}</version>
+            </dependency>
+            <!-- POI-TL 扩展库（支持 HTML 富文本渲染） -->
+            <dependency>
+                <groupId>io.github.draco1023</groupId>
+                <artifactId>poi-tl-ext</artifactId>
+                <version>0.4.24-poi5</version>
             </dependency>
 
             <!-- 积木报表-->

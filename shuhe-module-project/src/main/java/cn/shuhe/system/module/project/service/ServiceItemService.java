@@ -158,4 +158,28 @@ public interface ServiceItemService {
      */
     List<ServiceItemDO> getServiceItemListByContractId(Long contractId);
 
+    /**
+     * 更新服务项可见性
+     *
+     * @param id      服务项ID
+     * @param visible 可见性：0隐藏 1可见
+     */
+    void updateServiceItemVisible(Long id, Integer visible);
+
+    /**
+     * 获取外出类型的服务项列表（根据部门ID）
+     *
+     * @param deptId 部门ID
+     * @return 外出服务项列表
+     */
+    List<ServiceItemDO> getOutsideServiceItemListByDeptId(Long deptId);
+
+    /**
+     * 获取外出类型的服务项列表（根据项目ID）
+     *
+     * @param projectId 项目ID
+     * @return 外出服务项列表
+     */
+    List<ServiceItemDO> getOutsideServiceItemListByProjectId(Long projectId);
+
 }

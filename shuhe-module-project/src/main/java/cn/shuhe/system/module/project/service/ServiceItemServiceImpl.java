@@ -80,6 +80,10 @@ public class ServiceItemServiceImpl implements ServiceItemService {
         if (serviceItem.getPriority() == null) {
             serviceItem.setPriority(1); // 默认中优先级
         }
+        // 默认可见，除非明确指定为隐藏
+        if (serviceItem.getVisible() == null) {
+            serviceItem.setVisible(1);
+        }
         
         // 4. 自动从项目获取客户和合同信息
         if (project != null) {
@@ -418,6 +422,30 @@ public class ServiceItemServiceImpl implements ServiceItemService {
     @Override
     public List<ServiceItemDO> getServiceItemListByContractId(Long contractId) {
         return serviceItemMapper.selectListByContractId(contractId);
+    }
+
+    @Override
+    public void updateServiceItemVisible(Long id, Integer visible) {
+        // 校验存在
+        validateServiceItemExists(id);
+
+        // 更新可见性
+        ServiceItemDO updateObj = new ServiceItemDO();
+        updateObj.setId(id);
+        updateObj.setVisible(visible);
+        serviceItemMapper.updateById(updateObj);
+
+        log.info("【服务项】更新服务项可见性，id={}, visible={}", id, visible);
+    }
+
+    @Override
+    public List<ServiceItemDO> getOutsideServiceItemListByDeptId(Long deptId) {
+        return serviceItemMapper.selectOutsideServiceItemListByDeptId(deptId);
+    }
+
+    @Override
+    public List<ServiceItemDO> getOutsideServiceItemListByProjectId(Long projectId) {
+        return serviceItemMapper.selectOutsideServiceItemListByProjectId(projectId);
     }
 
 }

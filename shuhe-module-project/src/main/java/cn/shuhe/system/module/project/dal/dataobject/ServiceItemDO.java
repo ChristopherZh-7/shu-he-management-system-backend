@@ -184,4 +184,11 @@ public class ServiceItemDO extends BaseDO {
      */
     private String remark;
 
+    /**
+     * 是否可见
+     * 0-隐藏 1-可见（默认）
+     * 外出服务项创建时为0，审批通过后变为1
+     */
+    private Integer visible;
+
 }

@@ -10,9 +10,6 @@ import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectMemberDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMemberMapper;
-import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
-import cn.shuhe.system.module.system.api.dept.DeptApi;
-import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.api.permission.PermissionApi;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -23,9 +20,7 @@ import org.springframework.validation.annotation.Validated;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
 
 import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.shuhe.system.module.project.enums.ErrorCodeConstants.*;
@@ -42,17 +37,11 @@ public class ProjectServiceImpl implements ProjectService {
     private ProjectMapper projectMapper;
 
     @Resource
-    private ServiceItemMapper serviceItemMapper;
-
-    @Resource
     private ProjectMemberMapper projectMemberMapper;
 
     @Resource
     @org.springframework.context.annotation.Lazy // 延迟加载，避免循环依赖
     private ServiceItemService serviceItemService;
-
-    @Resource
-    private DeptApi deptApi;
 
     @Resource
     private PermissionApi permissionApi;
@@ -130,31 +119,12 @@ public class ProjectServiceImpl implements ProjectService {
             return result;
         }
 
-        // 2. 检查用户是否是部门负责人
-        List<DeptRespDTO> leaderDepts = deptApi.getDeptListByLeaderUserId(userId);
-        log.info("【getProjectPage】用户 {} 负责的部门列表: {}", userId, leaderDepts);
-        if (CollUtil.isNotEmpty(leaderDepts)) {
-            // 获取负责部门的 deptType 列表
-            Set<Integer> deptTypes = leaderDepts.stream()
-                    .map(DeptRespDTO::getDeptType)
-                    .filter(deptType -> deptType != null)
-                    .collect(Collectors.toSet());
-            log.info("【getProjectPage】用户 {} 负责部门的 deptTypes: {}", userId, deptTypes);
-            
-            if (CollUtil.isNotEmpty(deptTypes)) {
-                // 部门负责人可以看到该部门类型下的所有项目
-                // 同时也加上自己参与的项目
-                List<Long> memberProjectIds = projectMemberMapper.selectProjectIdsByUserId(userId);
-                log.info("【getProjectPage】部门负责人，deptTypes={}, memberProjectIds={}", deptTypes, memberProjectIds);
-                return projectMapper.selectPageByDeptTypesOrIds(pageReqVO, deptTypes, memberProjectIds);
-            }
-        }
-
-        // 3. 普通用户只能看到自己参与的项目
+        // 2. 所有非超管用户（包括部门负责人）只能看到自己参与的项目
+        // 说明：项目可见性基于项目成员关系，当用户领取合同时会被自动添加为项目成员
         List<Long> projectIds = projectMemberMapper.selectProjectIdsByUserId(userId);
-        log.info("【getProjectPage】普通用户，参与的项目IDs: {}", projectIds);
+        log.info("【getProjectPage】用户 {} 参与的项目IDs: {}", userId, projectIds);
         if (CollUtil.isEmpty(projectIds)) {
-            log.info("【getProjectPage】普通用户没有参与任何项目，返回空结果");
+            log.info("【getProjectPage】用户没有参与任何项目，返回空结果");
             return PageResult.empty();
         }
         return projectMapper.selectPageByIds(pageReqVO, projectIds);

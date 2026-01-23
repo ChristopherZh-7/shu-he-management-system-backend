@@ -28,6 +28,7 @@ import static cn.shuhe.system.framework.apilog.core.enums.OperateTypeEnum.*;
 import cn.shuhe.system.module.system.controller.admin.dingtalkconfig.vo.*;
 import cn.shuhe.system.module.system.dal.dataobject.dingtalkconfig.DingtalkConfigDO;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkConfigService;
+import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkApiService;
 
 @Tag(name = "管理后台 - 钉钉配置")
 @RestController
@@ -37,6 +38,9 @@ public class DingtalkConfigController {
 
     @Resource
     private DingtalkConfigService dingtalkConfigService;
+
+    @Resource
+    private DingtalkApiService dingtalkApiService;
 
     @PostMapping("/create")
     @Operation(summary = "创建钉钉配置")
@@ -142,6 +146,60 @@ public class DingtalkConfigController {
     public CommonResult<Boolean> syncDingtalkPost(@RequestParam("configId") Long configId) {
         dingtalkConfigService.syncDingtalkPost(configId);
         return success(true);
+    }
+
+    @GetMapping("/get-form-schema")
+    @Operation(summary = "获取OA审批表单Schema（查看表单组件类型）", 
+               description = "用于查看表单中所有组件的类型信息，特别是时间组件的类型（日期选择器/日期时间选择器）")
+    @Parameter(name = "configId", description = "配置编号（可选，不传则使用第一个启用的配置）", required = false)
+    @Parameter(name = "processCode", description = "流程编码（可选，不传则从配置中读取outsideProcessCode）", required = false)
+    @PreAuthorize("@ss.hasPermission('system:dingtalk-config:query')")
+    public CommonResult<Object> getFormSchema(
+            @RequestParam(value = "configId", required = false) Long configId,
+            @RequestParam(value = "processCode", required = false) String processCode) {
+        
+        try {
+            // 1. 获取钉钉配置
+            DingtalkConfigDO config;
+            if (configId != null) {
+                config = dingtalkConfigService.getDingtalkConfig(configId);
+                if (config == null) {
+                    return CommonResult.error(404, "配置不存在");
+                }
+            } else {
+                // 使用第一个启用的配置
+                var configs = dingtalkConfigService.getEnabledDingtalkConfigList();
+                if (configs.isEmpty()) {
+                    return CommonResult.error(404, "没有启用的钉钉配置");
+                }
+                config = configs.get(0);
+            }
+            
+            // 2. 确定processCode
+            String finalProcessCode = processCode;
+            if (finalProcessCode == null || finalProcessCode.isEmpty()) {
+                finalProcessCode = config.getOutsideProcessCode();
+                if (finalProcessCode == null || finalProcessCode.isEmpty()) {
+                    return CommonResult.error(400, "流程编码未配置，请在参数中传入processCode或在配置中设置outsideProcessCode");
+                }
+            }
+            
+            // 3. 获取accessToken
+            String accessToken = dingtalkApiService.getAccessToken(config);
+            
+            // 4. 获取表单Schema
+            String schemaJson = dingtalkApiService.getFormSchema(accessToken, finalProcessCode);
+            
+            if (schemaJson == null) {
+                return CommonResult.error(500, "获取表单Schema失败，请检查流程编码是否正确");
+            }
+            
+            // 5. 解析并返回（格式化JSON以便查看）
+            return success(cn.hutool.json.JSONUtil.parse(schemaJson));
+            
+        } catch (Exception e) {
+            return CommonResult.error(500, "获取表单Schema异常: " + e.getMessage());
+        }
     }
 
 }

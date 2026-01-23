@@ -58,6 +58,17 @@
             <artifactId>shuhe-spring-boot-starter-excel</artifactId>
         </dependency>
 
+        <!-- Word 模板报告生成 -->
+        <dependency>
+            <groupId>com.deepoove</groupId>
+            <artifactId>poi-tl</artifactId>
+        </dependency>
+        <!-- POI-TL 扩展库（支持 HTML 富文本渲染） -->
+        <dependency>
+            <groupId>io.github.draco1023</groupId>
+            <artifactId>poi-tl-ext</artifactId>
+        </dependency>
+
         <!-- Test 测试相关 -->
         <dependency>
             <groupId>cn.shuhe</groupId>

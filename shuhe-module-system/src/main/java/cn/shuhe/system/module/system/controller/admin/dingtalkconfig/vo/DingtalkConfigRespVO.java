@@ -56,6 +56,18 @@ public class DingtalkConfigRespVO {
     @ExcelProperty("备注")
     private String remark;
 
+    @Schema(description = "回调基础URL（公网可访问域名）", example = "http://your-domain.com")
+    @ExcelProperty("回调基础URL")
+    private String callbackBaseUrl;
+
+    @Schema(description = "钉钉OA外出申请流程编码", example = "PROC-XXXXXX")
+    @ExcelProperty("OA流程编码")
+    private String outsideProcessCode;
+
+    @Schema(description = "默认外出类型", example = "因公外出")
+    @ExcelProperty("默认外出类型")
+    private String outsideType;
+
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;

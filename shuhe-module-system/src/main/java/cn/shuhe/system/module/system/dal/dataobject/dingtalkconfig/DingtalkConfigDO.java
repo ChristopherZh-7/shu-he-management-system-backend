@@ -69,5 +69,20 @@ public class DingtalkConfigDO extends BaseDO {
      */
     private String remark;
 
+    /**
+     * 回调基础URL（公网可访问域名）
+     */
+    private String callbackBaseUrl;
+
+    /**
+     * 钉钉OA外出申请流程编码
+     */
+    private String outsideProcessCode;
+
+    /**
+     * 默认外出类型
+     */
+    private String outsideType;
+
 
 }

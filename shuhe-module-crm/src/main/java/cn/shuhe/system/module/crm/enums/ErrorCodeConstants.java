@@ -17,6 +17,7 @@ public interface ErrorCodeConstants {
     ErrorCode CONTRACT_ALREADY_CLAIMED = new ErrorCode(1_020_000_004, "合同已被领取");
     ErrorCode CONTRACT_NO_EXISTS = new ErrorCode(1_020_000_004, "生成合同序列号重复，请重试");
     ErrorCode CONTRACT_DELETE_FAIL = new ErrorCode(1_020_000_005, "删除合同失败，原因：有被回款所使用");
+    ErrorCode CONTRACT_CLAIM_FAIL_NOT_APPROVED = new ErrorCode(1_020_000_006, "领取合同失败，原因：合同未审批通过");
 
     // ========== 线索管理 1-020-001-000 ==========
     ErrorCode CLUE_NOT_EXISTS = new ErrorCode(1_020_001_000, "线索不存在");

@@ -49,4 +49,13 @@ public class DingtalkConfigSaveReqVO {
     @Schema(description = "备注", example = "你说的对")
     private String remark;
 
+    @Schema(description = "回调基础URL（公网可访问域名）", example = "http://your-domain.com")
+    private String callbackBaseUrl;
+
+    @Schema(description = "钉钉OA外出申请流程编码", example = "PROC-XXXXXX")
+    private String outsideProcessCode;
+
+    @Schema(description = "默认外出类型", example = "因公外出")
+    private String outsideType;
+
 }

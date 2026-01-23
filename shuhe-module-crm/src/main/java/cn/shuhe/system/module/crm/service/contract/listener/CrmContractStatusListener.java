@@ -25,7 +25,11 @@ public class CrmContractStatusListener extends BpmProcessInstanceStatusEventList
 
     @Override
     protected void onEvent(BpmProcessInstanceStatusEvent event) {
-        contractService.updateContractAuditStatus(Long.parseLong(event.getBusinessKey()), event.getStatus());
+        // 传递流程变量，用于获取审批时选择的分派部门
+        contractService.updateContractAuditStatus(
+                Long.parseLong(event.getBusinessKey()), 
+                event.getStatus(),
+                event.getProcessVariables());
     }
 
 }
