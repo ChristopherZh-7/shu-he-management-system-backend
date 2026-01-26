@@ -58,14 +58,14 @@ public interface DingtalkNotifyApi {
                                    String buttonTitle, String buttonUrl);
 
     /**
-     * 发起钉钉OA外出申请
+     * 发起钉钉OA外出申请（独立组件模式）
      *
      * @param userId 发起人系统用户ID
      * @param processCode 外出申请流程的process_code
      * @param outsideType 外出类型
      * @param startTime 开始时间
      * @param endTime 结束时间
-     * @param duration 时长
+     * @param duration 时长（字符串）
      * @param projectName 关联项目
      * @param reason 外出事由
      * @param destination 外出地点
@@ -75,5 +75,26 @@ public interface DingtalkNotifyApi {
                                    String outsideType, String startTime, String endTime,
                                    String duration, String projectName,
                                    String reason, String destination);
+
+    /**
+     * 发起钉钉OA外出申请（DDBizSuite套件模式）
+     * 
+     * 适用于使用钉钉内置"外出"套件（DDBizSuite, biz_type: attendance.goout）的表单
+     *
+     * @param userId 发起人系统用户ID
+     * @param processCode 外出申请流程的process_code
+     * @param outsideType 外出类型（"1天内短期外出" 或 "超过1天连续外出"）
+     * @param startTime 开始时间（格式根据外出类型：短期用 yyyy-MM-dd HH:mm，长期用 yyyy-MM-dd）
+     * @param endTime 结束时间（格式同上）
+     * @param durationValue 时长数值（短期为小时数，长期为天数，支持小数如4.12）
+     * @param projectName 关联项目
+     * @param reason 外出事由
+     * @param destination 外出地点
+     * @return OA审批实例ID，失败返回null
+     */
+    String startOutsideSuiteOaApproval(Long userId, String processCode,
+                                        String outsideType, String startTime, String endTime,
+                                        double durationValue, String projectName,
+                                        String reason, String destination);
 
 }

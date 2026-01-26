@@ -835,6 +835,172 @@ public class DingtalkApiService {
     }
 
     /**
+     * 获取审批实例ID列表（新版API）
+     * 
+     * API文档：https://open.dingtalk.com/document/orgapp/obtain-an-approval-list-of-instance-ids
+     * 
+     * 注意：
+     * - 如果只传入startTime，时间距离当前时间不能超过120天
+     * - 如果同时传入startTime和endTime，时间范围不能超过120天，startTime距当前时间不能超过365天
+     * - 批量获取的实例ID个数最多不能超过10000个
+     * 
+     * @param accessToken access_token（需要调用getAccessToken获取）
+     * @param processCode 审批流的唯一码
+     * @param startTime 审批实例开始时间，Unix时间戳，单位毫秒
+     * @param endTime 审批实例结束时间，Unix时间戳，单位毫秒（可选，不传则默认取当前时间）
+     * @param userIds 发起人userId列表（可选，最大10个）
+     * @param statuses 流程实例状态列表（可选）：RUNNING-审批中, TERMINATED-已撤销, COMPLETED-审批完成
+     * @return 审批实例ID列表
+     */
+    public List<String> getProcessInstanceIdList(String accessToken, String processCode, 
+                                                  Long startTime, Long endTime,
+                                                  List<String> userIds, List<String> statuses) {
+        List<String> allInstanceIds = new ArrayList<>();
+        getProcessInstanceIdListPage(accessToken, processCode, startTime, endTime, userIds, statuses, 0L, allInstanceIds);
+        return allInstanceIds;
+    }
+
+    /**
+     * 分页获取审批实例ID列表
+     */
+    private void getProcessInstanceIdListPage(String accessToken, String processCode,
+                                               Long startTime, Long endTime,
+                                               List<String> userIds, List<String> statuses,
+                                               Long nextToken, List<String> allInstanceIds) {
+        // 新版API使用 api.dingtalk.com 域名
+        String url = "https://api.dingtalk.com/v1.0/workflow/processes/instanceIds/query";
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("processCode", processCode);
+        params.put("startTime", startTime);
+        if (endTime != null) {
+            params.put("endTime", endTime);
+        }
+        params.put("nextToken", nextToken);
+        params.put("maxResults", 20); // 每页最多20条
+        
+        if (userIds != null && !userIds.isEmpty()) {
+            params.put("userIds", userIds);
+        }
+        if (statuses != null && !statuses.isEmpty()) {
+            params.put("statuses", statuses);
+        }
+
+        try {
+            String requestBody = JSONUtil.toJsonStr(params);
+            log.info("获取审批实例ID列表请求: processCode={}, startTime={}, nextToken={}", processCode, startTime, nextToken);
+            
+            // 新版API需要使用 x-acs-dingtalk-access-token header
+            String result = cn.hutool.http.HttpRequest.post(url)
+                    .header("x-acs-dingtalk-access-token", accessToken)
+                    .header("Content-Type", "application/json")
+                    .body(requestBody)
+                    .execute()
+                    .body();
+            
+            log.info("获取审批实例ID列表返回: {}", result);
+            JSONObject json = JSONUtil.parseObj(result);
+            
+            // 新版API的错误处理
+            if (json.containsKey("code")) {
+                String code = json.getStr("code");
+                String message = json.getStr("message", "未知错误");
+                log.error("获取审批实例ID列表失败: code={}, message={}", code, message);
+                return;
+            }
+            
+            // 解析返回结果
+            JSONObject resultObj = json.getJSONObject("result");
+            if (resultObj == null) {
+                // 有些情况下直接返回 list 和 nextToken
+                JSONArray list = json.getJSONArray("list");
+                if (list != null) {
+                    for (int i = 0; i < list.size(); i++) {
+                        allInstanceIds.add(list.getStr(i));
+                    }
+                    // 检查是否有更多数据
+                    String nextTokenStr = json.getStr("nextToken");
+                    if (StrUtil.isNotEmpty(nextTokenStr) && !"null".equals(nextTokenStr)) {
+                        Long nextPage = Long.parseLong(nextTokenStr);
+                        if (nextPage > 0 && allInstanceIds.size() < 10000) {
+                            getProcessInstanceIdListPage(accessToken, processCode, startTime, endTime, 
+                                    userIds, statuses, nextPage, allInstanceIds);
+                        }
+                    }
+                }
+                return;
+            }
+            
+            JSONArray list = resultObj.getJSONArray("list");
+            if (list != null && !list.isEmpty()) {
+                for (int i = 0; i < list.size(); i++) {
+                    allInstanceIds.add(list.getStr(i));
+                }
+            }
+            
+            // 如果还有更多数据，继续分页获取（但不超过10000条）
+            String nextTokenStr = resultObj.getStr("nextToken");
+            if (StrUtil.isNotEmpty(nextTokenStr) && !"null".equals(nextTokenStr)) {
+                Long nextPage = Long.parseLong(nextTokenStr);
+                if (nextPage > 0 && allInstanceIds.size() < 10000) {
+                    getProcessInstanceIdListPage(accessToken, processCode, startTime, endTime, 
+                            userIds, statuses, nextPage, allInstanceIds);
+                }
+            }
+        } catch (Exception e) {
+            log.error("获取审批实例ID列表异常", e);
+        }
+    }
+
+    /**
+     * 获取审批实例ID列表（简化版 - 只需processCode和startTime）
+     * 
+     * @param accessToken access_token
+     * @param processCode 审批流的唯一码
+     * @param startTime 审批实例开始时间，Unix时间戳，单位毫秒
+     * @return 审批实例ID列表
+     */
+    public List<String> getProcessInstanceIdList(String accessToken, String processCode, Long startTime) {
+        return getProcessInstanceIdList(accessToken, processCode, startTime, null, null, null);
+    }
+
+    /**
+     * 获取OA审批实例详情（用于查看成功提交的表单数据格式）
+     * 
+     * API文档：https://open.dingtalk.com/document/orgapp/obtains-the-details-of-a-single-approval-instance
+     * 
+     * @param accessToken access_token
+     * @param processInstanceId 审批实例ID
+     * @return 审批实例详情的JSON字符串
+     */
+    public String getProcessInstanceDetail(String accessToken, String processInstanceId) {
+        String url = "https://oapi.dingtalk.com/topapi/processinstance/get?access_token=" + accessToken;
+        
+        Map<String, Object> params = new HashMap<>();
+        params.put("process_instance_id", processInstanceId);
+        
+        try {
+            String requestBody = JSONUtil.toJsonStr(params);
+            log.info("获取审批实例详情请求: processInstanceId={}", processInstanceId);
+            String result = HttpUtil.post(url, requestBody);
+            log.info("获取审批实例详情返回: {}", result);
+            
+            JSONObject json = JSONUtil.parseObj(result);
+            int errcode = json.getInt("errcode", -1);
+            if (errcode != 0) {
+                String errmsg = json.getStr("errmsg", "未知错误");
+                log.error("获取审批实例详情失败: errcode={}, errmsg={}", errcode, errmsg);
+                return null;
+            }
+            
+            return result;
+        } catch (Exception e) {
+            log.error("获取审批实例详情异常", e);
+            return null;
+        }
+    }
+
+    /**
      * 发起钉钉OA审批流程
      *
      * @param accessToken access_token
@@ -849,83 +1015,19 @@ public class DingtalkApiService {
                                           List<OaFormField> formFields) {
         String url = DINGTALK_PROCESS_CREATE_URL + "?access_token=" + accessToken;
 
-        // 定义"外出"套件(DDBizSuite)包含的字段映射关系
-        // key: 字段的label名称, value: 对应的biz_alias
-        Map<String, String> suiteFieldMapping = new HashMap<>();
-        suiteFieldMapping.put("外出类型", "type");
-        suiteFieldMapping.put("开始时间", "startTime");
-        suiteFieldMapping.put("结束时间", "finishTime");
-        suiteFieldMapping.put("时长", "duration");
-        
-        // 套件名称：使用biz_alias而不是label（根据schema，biz_alias="goout"）
-        String suiteName = "goout";
-        
-        // 构建表单组件值
+        // 构建表单组件值 - 新模板"外出API"使用独立组件，不含DDBizSuite套件
         JSONArray formComponentValues = new JSONArray();
-        
-        // 用于收集套件内的字段
-        JSONObject suiteFields = new JSONObject();
-        boolean hasSuiteFields = false;
         
         for (OaFormField field : formFields) {
             String fieldName = field.getName();
             String fieldValue = field.getValue();
             
-            // 判断是否属于"外出"套件的字段
-            if (suiteFieldMapping.containsKey(fieldName)) {
-                // 属于套件的字段，收集到suiteFields中
-                String bizAlias = suiteFieldMapping.get(fieldName);
-                
-                // 处理时间字段格式
-                if (("开始时间".equals(fieldName) || "结束时间".equals(fieldName)) 
-                        && StrUtil.isNotEmpty(fieldValue)) {
-                    // DDDateField使用字符串格式：yyyy-MM-dd HH:mm
-                    // 如果是时间戳格式（纯数字），也转换为字符串（兼容处理）
-                    if (StrUtil.isNumeric(fieldValue)) {
-                        try {
-                            Long timestamp = Long.parseLong(fieldValue);
-                            // 时间戳转换为日期时间字符串格式
-                            java.time.Instant instant = java.time.Instant.ofEpochMilli(timestamp);
-                            java.time.LocalDateTime dateTime = java.time.LocalDateTime.ofInstant(
-                                instant, java.time.ZoneId.systemDefault());
-                            String dateTimeStr = dateTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
-                            suiteFields.put(bizAlias, dateTimeStr);
-                            log.debug("套件时间字段 {} (biz_alias={}) 从时间戳转换为日期时间格式: {}", fieldName, bizAlias, dateTimeStr);
-                        } catch (Exception e) {
-                            // 转换失败，使用原值
-                            suiteFields.put(bizAlias, fieldValue);
-                            log.debug("套件时间字段 {} (biz_alias={}) 使用原值: {}", fieldName, bizAlias, fieldValue);
-                        }
-                    } else {
-                        // 日期时间格式字符串（如 yyyy-MM-dd HH:mm）
-                        suiteFields.put(bizAlias, fieldValue);
-                        log.debug("套件时间字段 {} (biz_alias={}) 使用日期时间字符串格式: {}", fieldName, bizAlias, fieldValue);
-                    }
-                } else {
-                    // 其他套件字段（外出类型、时长等）
-                    suiteFields.put(bizAlias, fieldValue);
-                    log.debug("套件字段 {} (biz_alias={}) 值: {}", fieldName, bizAlias, fieldValue);
-                }
-                hasSuiteFields = true;
-            } else {
-                // 不属于套件的独立字段，直接添加
-                JSONObject fieldJson = new JSONObject();
-                fieldJson.put("name", fieldName);
-                fieldJson.put("value", fieldValue);
-                log.debug("添加独立表单字段: name={}, value={}", fieldName, fieldValue);
-                formComponentValues.add(fieldJson);
-            }
-        }
-        
-        // 如果有套件字段，将套件作为整体添加到form_component_values
-        if (hasSuiteFields) {
-            JSONObject suiteJson = new JSONObject();
-            suiteJson.put("name", suiteName);
-            // 将套件内的字段组合成JSON字符串
-            String suiteValue = JSONUtil.toJsonStr(suiteFields);
-            suiteJson.put("value", suiteValue);
-            log.info("添加套件字段: name={}, value={}", suiteName, suiteValue);
-            formComponentValues.add(suiteJson);
+            // 所有字段都作为独立组件直接添加
+            JSONObject fieldJson = new JSONObject();
+            fieldJson.put("name", fieldName);
+            fieldJson.put("value", fieldValue);
+            log.debug("添加表单字段: name={}, value={}", fieldName, fieldValue);
+            formComponentValues.add(fieldJson);
         }
 
         Map<String, Object> params = new HashMap<>();
@@ -971,7 +1073,7 @@ public class DingtalkApiService {
     }
 
     /**
-     * 发起外出申请OA审批（便捷方法）
+     * 发起外出申请OA审批（便捷方法 - 独立组件模式）
      *
      * @param accessToken access_token
      * @param processCode 外出申请流程的process_code
@@ -1018,5 +1120,137 @@ public class DingtalkApiService {
         }
 
         return startOaApprovalProcess(accessToken, processCode, originatorUserId, deptId, formFields);
+    }
+
+    /**
+     * 发起外出申请OA审批（DDBizSuite套件模式）
+     * 
+     * 适用于使用钉钉内置"外出"套件（DDBizSuite, biz_type: attendance.goout）的表单
+     * 套件内字段通过biz_alias传递：type(外出类型)、startTime(开始时间)、finishTime(结束时间)、duration(时长)
+     *
+     * @param accessToken access_token
+     * @param processCode 外出申请流程的process_code
+     * @param originatorUserId 发起人钉钉用户ID
+     * @param deptId 发起人部门ID
+     * @param outsideType 外出类型（"1天内短期外出" 或 "超过1天连续外出"）
+     * @param startTime 开始时间（格式根据外出类型：短期用 yyyy-MM-dd HH:mm，长期用 yyyy-MM-dd）
+     * @param endTime 结束时间（格式同上）
+     * @param durationValue 时长数值（短期为小时数，长期为天数，支持小数如4.12）
+     * @param projectName 关联项目
+     * @param reason 外出事由
+     * @param destination 外出地点
+     * @return OA审批实例ID
+     */
+    // DDBizSuite 外出类型选项配置（根据钉钉表单配置）
+    // "1天内短期外出" -> key: option_1K5LWVBW9D4W0, unit: hour
+    // "超过1天连续外出" -> key: option_LGZF5Y7PTSW0, unit: day
+    private static final String OUTSIDE_TYPE_SHORT_KEY = "option_1K5LWVBW9D4W0";
+    private static final String OUTSIDE_TYPE_LONG_KEY = "option_LGZF5Y7PTSW0";
+
+    public String startOutsideSuiteApproval(String accessToken, String processCode,
+                                             String originatorUserId, Long deptId,
+                                             String outsideType, String startTime, String endTime,
+                                             double durationValue, String projectName,
+                                             String reason, String destination) {
+        // 使用新版API（经Python测试验证成功）
+        String url = "https://api.dingtalk.com/v1.0/workflow/processInstances";
+
+        // 构建表单组件值 - 使用格式7：每个字段独立传递（经测试验证成功）
+        log.info("外出审批参数: type={}, startTime={}, endTime={}, duration={}", 
+                outsideType, startTime, endTime, durationValue);
+
+        JSONArray formComponentValues = new JSONArray();
+        
+        // 1. 外出类型
+        JSONObject typeField = new JSONObject();
+        typeField.put("name", "外出类型");
+        typeField.put("value", outsideType);  // 如"超过1天连续外出"或"1天内短期外出"
+        formComponentValues.add(typeField);
+        
+        // 2. 开始时间
+        JSONObject startField = new JSONObject();
+        startField.put("name", "开始时间");
+        startField.put("value", startTime);
+        formComponentValues.add(startField);
+        
+        // 3. 结束时间
+        JSONObject endField = new JSONObject();
+        endField.put("name", "结束时间");
+        endField.put("value", endTime);
+        formComponentValues.add(endField);
+        
+        // 4. 时长
+        JSONObject durationField = new JSONObject();
+        durationField.put("name", "时长");
+        durationField.put("value", String.valueOf(durationValue));
+        formComponentValues.add(durationField);
+        
+        // 5. 关联项目
+        if (StrUtil.isNotEmpty(projectName)) {
+            JSONObject projectField = new JSONObject();
+            projectField.put("name", "关联项目");
+            projectField.put("value", projectName);
+            formComponentValues.add(projectField);
+        }
+        
+        // 6. 外出事由
+        if (StrUtil.isNotEmpty(reason)) {
+            JSONObject reasonField = new JSONObject();
+            reasonField.put("name", "外出事由");
+            reasonField.put("value", reason);
+            formComponentValues.add(reasonField);
+        }
+        
+        // 7. 外出地点
+        if (StrUtil.isNotEmpty(destination)) {
+            JSONObject destField = new JSONObject();
+            destField.put("name", "外出地点");
+            destField.put("value", destination);
+            formComponentValues.add(destField);
+        }
+
+        // 新版API使用驼峰命名
+        Map<String, Object> params = new HashMap<>();
+        params.put("processCode", processCode);
+        params.put("originatorUserId", originatorUserId);
+        params.put("deptId", deptId);
+        params.put("formComponentValues", formComponentValues);
+
+        try {
+            String requestBody = JSONUtil.toJsonStr(params);
+            log.info("钉钉OA审批发起API请求(新版): {}", requestBody);
+            
+            // 新版API使用Header传递accessToken
+            String result = HttpUtil.createPost(url)
+                    .header("x-acs-dingtalk-access-token", accessToken)
+                    .header("Content-Type", "application/json")
+                    .body(requestBody)
+                    .execute()
+                    .body();
+            
+            log.info("钉钉OA审批发起API返回(新版): {}", result);
+            JSONObject json = JSONUtil.parseObj(result);
+
+            // 新版API成功时直接返回 instanceId
+            String instanceId = json.getStr("instanceId");
+            if (StrUtil.isNotEmpty(instanceId)) {
+                log.info("发起钉钉OA审批成功，instanceId={}", instanceId);
+                return instanceId;
+            }
+
+            // 新版API错误时返回 code 和 message
+            String code = json.getStr("code");
+            String message = json.getStr("message");
+            if (StrUtil.isNotEmpty(code)) {
+                log.error("发起钉钉OA审批失败: code={}, message={}", code, message);
+                return null;
+            }
+
+            log.warn("发起钉钉OA审批返回结果异常: {}", result);
+            return null;
+        } catch (Exception e) {
+            log.error("发起钉钉OA审批异常", e);
+            return null;
+        }
     }
 }

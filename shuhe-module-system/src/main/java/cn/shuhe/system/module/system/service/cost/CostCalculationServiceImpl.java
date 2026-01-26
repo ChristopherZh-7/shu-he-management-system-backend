@@ -27,6 +27,8 @@ import java.time.YearMonth;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.convertSet;
+
 /**
  * 成本计算 Service 实现类
  *
@@ -191,13 +193,16 @@ public class CostCalculationServiceImpl implements CostCalculationService {
             reqVO.setYear(LocalDate.now().getYear());
         }
 
+        // 获取部门条件：包含指定部门及其所有子部门
+        Set<Long> deptCondition = getDeptCondition(reqVO.getDeptId());
+
         // 查询用户列表 - 必须有部门的用户
         IPage<AdminUserDO> userPage = adminUserMapper.selectPage(
                 new Page<>(reqVO.getPageNo(), reqVO.getPageSize()),
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<AdminUserDO>()
                         .isNotNull(AdminUserDO::getDeptId) // 必须有部门
                         .like(StrUtil.isNotEmpty(reqVO.getNickname()), AdminUserDO::getNickname, reqVO.getNickname())
-                        .eq(reqVO.getDeptId() != null, AdminUserDO::getDeptId, reqVO.getDeptId())
+                        .in(CollUtil.isNotEmpty(deptCondition), AdminUserDO::getDeptId, deptCondition)
                         .like(StrUtil.isNotEmpty(reqVO.getPositionLevel()), AdminUserDO::getPositionLevel, reqVO.getPositionLevel())
                         .eq(AdminUserDO::getStatus, 0) // 只查询正常状态的用户
                         .orderByAsc(AdminUserDO::getDeptId, AdminUserDO::getId) // 按部门排序
@@ -657,6 +662,21 @@ public class CostCalculationServiceImpl implements CostCalculationService {
         }
 
         return weekendCount;
+    }
+
+    /**
+     * 获得部门条件：查询指定部门的子部门编号们，包括自身
+     *
+     * @param deptId 部门编号
+     * @return 部门编号集合
+     */
+    private Set<Long> getDeptCondition(Long deptId) {
+        if (deptId == null) {
+            return Collections.emptySet();
+        }
+        Set<Long> deptIds = convertSet(deptService.getChildDeptList(deptId), DeptDO::getId);
+        deptIds.add(deptId); // 包括自身
+        return deptIds;
     }
 
 }

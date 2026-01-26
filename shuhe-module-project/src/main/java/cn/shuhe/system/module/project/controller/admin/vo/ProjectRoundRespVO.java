@@ -61,6 +61,17 @@ public class ProjectRoundRespVO {
     @Schema(description = "备注")
     private String remark;
 
+    // ========== 渗透测试附件（来自服务执行申请）==========
+
+    @Schema(description = "授权书附件URL列表")
+    private List<String> authorizationUrls;
+
+    @Schema(description = "测试范围附件URL列表")
+    private List<String> testScopeUrls;
+
+    @Schema(description = "账号密码附件URL列表")
+    private List<String> credentialsUrls;
+
     // ========== 通用字段 ==========
 
     @Schema(description = "创建时间")

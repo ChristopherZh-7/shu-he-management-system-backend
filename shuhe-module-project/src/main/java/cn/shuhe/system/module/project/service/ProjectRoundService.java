@@ -110,4 +110,12 @@ public interface ProjectRoundService {
      */
     int getRoundCountByServiceItemId(Long serviceItemId);
 
+    /**
+     * 设置轮次执行人
+     *
+     * @param roundId 轮次ID
+     * @param executorIds 执行人ID列表
+     */
+    void setExecutors(Long roundId, java.util.List<Long> executorIds);
+
 }

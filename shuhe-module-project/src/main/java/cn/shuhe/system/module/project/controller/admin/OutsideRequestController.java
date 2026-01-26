@@ -2,6 +2,7 @@ package cn.shuhe.system.module.project.controller.admin;
 
 import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.framework.common.pojo.PageResult;
+import cn.shuhe.system.module.project.controller.admin.vo.OutsideMemberFinishReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.OutsideMemberRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.OutsideRequestPageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.OutsideRequestRespVO;
@@ -145,6 +146,28 @@ public class OutsideRequestController {
     public CommonResult<List<OutsideMemberRespVO>> getOutsideMembers(@RequestParam("requestId") Long requestId) {
         List<OutsideMemberDO> members = outsideRequestService.getOutsideMembers(requestId);
         return success(BeanUtils.toBean(members, OutsideMemberRespVO.class));
+    }
+
+    @PostMapping("/member/finish")
+    @Operation(summary = "外出人员确认完成", description = "外出人员回来后确认完成，可选择是否上传附件")
+    @PreAuthorize("@ss.hasPermission('project:outside-request:update')")
+    public CommonResult<Boolean> finishOutsideMember(@Valid @RequestBody OutsideMemberFinishReqVO reqVO) {
+        outsideRequestService.finishOutsideMember(
+                reqVO.getMemberId(),
+                reqVO.getHasAttachment(),
+                reqVO.getAttachmentUrl(),
+                reqVO.getFinishRemark()
+        );
+        return success(true);
+    }
+
+    @GetMapping("/member/get")
+    @Operation(summary = "获得外出人员记录详情")
+    @Parameter(name = "memberId", description = "外出人员记录ID", required = true)
+    @PreAuthorize("@ss.hasPermission('project:outside-request:query')")
+    public CommonResult<OutsideMemberRespVO> getOutsideMember(@RequestParam("memberId") Long memberId) {
+        OutsideMemberDO member = outsideRequestService.getOutsideMember(memberId);
+        return success(BeanUtils.toBean(member, OutsideMemberRespVO.class));
     }
 
     @GetMapping("/count-by-service-item")

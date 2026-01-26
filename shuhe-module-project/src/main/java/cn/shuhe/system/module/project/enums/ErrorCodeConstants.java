@@ -48,9 +48,16 @@ public interface ErrorCodeConstants {
     ErrorCode OUTSIDE_REQUEST_TARGET_DEPT_NOT_EXISTS = new ErrorCode(1_030_008_001, "目标部门不存在");
     ErrorCode OUTSIDE_REQUEST_CANNOT_UPDATE = new ErrorCode(1_030_008_002, "外出请求已审批，无法修改");
     ErrorCode OUTSIDE_REQUEST_CANNOT_DELETE = new ErrorCode(1_030_008_003, "外出请求已审批，无法删除");
+    ErrorCode OUTSIDE_MEMBER_NOT_EXISTS = new ErrorCode(1_030_008_004, "外出人员记录不存在");
+    ErrorCode OUTSIDE_MEMBER_ALREADY_FINISHED = new ErrorCode(1_030_008_005, "该外出人员已确认完成");
 
     // ========== 报告生成 1-030-009-000 ==========
     ErrorCode REPORT_TEMPLATE_NOT_EXISTS = new ErrorCode(1_030_009_000, "报告模板不存在");
     ErrorCode REPORT_GENERATE_FAILED = new ErrorCode(1_030_009_001, "报告生成失败");
+
+    // ========== 服务执行申请 1-030-010-000 ==========
+    ErrorCode SERVICE_EXECUTION_NOT_EXISTS = new ErrorCode(1_030_010_000, "服务执行申请不存在");
+    ErrorCode SERVICE_EXECUTION_STATUS_NOT_PENDING = new ErrorCode(1_030_010_001, "服务执行申请状态不是待审批");
+    ErrorCode SERVICE_EXECUTION_CANNOT_DELETE = new ErrorCode(1_030_010_002, "服务执行申请已审批，无法删除");
 
 }

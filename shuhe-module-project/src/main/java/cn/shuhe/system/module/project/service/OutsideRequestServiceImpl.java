@@ -336,4 +336,63 @@ public class OutsideRequestServiceImpl implements OutsideRequestService {
         return outsideRequestMapper.selectCountByServiceItemId(serviceItemId);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void finishOutsideMember(Long memberId, Boolean hasAttachment, String attachmentUrl, String finishRemark) {
+        // 校验外出人员记录存在
+        OutsideMemberDO member = outsideMemberMapper.selectById(memberId);
+        if (member == null) {
+            throw exception(OUTSIDE_MEMBER_NOT_EXISTS);
+        }
+
+        // 校验是否已完成
+        if (member.getFinishStatus() != null && member.getFinishStatus() > 0) {
+            throw exception(OUTSIDE_MEMBER_ALREADY_FINISHED);
+        }
+
+        // 更新完成状态
+        OutsideMemberDO updateObj = new OutsideMemberDO();
+        updateObj.setId(memberId);
+        updateObj.setFinishStatus(Boolean.TRUE.equals(hasAttachment) ? 2 : 1); // 1=无附件完成, 2=有附件完成
+        updateObj.setFinishTime(java.time.LocalDateTime.now());
+        updateObj.setAttachmentUrl(attachmentUrl);
+        updateObj.setFinishRemark(finishRemark);
+        outsideMemberMapper.updateById(updateObj);
+
+        log.info("【外出人员】确认完成，memberId={}, hasAttachment={}", memberId, hasAttachment);
+
+        // === 闭环逻辑：检查是否所有外出人员都已完成 ===
+        Long requestId = member.getRequestId();
+        List<OutsideMemberDO> allMembers = outsideMemberMapper.selectListByRequestId(requestId);
+        
+        boolean allFinished = allMembers.stream()
+                .allMatch(m -> {
+                    // 当前刚更新的成员需要特殊处理（因为数据库还没提交）
+                    if (m.getId().equals(memberId)) {
+                        return true; // 刚刚确认完成的
+                    }
+                    return m.getFinishStatus() != null && m.getFinishStatus() > 0;
+                });
+
+        if (allFinished) {
+            // 所有人都完成了，更新外出请求状态为"已完成"(status=3)
+            OutsideRequestDO updateRequest = new OutsideRequestDO();
+            updateRequest.setId(requestId);
+            updateRequest.setStatus(3); // 已完成
+            outsideRequestMapper.updateById(updateRequest);
+            
+            log.info("【外出请求】所有人员已确认完成，外出请求闭环。requestId={}", requestId);
+        } else {
+            long finishedCount = allMembers.stream()
+                    .filter(m -> m.getId().equals(memberId) || (m.getFinishStatus() != null && m.getFinishStatus() > 0))
+                    .count();
+            log.info("【外出请求】当前完成进度：{}/{}，requestId={}", finishedCount, allMembers.size(), requestId);
+        }
+    }
+
+    @Override
+    public OutsideMemberDO getOutsideMember(Long memberId) {
+        return outsideMemberMapper.selectById(memberId);
+    }
+
 }

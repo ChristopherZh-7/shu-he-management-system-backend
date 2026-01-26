@@ -242,6 +242,60 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
         }
     }
 
+    @Override
+    public String startOutsideSuiteOaApproval(Long userId, String processCode,
+                                               String outsideType, String startTime, String endTime,
+                                               double durationValue, String projectName,
+                                               String reason, String destination) {
+        if (userId == null) {
+            log.warn("发起钉钉OA外出申请(套件模式)失败：发起人用户ID为空");
+            return null;
+        }
+
+        // 1. 获取启用的钉钉配置
+        List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
+        if (CollUtil.isEmpty(configs)) {
+            log.warn("发起钉钉OA外出申请(套件模式)失败：没有启用的钉钉配置");
+            return null;
+        }
+        DingtalkConfigDO config = configs.get(0);
+
+        // 2. 获取钉钉用户ID
+        String dingtalkUserId = getDingtalkUserIdByLocalUserId(userId);
+        if (dingtalkUserId == null) {
+            log.warn("发起钉钉OA外出申请(套件模式)失败：用户 {} 没有对应的钉钉用户ID", userId);
+            return null;
+        }
+
+        // 3. 获取用户的钉钉部门ID（使用映射表查询）
+        Long dingtalkDeptId = getDingtalkDeptIdByLocalUserId(userId);
+        if (dingtalkDeptId == null) {
+            log.warn("发起钉钉OA外出申请(套件模式)：用户 {} 没有找到钉钉部门ID，使用默认部门1", userId);
+            dingtalkDeptId = 1L; // 默认使用根部门
+        }
+
+        // 4. 获取 accessToken 并发起OA审批（套件模式）
+        try {
+            String accessToken = dingtalkApiService.getAccessToken(config);
+            return dingtalkApiService.startOutsideSuiteApproval(
+                    accessToken,
+                    processCode,
+                    dingtalkUserId,
+                    dingtalkDeptId,
+                    outsideType,
+                    startTime,
+                    endTime,
+                    durationValue,
+                    projectName,
+                    reason,
+                    destination
+            );
+        } catch (Exception e) {
+            log.error("发起钉钉OA外出申请(套件模式)异常", e);
+            return null;
+        }
+    }
+
     /**
      * 根据本地用户ID获取钉钉部门ID
      */

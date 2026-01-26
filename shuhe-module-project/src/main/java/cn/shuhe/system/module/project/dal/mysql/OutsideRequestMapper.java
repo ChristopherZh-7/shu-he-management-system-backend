@@ -73,4 +73,15 @@ public interface OutsideRequestMapper extends BaseMapperX<OutsideRequestDO> {
                 .eq(OutsideRequestDO::getTargetDeptId, targetDeptId));
     }
 
+    /**
+     * 查询需要提醒完成的外出请求
+     * 条件：状态为"待完成"(status=1)，且计划结束时间已过
+     */
+    default java.util.List<OutsideRequestDO> selectPendingFinishRequests(java.time.LocalDateTime beforeTime) {
+        return selectList(new LambdaQueryWrapperX<OutsideRequestDO>()
+                .eq(OutsideRequestDO::getStatus, 1) // 待完成状态
+                .le(OutsideRequestDO::getPlanEndTime, beforeTime) // 计划结束时间已过
+                .orderByAsc(OutsideRequestDO::getPlanEndTime));
+    }
+
 }

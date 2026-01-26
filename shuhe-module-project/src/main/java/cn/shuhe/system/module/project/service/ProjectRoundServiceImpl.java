@@ -11,9 +11,13 @@ import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import cn.shuhe.system.module.system.api.notify.NotifyMessageSendApi;
 import cn.shuhe.system.module.system.api.notify.dto.NotifySendSingleToUserReqDTO;
+import cn.shuhe.system.module.system.api.user.AdminUserApi;
+import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import cn.shuhe.system.module.system.dal.dataobject.dingtalkconfig.DingtalkConfigDO;
 import cn.shuhe.system.module.system.dal.dataobject.dingtalkmapping.DingtalkMappingDO;
 import cn.shuhe.system.module.system.dal.mysql.dingtalkmapping.DingtalkMappingMapper;
+import cn.shuhe.system.module.system.dal.dataobject.dict.DictDataDO;
+import cn.shuhe.system.module.system.service.dict.DictDataService;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkApiService;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkConfigService;
 import jakarta.annotation.Resource;
@@ -26,6 +30,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.shuhe.system.module.project.enums.ErrorCodeConstants.*;
@@ -64,6 +69,21 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
 
     @Resource
     private DingtalkMappingMapper dingtalkMappingMapper;
+
+    @Resource
+    private AdminUserApi adminUserApi;
+
+    @Resource
+    private DictDataService dictDataService;
+
+    /**
+     * 部门类型对应的服务类型字典类型
+     */
+    private static final Map<Integer, String> DEPT_TYPE_DICT_MAP = Map.of(
+            1, "project_service_type_security",
+            2, "project_service_type_operation",
+            3, "project_service_type_data"
+    );
 
     @Override
     public Long createProjectRound(ProjectRoundSaveReqVO createReqVO) {
@@ -272,9 +292,39 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
         }
 
         // 获取服务项信息（用于通知内容）
-        ServiceItemDO serviceItem = serviceItemMapper.selectById(round.getProjectId());
+        // 优先使用 serviceItemId，如果为空则回退使用 projectId（历史数据中 projectId 实际存储的是 serviceItemId）
+        Long serviceItemIdToQuery = round.getServiceItemId() != null ? round.getServiceItemId() : round.getProjectId();
+        ServiceItemDO serviceItem = serviceItemMapper.selectById(serviceItemIdToQuery);
         String customerName = serviceItem != null ? serviceItem.getCustomerName() : "未知客户";
-        String serviceType = serviceItem != null ? serviceItem.getServiceType() : "未知服务类型";
+        
+        // 获取服务类型中文名称（通过字典转换）
+        String serviceTypeName = "未知服务类型";
+        if (serviceItem != null && serviceItem.getServiceType() != null) {
+            // 根据部门类型获取对应的字典类型
+            Integer deptType = serviceItem.getDeptType();
+            if (deptType != null) {
+                String dictType = DEPT_TYPE_DICT_MAP.get(deptType);
+                if (dictType != null) {
+                    try {
+                        DictDataDO dictData = dictDataService.getDictData(dictType, serviceItem.getServiceType());
+                        if (dictData != null && dictData.getLabel() != null) {
+                            serviceTypeName = dictData.getLabel();
+                        } else {
+                            serviceTypeName = serviceItem.getServiceType(); // 回退使用编码
+                        }
+                    } catch (Exception e) {
+                        log.warn("【轮次通知】获取字典标签失败: dictType={}, value={}", dictType, serviceItem.getServiceType());
+                        serviceTypeName = serviceItem.getServiceType(); // 回退使用编码
+                    }
+                } else {
+                    log.warn("【轮次通知】未知的部门类型: deptType={}", deptType);
+                    serviceTypeName = serviceItem.getServiceType(); // 回退使用编码
+                }
+            } else {
+                log.warn("【轮次通知】服务项缺少部门类型: serviceItemId={}", serviceItem.getId());
+                serviceTypeName = serviceItem.getServiceType(); // 回退使用编码
+            }
+        }
 
         // 构建通知内容
         String roundName = round.getName() != null ? round.getName() : "第" + round.getRoundNo() + "次执行";
@@ -298,7 +348,7 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
                 "请及时处理！",
                 title,
                 customerName,
-                serviceType,
+                serviceTypeName,
                 roundName,
                 startTime,
                 endTime
@@ -312,7 +362,7 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
                 reqDTO.setTemplateCode("round-start-notification");
                 Map<String, Object> templateParams = new HashMap<>();
                 templateParams.put("customerName", customerName);
-                templateParams.put("serviceType", serviceType);
+                templateParams.put("serviceTypeName", serviceTypeName);
                 templateParams.put("roundName", roundName);
                 templateParams.put("startTime", startTime);
                 templateParams.put("endTime", endTime);
@@ -431,6 +481,37 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
     @Override
     public int getRoundCountByServiceItemId(Long serviceItemId) {
         return projectRoundMapper.selectCountByServiceItemId(serviceItemId);
+    }
+
+    @Override
+    public void setExecutors(Long roundId, List<Long> executorIds) {
+        if (roundId == null) {
+            return;
+        }
+
+        ProjectRoundDO round = projectRoundMapper.selectById(roundId);
+        if (round == null) {
+            log.warn("【轮次执行人】轮次不存在，roundId={}", roundId);
+            return;
+        }
+
+        // 获取执行人姓名
+        String executorNames = "";
+        if (CollUtil.isNotEmpty(executorIds)) {
+            List<AdminUserRespDTO> users = adminUserApi.getUserList(executorIds);
+            executorNames = users.stream()
+                    .map(AdminUserRespDTO::getNickname)
+                    .collect(Collectors.joining(","));
+        }
+
+        // 更新轮次执行人
+        ProjectRoundDO updateObj = new ProjectRoundDO();
+        updateObj.setId(roundId);
+        updateObj.setExecutorIds(JSONUtil.toJsonStr(executorIds));
+        updateObj.setExecutorNames(executorNames);
+        projectRoundMapper.updateById(updateObj);
+
+        log.info("【轮次执行人】设置成功，roundId={}, executorIds={}", roundId, executorIds);
     }
 
 }

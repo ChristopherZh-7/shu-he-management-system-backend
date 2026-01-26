@@ -6,6 +6,8 @@ import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectRoundRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectRoundSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundDO;
+import cn.shuhe.system.module.project.dal.dataobject.ServiceExecutionDO;
+import cn.shuhe.system.module.project.dal.mysql.ServiceExecutionMapper;
 import cn.shuhe.system.module.project.service.ProjectRoundService;
 import cn.shuhe.system.module.project.service.ReportGenerateService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,6 +41,9 @@ public class ProjectRoundController {
 
     @Resource
     private ReportGenerateService reportGenerateService;
+
+    @Resource
+    private ServiceExecutionMapper serviceExecutionMapper;
 
     @PostMapping("/create")
     @Operation(summary = "创建项目轮次")
@@ -111,6 +116,24 @@ public class ProjectRoundController {
             vo.setExecutorIds(JSONUtil.toList(round.getExecutorIds(), Long.class));
         }
         vo.setExecutorNames(round.getExecutorNames());
+        
+        // 填充渗透测试附件（从服务执行申请中获取）
+        try {
+            ServiceExecutionDO execution = serviceExecutionMapper.selectByRoundId(round.getId());
+            if (execution != null) {
+                if (StrUtil.isNotBlank(execution.getAuthorizationUrls())) {
+                    vo.setAuthorizationUrls(JSONUtil.toList(execution.getAuthorizationUrls(), String.class));
+                }
+                if (StrUtil.isNotBlank(execution.getTestScopeUrls())) {
+                    vo.setTestScopeUrls(JSONUtil.toList(execution.getTestScopeUrls(), String.class));
+                }
+                if (StrUtil.isNotBlank(execution.getCredentialsUrls())) {
+                    vo.setCredentialsUrls(JSONUtil.toList(execution.getCredentialsUrls(), String.class));
+                }
+            }
+        } catch (Exception e) {
+            // 忽略附件加载错误，不影响主流程
+        }
         
         return vo;
     }

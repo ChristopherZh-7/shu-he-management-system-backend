@@ -30,4 +30,22 @@ public class OutsideMemberRespVO {
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
 
+    @Schema(description = "确认状态：0未确认 1已确认 2已提交OA 3OA已通过", example = "0")
+    private Integer confirmStatus;
+
+    @Schema(description = "确认时间")
+    private LocalDateTime confirmTime;
+
+    @Schema(description = "完成状态：0未完成 1已完成（无附件） 2已完成（有附件）", example = "0")
+    private Integer finishStatus;
+
+    @Schema(description = "完成时间")
+    private LocalDateTime finishTime;
+
+    @Schema(description = "附件URL（多个附件用逗号分隔）", example = "https://example.com/file1.pdf,https://example.com/file2.pdf")
+    private String attachmentUrl;
+
+    @Schema(description = "完成备注", example = "已完成渗透测试，报告已上传")
+    private String finishRemark;
+
 }

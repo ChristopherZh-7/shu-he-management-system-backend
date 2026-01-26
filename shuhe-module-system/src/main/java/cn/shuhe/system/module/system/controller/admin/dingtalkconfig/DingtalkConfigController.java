@@ -202,4 +202,35 @@ public class DingtalkConfigController {
         }
     }
 
+    @Operation(summary = "获取OA审批实例详情（查看成功提交的表单数据格式）", 
+            description = "用于查看成功提交的审批实例的表单数据格式，便于调试API提交格式")
+    @GetMapping("/process-instance-detail")
+    @Parameter(name = "processInstanceId", description = "审批实例ID", required = true, example = "q-xHFXLSQzSBHYLhQ9dcSw07551769401729")
+    public CommonResult<Object> getProcessInstanceDetail(@RequestParam("processInstanceId") String processInstanceId) {
+        try {
+            // 1. 获取配置（使用第一个启用的配置）
+            List<DingtalkConfigDO> configList = dingtalkConfigService.getEnabledDingtalkConfigList();
+            if (configList == null || configList.isEmpty()) {
+                return CommonResult.error(404, "未找到可用的钉钉配置");
+            }
+            DingtalkConfigDO config = configList.get(0);
+            
+            // 2. 获取accessToken
+            String accessToken = dingtalkApiService.getAccessToken(config);
+            
+            // 3. 获取审批实例详情
+            String detailJson = dingtalkApiService.getProcessInstanceDetail(accessToken, processInstanceId);
+            
+            if (detailJson == null) {
+                return CommonResult.error(500, "获取审批实例详情失败，请检查实例ID是否正确");
+            }
+            
+            // 4. 解析并返回（格式化JSON以便查看）
+            return success(cn.hutool.json.JSONUtil.parse(detailJson));
+            
+        } catch (Exception e) {
+            return CommonResult.error(500, "获取审批实例详情异常: " + e.getMessage());
+        }
+    }
+
 }

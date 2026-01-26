@@ -67,4 +67,24 @@ public class OutsideMemberDO extends BaseDO {
      */
     private java.time.LocalDateTime confirmTime;
 
+    /**
+     * 完成状态：0未完成 1已完成（无附件） 2已完成（有附件）
+     */
+    private Integer finishStatus;
+
+    /**
+     * 完成时间
+     */
+    private java.time.LocalDateTime finishTime;
+
+    /**
+     * 附件URL（多个附件用逗号分隔）
+     */
+    private String attachmentUrl;
+
+    /**
+     * 完成备注
+     */
+    private String finishRemark;
+
 }

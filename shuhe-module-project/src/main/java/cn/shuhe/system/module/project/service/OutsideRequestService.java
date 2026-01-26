@@ -125,4 +125,22 @@ public interface OutsideRequestService {
      */
     Long getOutsideCountByServiceItemId(Long serviceItemId);
 
+    /**
+     * 外出人员确认完成
+     *
+     * @param memberId 外出人员记录ID
+     * @param hasAttachment 是否有附件
+     * @param attachmentUrl 附件URL
+     * @param finishRemark 完成备注
+     */
+    void finishOutsideMember(Long memberId, Boolean hasAttachment, String attachmentUrl, String finishRemark);
+
+    /**
+     * 获得外出人员记录
+     *
+     * @param memberId 外出人员记录ID
+     * @return 外出人员记录
+     */
+    OutsideMemberDO getOutsideMember(Long memberId);
+
 }

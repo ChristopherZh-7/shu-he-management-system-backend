@@ -24,7 +24,7 @@
         <module>shuhe-module-crm</module>
 <!--        <module>shuhe-module-erp</module>-->
         <module>shuhe-module-ai</module>
-        <module>shuhe-module-ticket</module>
+        <!-- <module>shuhe-module-ticket</module> 工单模块已删除 -->
         <module>shuhe-module-project</module>
         <!--        <module>shuhe-module-iot</module>-->
     </modules>
