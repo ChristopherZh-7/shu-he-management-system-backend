@@ -11,6 +11,7 @@ import cn.shuhe.system.module.project.dal.dataobject.ProjectMemberDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMemberMapper;
 import cn.shuhe.system.module.system.api.permission.PermissionApi;
+import cn.shuhe.system.module.system.controller.admin.dashboard.vo.DashboardStatisticsRespVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,8 @@ import org.springframework.validation.annotation.Validated;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoField;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -38,6 +41,9 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Resource
     private ProjectMemberMapper projectMemberMapper;
+
+    @Resource
+    private cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper serviceItemMapper;
 
     @Resource
     @org.springframework.context.annotation.Lazy // 延迟加载，避免循环依赖
@@ -109,17 +115,23 @@ public class ProjectServiceImpl implements ProjectService {
         // 1. 检查是否是超级管理员
         boolean isSuperAdmin = permissionApi.hasAnyRoles(userId, "super_admin");
         log.info("【getProjectPage】用户 {} 是否是超级管理员: {}", userId, isSuperAdmin);
+        
         if (isSuperAdmin) {
-            // 超级管理员可以看到所有项目
-            log.info("【getProjectPage】超级管理员，查询所有项目, pageReqVO.deptType={}, pageReqVO.status={}", 
-                    pageReqVO.getDeptType(), pageReqVO.getStatus());
-            PageResult<ProjectDO> result = projectMapper.selectPage(pageReqVO);
+            // 超级管理员可以看到所有项目，不再按服务项deptType过滤
+            // 原因：项目是主体，服务项是附属，不应该因为没有服务项就看不到项目
+            log.info("【getProjectPage】超级管理员，查询所有项目（不按服务项deptType过滤）, pageReqVO.status={}", 
+                    pageReqVO.getStatus());
+            
+            // 清除 deptType，超管直接查询所有项目
+            ProjectPageReqVO newReqVO = BeanUtils.toBean(pageReqVO, ProjectPageReqVO.class);
+            newReqVO.setDeptType(null);
+            PageResult<ProjectDO> result = projectMapper.selectPage(newReqVO);
             log.info("【getProjectPage】超级管理员查询结果: total={}, listSize={}", 
                     result.getTotal(), result.getList() != null ? result.getList().size() : 0);
             return result;
         }
 
-        // 2. 所有非超管用户（包括部门负责人）只能看到自己参与的项目
+        // 3. 所有非超管用户（包括部门负责人）只能看到自己参与的项目
         // 说明：项目可见性基于项目成员关系，当用户领取合同时会被自动添加为项目成员
         List<Long> projectIds = projectMemberMapper.selectProjectIdsByUserId(userId);
         log.info("【getProjectPage】用户 {} 参与的项目IDs: {}", userId, projectIds);
@@ -127,7 +139,17 @@ public class ProjectServiceImpl implements ProjectService {
             log.info("【getProjectPage】用户没有参与任何项目，返回空结果");
             return PageResult.empty();
         }
-        return projectMapper.selectPageByIds(pageReqVO, projectIds);
+        
+        // 4. 用户参与的项目始终显示，不受 deptType 过滤影响
+        // 原因：用户作为项目成员，应该能看到自己参与的项目，即使该项目暂时没有服务项
+        // 如果有 deptType 过滤，只是作为附加筛选条件，但不会完全排除用户参与的项目
+        // 注意：这里不再与 projectIdsByServiceItemDeptType 取交集，而是直接使用用户参与的项目
+        log.info("【getProjectPage】用户参与的项目IDs（不进行deptType过滤）: {}", projectIds);
+        
+        // 清除 deptType，因为我们已经用项目ID列表来过滤了
+        ProjectPageReqVO newReqVO = BeanUtils.toBean(pageReqVO, ProjectPageReqVO.class);
+        newReqVO.setDeptType(null);
+        return projectMapper.selectPageByIds(newReqVO, projectIds);
     }
 
     @Override
@@ -138,9 +160,16 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     public void updateProjectStatus(Long id, Integer status) {
         // 1. 校验存在
-        validateProjectExists(id);
+        ProjectDO project = validateProjectExists(id);
 
-        // 2. 更新状态
+        // 2. 如果是开始项目（status=1），检查是否设置了项目负责人（仅记录日志，不阻断）
+        if (Integer.valueOf(1).equals(status)) {
+            if (CollUtil.isEmpty(project.getManagerIds())) {
+                log.warn("【项目状态更新】项目 {} 尚未设置负责人，但仍允许更新状态为进行中", id);
+            }
+        }
+
+        // 3. 更新状态
         ProjectDO updateObj = new ProjectDO();
         updateObj.setId(id);
         updateObj.setStatus(status);
@@ -194,6 +223,62 @@ public class ProjectServiceImpl implements ProjectService {
                 .build();
         projectMemberMapper.insert(member);
         log.info("【项目成员】已将用户 {} ({}) 添加为项目 {} 的成员，角色类型={}", userId, nickname, projectId, roleType);
+    }
+
+    @Override
+    public DashboardStatisticsRespVO.ProjectStats getProjectStats(Long userId) {
+        List<Long> projectIds = resolveProjectIdsForUser(userId);
+        if (projectIds != null && projectIds.isEmpty()) {
+            return DashboardStatisticsRespVO.ProjectStats.builder()
+                    .activeCount(0)
+                    .totalCount(0)
+                    .monthlyNewCount(0)
+                    .completedCount(0)
+                    .build();
+        }
+        long totalCount = projectMapper.selectCountByStatusAndIds(null, projectIds);
+        long activeCount = projectMapper.selectCountByStatusAndIds(1, projectIds);   // 1-进行中
+        long completedCount = projectMapper.selectCountByStatusAndIds(2, projectIds); // 2-已完成
+        LocalDateTime monthStart = LocalDateTime.now().withDayOfMonth(1).with(ChronoField.NANO_OF_DAY, 0);
+        long monthlyNewCount = projectMapper.selectCountByCreateTimeAfterAndIds(monthStart, projectIds);
+        return DashboardStatisticsRespVO.ProjectStats.builder()
+                .activeCount((int) activeCount)
+                .totalCount((int) totalCount)
+                .monthlyNewCount((int) monthlyNewCount)
+                .completedCount((int) completedCount)
+                .build();
+    }
+
+    @Override
+    public List<DashboardStatisticsRespVO.PieChartData> getProjectDistribution(Long userId, boolean isAdmin) {
+        List<Long> projectIds = resolveProjectIdsForUser(userId);
+        if (projectIds != null && projectIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+        long active = projectMapper.selectCountByStatusAndIds(1, projectIds);
+        long completed = projectMapper.selectCountByStatusAndIds(2, projectIds);
+        long draft = projectMapper.selectCountByStatusAndIds(0, projectIds);
+        List<DashboardStatisticsRespVO.PieChartData> list = new ArrayList<>();
+        if (active > 0) {
+            list.add(DashboardStatisticsRespVO.PieChartData.builder().name("进行中").value((int) active).color("#5470c6").build());
+        }
+        if (completed > 0) {
+            list.add(DashboardStatisticsRespVO.PieChartData.builder().name("已完成").value((int) completed).color("#91cc75").build());
+        }
+        if (draft > 0) {
+            list.add(DashboardStatisticsRespVO.PieChartData.builder().name("草稿").value((int) draft).color("#fac858").build());
+        }
+        return list;
+    }
+
+    /**
+     * 解析当前用户可见的项目ID列表：超管为 null（表示全部），否则为参与的项目ID
+     */
+    private List<Long> resolveProjectIdsForUser(Long userId) {
+        if (permissionApi.hasAnyRoles(userId, "super_admin")) {
+            return null;
+        }
+        return projectMemberMapper.selectProjectIdsByUserId(userId);
     }
 
 }

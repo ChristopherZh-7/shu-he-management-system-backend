@@ -38,9 +38,6 @@ public class ServiceItemPageReqVO extends PageParam {
     @Schema(description = "优先级：0低 1中 2高", example = "1")
     private Integer priority;
 
-    @Schema(description = "服务项经理ID", example = "1")
-    private Long managerId;
-
     @Schema(description = "客户名称", example = "某银行")
     private String customerName;
 

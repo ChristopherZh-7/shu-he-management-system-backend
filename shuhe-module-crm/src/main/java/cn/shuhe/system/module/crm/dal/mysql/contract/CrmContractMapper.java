@@ -12,10 +12,14 @@ import cn.shuhe.system.module.crm.enums.common.CrmAuditStatusEnum;
 import cn.shuhe.system.module.crm.enums.common.CrmBizTypeEnum;
 import cn.shuhe.system.module.crm.enums.common.CrmSceneTypeEnum;
 import cn.shuhe.system.module.crm.util.CrmPermissionUtils;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.lang.Nullable;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * CRM 合同 Mapper
@@ -86,26 +90,90 @@ public interface CrmContractMapper extends BaseMapperX<CrmContractDO> {
     }
 
     default Long selectCountByAudit(Long userId) {
+        return selectCountByAudit(userId, CrmSceneTypeEnum.OWNER.getType());
+    }
+
+    /**
+     * 待审核合同数量（支持管理员查全部）
+     */
+    default Long selectCountByAudit(Long userId, @Nullable Integer sceneType) {
         MPJLambdaWrapperX<CrmContractDO> query = new MPJLambdaWrapperX<>();
-        // 我负责的 + 非公海
-        CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CONTRACT.getType(),
-                CrmContractDO::getId, userId, CrmSceneTypeEnum.OWNER.getType());
-        // 未审核
+        if (sceneType != null) {
+            CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CONTRACT.getType(),
+                    CrmContractDO::getId, userId, sceneType);
+        }
         query.eq(CrmContractDO::getAuditStatus, CrmAuditStatusEnum.PROCESS.getStatus());
         return selectCount(query);
     }
 
     default Long selectCountByRemind(Long userId, CrmContractConfigDO config) {
+        return selectCountByRemind(userId, CrmSceneTypeEnum.OWNER.getType(), config);
+    }
+
+    /**
+     * 即将到期合同数量（支持管理员查全部）
+     */
+    default Long selectCountByRemind(Long userId, @Nullable Integer sceneType, CrmContractConfigDO config) {
         MPJLambdaWrapperX<CrmContractDO> query = new MPJLambdaWrapperX<>();
-        // 我负责的 + 非公海
-        CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CONTRACT.getType(),
-                CrmContractDO::getId, userId, CrmSceneTypeEnum.OWNER.getType());
-        // 即将到期
+        if (sceneType != null) {
+            CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CONTRACT.getType(),
+                    CrmContractDO::getId, userId, sceneType);
+        }
         LocalDateTime beginOfToday = LocalDateTimeUtil.beginOfDay(LocalDateTime.now());
         LocalDateTime endOfToday = LocalDateTimeUtil.endOfDay(LocalDateTime.now());
-        query.eq(CrmContractDO::getAuditStatus, CrmAuditStatusEnum.APPROVE.getStatus()) // 必须审批通过！
+        query.eq(CrmContractDO::getAuditStatus, CrmAuditStatusEnum.APPROVE.getStatus())
                 .between(CrmContractDO::getEndTime, beginOfToday, endOfToday.plusDays(config.getNotifyDays()));
         return selectCount(query);
+    }
+
+    /**
+     * 仪表板：合同总数量（sceneType 为 null 表示全部）
+     */
+    default Long selectCountForDashboard(Long userId, @Nullable Integer sceneType) {
+        MPJLambdaWrapperX<CrmContractDO> query = new MPJLambdaWrapperX<>();
+        if (sceneType != null) {
+            CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CONTRACT.getType(),
+                    CrmContractDO::getId, userId, sceneType);
+        }
+        return selectCount(query);
+    }
+
+    /**
+     * 仪表板：进行中合同数量（审批通过且未过期）
+     */
+    default Long selectCountActiveForDashboard(Long userId, @Nullable Integer sceneType) {
+        MPJLambdaWrapperX<CrmContractDO> query = new MPJLambdaWrapperX<>();
+        if (sceneType != null) {
+            CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CONTRACT.getType(),
+                    CrmContractDO::getId, userId, sceneType);
+        }
+        LocalDateTime endOfToday = LocalDateTimeUtil.endOfDay(LocalDateTime.now());
+        query.eq(CrmContractDO::getAuditStatus, CrmAuditStatusEnum.APPROVE.getStatus())
+                .and(w -> w.isNull(CrmContractDO::getEndTime).or().ge(CrmContractDO::getEndTime, endOfToday));
+        return selectCount(query);
+    }
+
+    /**
+     * 仪表板：合同总金额合计（单位：分），sceneType 为 null 表示全部，OWNER 表示仅本人负责
+     */
+    default BigDecimal selectSumTotalPriceForDashboard(Long userId, @Nullable Integer sceneType) {
+        QueryWrapper<CrmContractDO> q = new QueryWrapper<>();
+        q.select("COALESCE(SUM(total_price),0) as total");
+        if (sceneType != null && CrmSceneTypeEnum.OWNER.getType().equals(sceneType)) {
+            q.eq("owner_user_id", userId);
+        }
+        List<Map<String, Object>> list = selectMaps(q);
+        if (list == null || list.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        Object total = list.get(0).get("total");
+        if (total == null) {
+            return BigDecimal.ZERO;
+        }
+        if (total instanceof BigDecimal) {
+            return (BigDecimal) total;
+        }
+        return new BigDecimal(total.toString());
     }
 
     default List<CrmContractDO> selectListByCustomerIdOwnerUserId(Long customerId, Long ownerUserId) {
@@ -128,9 +196,11 @@ public interface CrmContractMapper extends BaseMapperX<CrmContractDO> {
 
     /**
      * 查询待领取合同分页（基于负责人的部门ID列表）
-     * 只要合同的分派部门中有任意一个是当前用户负责的部门，且该部门未被领取，就能查到
+     * 查询条件：claimStatus=0（全局待领取）且分派部门包含用户负责的部门
      * 
-     * 新 JSON 结构: [{"deptId":101,"claimed":false,...},
+     * 注意：此方法只做初步筛选，具体的"该部门是否已领取"检查在 Service 层进行二次过滤
+     * 
+     * JSON 结构: [{"deptId":101,"claimed":false,...},
      * {"deptId":102,"claimed":true,...}]
      */
     default PageResult<CrmContractDO> selectPageByClaimStatusAndLeaderDeptIds(CrmContractPageReqVO pageReqVO,
@@ -141,8 +211,8 @@ public interface CrmContractMapper extends BaseMapperX<CrmContractDO> {
                 .likeIfPresent(CrmContractDO::getName, pageReqVO.getName())
                 .orderByDesc(CrmContractDO::getId);
 
-        // 构建 OR 条件：assign_dept_ids 包含任意一个负责人的部门，且该部门未领取
-        // 使用 LIKE 搜索包含该部门ID的合同
+        // 构建 OR 条件：assign_dept_ids 包含任意一个负责人的部门
+        // 具体的 claimed 状态检查在 Service 层进行
         query.and(wrapper -> {
             for (int i = 0; i < leaderDeptIds.size(); i++) {
                 Long deptId = leaderDeptIds.get(i);

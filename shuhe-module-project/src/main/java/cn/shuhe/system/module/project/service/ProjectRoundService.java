@@ -83,16 +83,32 @@ public interface ProjectRoundService {
     Long createRoundByServiceItem(Long serviceItemId, String processInstanceId);
 
     /**
-     * 根据服务项创建执行轮次（带计划时间）
+     * 根据服务项创建执行轮次（带截止日期）
      *
      * @param serviceItemId 服务项ID
      * @param processInstanceId 工作流实例ID
-     * @param planStartTime 计划开始时间
-     * @param planEndTime 计划结束时间
+     * @param deadline 截止日期
+     * @param planEndTime 计划结束时间（保留字段）
      * @return 轮次编号
      */
     Long createRoundByServiceItem(Long serviceItemId, String processInstanceId, 
-            java.time.LocalDateTime planStartTime, java.time.LocalDateTime planEndTime);
+            java.time.LocalDateTime deadline, java.time.LocalDateTime planEndTime);
+
+    /**
+     * 根据服务项创建执行轮次（带截止日期和标识）
+     *
+     * @param serviceItemId 服务项ID
+     * @param processInstanceId 工作流实例ID
+     * @param deadline 截止日期
+     * @param planEndTime 计划结束时间（保留字段）
+     * @param isOutside 是否外出
+     * @param isCrossDept 是否跨部门
+     * @param serviceLaunchId 服务发起ID
+     * @return 轮次编号
+     */
+    Long createRoundByServiceItem(Long serviceItemId, String processInstanceId, 
+            java.time.LocalDateTime deadline, java.time.LocalDateTime planEndTime,
+            Boolean isOutside, Boolean isCrossDept, Long serviceLaunchId);
 
     /**
      * 获得服务项的轮次列表

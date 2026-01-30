@@ -263,7 +263,7 @@ shuhe:
     base-package: cn.shuhe.system
   web:
     admin-ui:
-      url: http://dashboard.shuhe.iocoder.cn # Admin 管理后台 UI 的地址
+      url: http://localhost # Admin 管理后台 UI 的地址
   xss:
     enable: false
     exclude-urls: # 如下两个 url，仅仅是为了演示，去掉配置也没关系

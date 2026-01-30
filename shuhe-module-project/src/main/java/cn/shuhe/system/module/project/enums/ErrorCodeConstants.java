@@ -14,6 +14,7 @@ public interface ErrorCodeConstants {
     ErrorCode PROJECT_NAME_DUPLICATE = new ErrorCode(1_030_001_001, "项目名称已存在");
     ErrorCode PROJECT_STATUS_ERROR = new ErrorCode(1_030_001_002, "项目状态错误");
     ErrorCode PROJECT_HAS_SERVICE_ITEMS = new ErrorCode(1_030_001_003, "项目下存在服务项，无法删除");
+    ErrorCode PROJECT_MANAGER_NOT_SET = new ErrorCode(1_030_001_004, "请先设置项目负责人才能开始项目");
 
     // ========== 服务项模块 1-030-007-000 ==========
     ErrorCode SERVICE_ITEM_NOT_EXISTS = new ErrorCode(1_030_007_000, "服务项不存在");
@@ -59,5 +60,36 @@ public interface ErrorCodeConstants {
     ErrorCode SERVICE_EXECUTION_NOT_EXISTS = new ErrorCode(1_030_010_000, "服务执行申请不存在");
     ErrorCode SERVICE_EXECUTION_STATUS_NOT_PENDING = new ErrorCode(1_030_010_001, "服务执行申请状态不是待审批");
     ErrorCode SERVICE_EXECUTION_CANNOT_DELETE = new ErrorCode(1_030_010_002, "服务执行申请已审批，无法删除");
+
+    // ========== 统一服务发起 1-030-011-000 ==========
+    ErrorCode SERVICE_LAUNCH_NOT_EXISTS = new ErrorCode(1_030_011_000, "服务发起记录不存在");
+    ErrorCode SERVICE_LAUNCH_STATUS_NOT_PENDING = new ErrorCode(1_030_011_001, "服务发起状态不是待审批");
+    ErrorCode SERVICE_LAUNCH_INVALID_EXECUTE_DEPT = new ErrorCode(1_030_011_002, "执行部门选择不合法：非本部门服务项只能选择服务项所属部门执行");
+    ErrorCode SERVICE_LAUNCH_CANNOT_DELETE = new ErrorCode(1_030_011_003, "服务发起已审批，无法删除");
+    ErrorCode SERVICE_LAUNCH_MEMBER_NOT_EXISTS = new ErrorCode(1_030_011_004, "服务发起执行人记录不存在");
+    ErrorCode SERVICE_LAUNCH_MEMBER_NOT_SELF = new ErrorCode(1_030_011_005, "只能操作自己的执行记录");
+
+    // ========== 安全运营 1-030-012-000 ==========
+    ErrorCode SECURITY_OPERATION_CONTRACT_NOT_EXISTS = new ErrorCode(1_030_012_000, "安全运营合同不存在");
+    ErrorCode SECURITY_OPERATION_CONTRACT_EXISTS = new ErrorCode(1_030_012_001, "该合同已存在安全运营记录");
+    ErrorCode SECURITY_OPERATION_MEMBER_NOT_EXISTS = new ErrorCode(1_030_012_002, "安全运营人员不存在");
+    ErrorCode SECURITY_OPERATION_SITE_NOT_EXISTS = new ErrorCode(1_030_012_003, "驻场点不存在");
+
+    // ========== 项目管理记录 1-030-013-000 ==========
+    ErrorCode WORK_RECORD_NOT_EXISTS = new ErrorCode(1_030_013_000, "项目管理记录不存在");
+    ErrorCode WORK_RECORD_UPDATE_NOT_OWNER = new ErrorCode(1_030_013_001, "只能修改自己创建的项目管理记录");
+    ErrorCode WORK_RECORD_DELETE_NOT_OWNER = new ErrorCode(1_030_013_002, "只能删除自己创建的项目管理记录");
+
+    // ========== 日常管理记录 1-030-014-000 ==========
+    ErrorCode DAILY_RECORD_NOT_EXISTS = new ErrorCode(1_030_014_000, "日常管理记录不存在");
+    ErrorCode DAILY_RECORD_UPDATE_NOT_OWNER = new ErrorCode(1_030_014_001, "只能修改自己创建的日常管理记录");
+    ErrorCode DAILY_RECORD_DELETE_NOT_OWNER = new ErrorCode(1_030_014_002, "只能删除自己创建的日常管理记录");
+    ErrorCode DAILY_RECORD_ALREADY_EXISTS = new ErrorCode(1_030_014_003, "该周已存在日常管理记录，请直接编辑");
+
+    // ========== 部门服务单 1-030-015-000 ==========
+    ErrorCode PROJECT_DEPT_SERVICE_NOT_EXISTS = new ErrorCode(1_030_015_000, "部门服务单不存在");
+    ErrorCode PROJECT_DEPT_SERVICE_EXISTS = new ErrorCode(1_030_015_001, "该项目下已存在相同部门类型的服务单");
+    ErrorCode PROJECT_DEPT_SERVICE_ALREADY_CLAIMED = new ErrorCode(1_030_015_002, "部门服务单已被领取");
+    ErrorCode PROJECT_DEPT_SERVICE_MANAGER_NOT_SET = new ErrorCode(1_030_015_003, "请先设置负责人才能开始");
 
 }

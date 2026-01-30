@@ -159,11 +159,18 @@ public interface CrmCustomerMapper extends BaseMapperX<CrmCustomerDO> {
     }
 
     default Long selectCountByTodayContact(Long ownerUserId) {
+        return selectCountByTodayContact(ownerUserId, CrmSceneTypeEnum.OWNER.getType());
+    }
+
+    /**
+     * 今日需联系客户数（sceneType 为 null 表示全部）
+     */
+    default Long selectCountByTodayContact(Long ownerUserId, @Nullable Integer sceneType) {
         MPJLambdaWrapperX<CrmCustomerDO> query = new MPJLambdaWrapperX<>();
-        // 我负责的 + 非公海
-        CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CUSTOMER.getType(),
-                CrmCustomerDO::getId, ownerUserId, CrmSceneTypeEnum.OWNER.getType());
-        // 今天需联系
+        if (sceneType != null) {
+            CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CUSTOMER.getType(),
+                    CrmCustomerDO::getId, ownerUserId, sceneType);
+        }
         LocalDateTime beginOfToday = LocalDateTimeUtil.beginOfDay(LocalDateTime.now());
         LocalDateTime endOfToday = LocalDateTimeUtil.endOfDay(LocalDateTime.now());
         query.between(CrmCustomerDO::getContactNextTime, beginOfToday, endOfToday);
@@ -171,12 +178,44 @@ public interface CrmCustomerMapper extends BaseMapperX<CrmCustomerDO> {
     }
 
     default Long selectCountByFollow(Long ownerUserId) {
+        return selectCountByFollow(ownerUserId, CrmSceneTypeEnum.OWNER.getType());
+    }
+
+    /**
+     * 待跟进客户数（sceneType 为 null 表示全部）
+     */
+    default Long selectCountByFollow(Long ownerUserId, @Nullable Integer sceneType) {
         MPJLambdaWrapperX<CrmCustomerDO> query = new MPJLambdaWrapperX<>();
-        // 我负责的 + 非公海
-        CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CUSTOMER.getType(),
-                CrmCustomerDO::getId, ownerUserId, CrmSceneTypeEnum.OWNER.getType());
-        // 未跟进
-        query.eq(CrmClueDO::getFollowUpStatus, false);
+        if (sceneType != null) {
+            CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CUSTOMER.getType(),
+                    CrmCustomerDO::getId, ownerUserId, sceneType);
+        }
+        query.eq(CrmCustomerDO::getFollowUpStatus, false);
+        return selectCount(query);
+    }
+
+    /**
+     * 仪表板：客户总数量（非公海；sceneType 为 null 表示全部）
+     */
+    default Long selectCountForDashboard(Long ownerUserId, @Nullable Integer sceneType) {
+        MPJLambdaWrapperX<CrmCustomerDO> query = new MPJLambdaWrapperX<>();
+        if (sceneType != null) {
+            CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CUSTOMER.getType(),
+                    CrmCustomerDO::getId, ownerUserId, sceneType);
+        }
+        return selectCount(query);
+    }
+
+    /**
+     * 仪表板：指定时间之后创建的客户数（本月新增等）
+     */
+    default Long selectCountByCreateTimeAfter(Long ownerUserId, @Nullable Integer sceneType, LocalDateTime after) {
+        MPJLambdaWrapperX<CrmCustomerDO> query = new MPJLambdaWrapperX<>();
+        if (sceneType != null) {
+            CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_CUSTOMER.getType(),
+                    CrmCustomerDO::getId, ownerUserId, sceneType);
+        }
+        query.ge(CrmCustomerDO::getCreateTime, after);
         return selectCount(query);
     }
 

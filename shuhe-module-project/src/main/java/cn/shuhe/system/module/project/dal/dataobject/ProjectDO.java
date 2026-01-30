@@ -2,16 +2,20 @@ package cn.shuhe.system.module.project.dal.dataobject;
 
 import cn.shuhe.system.framework.mybatis.core.dataobject.BaseDO;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.*;
+
+import java.util.List;
 
 /**
  * 项目 DO（顶层项目）
  * 
  * 项目是第一层级，一个项目下可以有多个服务项（ServiceItemDO）
  */
-@TableName("project")
+@TableName(value = "project", autoResultMap = true)
 @KeySequence("project_seq")
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -64,6 +68,20 @@ public class ProjectDO extends BaseDO {
      * 合同编号
      */
     private String contractNo;
+
+    // ========== 项目负责人 ==========
+
+    /**
+     * 项目负责人ID列表（JSON数组）
+     */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private List<Long> managerIds;
+
+    /**
+     * 项目负责人姓名列表（JSON数组）
+     */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private List<String> managerNames;
 
     // ========== 状态 ==========
 

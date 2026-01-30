@@ -60,12 +60,12 @@ public class ProjectRoundDO extends BaseDO {
     // ========== 时间信息 ==========
 
     /**
-     * 计划开始时间
+     * 截止日期（任务应在此日期前完成）
      */
-    private LocalDateTime planStartTime;
+    private LocalDateTime deadline;
 
     /**
-     * 计划结束时间
+     * 计划结束时间（保留字段，部分模块使用）
      */
     private LocalDateTime planEndTime;
 
@@ -117,5 +117,22 @@ public class ProjectRoundDO extends BaseDO {
      * 备注
      */
     private String remark;
+
+    // ========== 来源标识 ==========
+
+    /**
+     * 是否外出：0否 1是
+     */
+    private Boolean isOutside;
+
+    /**
+     * 是否跨部门：0否 1是
+     */
+    private Boolean isCrossDept;
+
+    /**
+     * 关联的服务发起ID
+     */
+    private Long serviceLaunchId;
 
 }

@@ -24,11 +24,23 @@ public class ProjectRoundSaveReqVO {
     @Schema(description = "轮次名称", example = "第1次渗透测试")
     private String name;
 
-    @Schema(description = "计划开始时间")
-    private LocalDateTime planStartTime;
+    @Schema(description = "截止日期（任务应在此日期前完成）")
+    private LocalDateTime deadline;
 
-    @Schema(description = "计划结束时间")
+    @Schema(description = "计划结束时间（保留字段）")
     private LocalDateTime planEndTime;
+
+    @Schema(description = "实际开始时间（完成时间）")
+    private LocalDateTime actualStartTime;
+
+    @Schema(description = "实际结束时间")
+    private LocalDateTime actualEndTime;
+
+    @Schema(description = "状态：0待执行 1执行中 2已完成 3已取消", example = "0")
+    private Integer status;
+
+    @Schema(description = "轮次序号", example = "1")
+    private Integer roundNo;
 
     @Schema(description = "执行人ID列表", example = "[1, 2, 3]")
     private List<Long> executorIds;

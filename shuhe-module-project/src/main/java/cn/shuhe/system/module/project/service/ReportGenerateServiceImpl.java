@@ -2,8 +2,6 @@ package cn.shuhe.system.module.project.service;
 
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
-import cn.shuhe.system.module.project.controller.admin.vo.OutsideMemberRespVO;
-import cn.shuhe.system.module.project.controller.admin.vo.OutsideRequestRespVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundTargetDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundVulnerabilityDO;
@@ -59,9 +57,6 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
     private static final String TEMPLATE_PATH = "templates/report/";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy年MM月dd日");
     private static final DateTimeFormatter DATETIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy年MM月dd日 HH:mm");
-
-    @Resource
-    private OutsideRequestService outsideRequestService;
 
     @Resource
     private ProjectService projectService;
@@ -174,21 +169,6 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
     }
 
     @Override
-    public byte[] generateOutsideRequestReport(Long requestId, String templateCode) {
-        // 1. 获取外协请求详情
-        OutsideRequestRespVO request = outsideRequestService.getOutsideRequestDetail(requestId);
-        if (request == null) {
-            throw exception(OUTSIDE_REQUEST_NOT_EXISTS);
-        }
-
-        // 2. 准备模板数据
-        Map<String, Object> data = buildOutsideRequestData(request);
-
-        // 3. 渲染模板生成报告
-        return renderTemplate(templateCode, data);
-    }
-
-    @Override
     public byte[] generateProjectReport(Long projectId, String templateCode) {
         // TODO: 实现项目报告生成
         throw new UnsupportedOperationException("项目报告生成功能待实现");
@@ -261,8 +241,8 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
         data.put("date", DateUtil.format(new Date(), "yyyy年MM月dd日"));
         data.put("today", DateUtil.format(new Date(), "yyyy年MM月dd日"));
 
-        // 时间信息
-        data.put("start_time", formatDateTime(round.getPlanStartTime()));
+        // 时间信息（deadline 作为截止日期显示）
+        data.put("start_time", formatDateTime(round.getDeadline()));
         data.put("end_time", formatDateTime(round.getPlanEndTime()));
         data.put("testers", StrUtil.blankToDefault(round.getExecutorNames(), "待分配"));
 
@@ -476,68 +456,6 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
             case "partially-fixed" -> "部分修复";
             default -> status;
         };
-    }
-
-    /**
-     * 构建外协请求报告数据
-     */
-    private Map<String, Object> buildOutsideRequestData(OutsideRequestRespVO request) {
-        Map<String, Object> data = new HashMap<>();
-
-        // 基本信息
-        data.put("projectName", request.getProjectName());
-        data.put("serviceItemName", request.getServiceItemName());
-        data.put("serviceType", request.getServiceType());
-        data.put("requestUserName", request.getRequestUserName());
-        data.put("requestDeptName", request.getRequestDeptName());
-        data.put("targetDeptName", request.getTargetDeptName());
-        data.put("destination", request.getDestination());
-        data.put("reason", request.getReason());
-        data.put("remark", StrUtil.blankToDefault(request.getRemark(), "无"));
-
-        // 时间信息
-        data.put("planStartTime", formatDateTime(request.getPlanStartTime()));
-        data.put("planEndTime", formatDateTime(request.getPlanEndTime()));
-        data.put("actualStartTime", formatDateTime(request.getActualStartTime()));
-        data.put("actualEndTime", formatDateTime(request.getActualEndTime()));
-        data.put("planDateRange", buildDateRange(request.getPlanStartTime(), request.getPlanEndTime()));
-        data.put("actualDateRange", buildDateRange(request.getActualStartTime(), request.getActualEndTime()));
-
-        // 状态
-        data.put("status", getStatusText(request.getStatus()));
-
-        // 生成时间
-        data.put("generateDate", DateUtil.format(new Date(), "yyyy年MM月dd日"));
-        data.put("generateDateTime", DateUtil.format(new Date(), "yyyy年MM月dd日 HH:mm:ss"));
-
-        // 外出人员列表
-        List<OutsideMemberRespVO> members = request.getMembers();
-        if (members != null && !members.isEmpty()) {
-            // 人员名单（逗号分隔）
-            String memberNames = members.stream()
-                    .map(OutsideMemberRespVO::getUserName)
-                    .collect(Collectors.joining("、"));
-            data.put("memberNames", memberNames);
-            data.put("memberCount", members.size());
-
-            // 人员表格数据（用于循环）
-            List<Map<String, Object>> memberTable = new ArrayList<>();
-            int seq = 1;
-            for (OutsideMemberRespVO member : members) {
-                Map<String, Object> row = new HashMap<>();
-                row.put("seq", seq++);
-                row.put("userName", member.getUserName());
-                row.put("userDeptName", member.getUserDeptName());
-                memberTable.add(row);
-            }
-            data.put("members", memberTable);
-        } else {
-            data.put("memberNames", "待指派");
-            data.put("memberCount", 0);
-            data.put("members", Collections.emptyList());
-        }
-
-        return data;
     }
 
     /**

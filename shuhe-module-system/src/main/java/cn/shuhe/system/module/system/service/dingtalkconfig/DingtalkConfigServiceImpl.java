@@ -514,6 +514,8 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                 // 获取离职员工的花名册信息（包含入职日期、离职日期、姓名）
                 Map<String, DingtalkApiService.HrmEmployeeInfo> hrmInfoMap = new HashMap<>();
                 Map<String, DingtalkApiService.HrmEmployeeInfo> hrmInfoByMobileMap = new HashMap<>();
+                // 获取离职详细信息（包含精确的离职时间）
+                Map<String, String> dimissionTimeMap = new HashMap<>();
                 if (!dimissionUserIds.isEmpty()) {
                     List<DingtalkApiService.HrmEmployeeInfo> hrmInfoList = dingtalkApiService.getEmployeeRosterInfo(accessToken, config.getAgentId(), dimissionUserIds);
                     log.info("获取离职员工花名册成功，返回 {} 条记录（发送 {} 个userid）", hrmInfoList.size(), dimissionUserIds.size());
@@ -524,6 +526,14 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                         if (StrUtil.isNotEmpty(info.getMobile())) {
                             hrmInfoByMobileMap.put(info.getMobile(), info);
                         }
+                    }
+                    
+                    // 调用新版API获取离职详细信息（包含精确的离职时间）
+                    try {
+                        dimissionTimeMap = dingtalkApiService.getDimissionInfos(accessToken, dimissionUserIds);
+                        log.info("获取离职详细信息成功，返回 {} 条离职时间记录", dimissionTimeMap.size());
+                    } catch (Exception e) {
+                        log.warn("获取离职详细信息失败（可能没有权限）: {}", e.getMessage());
                     }
                 }
                 
@@ -593,10 +603,9 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                             }
                             // 如果两个API都获取不到姓名，不更新nickname和username，保留现有值
                             
-                            // 更新入职/离职日期、职级（仅从花名册获取）
+                            // 更新入职日期（仅从花名册获取）
                             if (hrmInfo != null) {
                                 existingUser.setHireDate(parseDate(hrmInfo.getConfirmJoinTime()));
-                                existingUser.setResignDate(parseDate(hrmInfo.getLastWorkDay()));
                                 if (StrUtil.isNotEmpty(hrmInfo.getPositionLevel())) {
                                     // 记录职级变更
                                     String oldLevel = existingUser.getPositionLevel();
@@ -606,6 +615,16 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                                     }
                                     existingUser.setPositionLevel(newLevel);
                                 }
+                            }
+                            
+                            // 更新离职日期：优先使用新版API获取的离职时间，其次使用花名册中的离职日期
+                            String dimissionTime = dimissionTimeMap.get(dimissionUserId);
+                            if (StrUtil.isNotEmpty(dimissionTime)) {
+                                existingUser.setResignDate(parseDatetime(dimissionTime));
+                                log.info("设置离职时间(新API): userId={}, time={}", dimissionUserId, dimissionTime);
+                            } else if (hrmInfo != null && StrUtil.isNotEmpty(hrmInfo.getLastWorkDay())) {
+                                existingUser.setResignDate(parseDate(hrmInfo.getLastWorkDay()));
+                                log.info("设置离职时间(花名册): userId={}, time={}", dimissionUserId, hrmInfo.getLastWorkDay());
                             }
                             
                             adminUserMapper.updateById(existingUser);
@@ -655,6 +674,17 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                             String avatar = hrmInfo != null && StrUtil.isNotEmpty(hrmInfo.getAvatar()) ? hrmInfo.getAvatar()
                                     : (userInfo != null ? userInfo.getAvatar() : null);
                             
+                            // 计算离职日期：优先使用新版API获取的离职时间，其次使用花名册中的离职日期
+                            java.time.LocalDateTime resignDateValue = null;
+                            String newDimissionTime = dimissionTimeMap.get(dimissionUserId);
+                            if (StrUtil.isNotEmpty(newDimissionTime)) {
+                                resignDateValue = parseDatetime(newDimissionTime);
+                                log.info("新建离职员工，设置离职时间(新API): userId={}, time={}", dimissionUserId, newDimissionTime);
+                            } else if (hrmInfo != null && StrUtil.isNotEmpty(hrmInfo.getLastWorkDay())) {
+                                resignDateValue = parseDate(hrmInfo.getLastWorkDay());
+                                log.info("新建离职员工，设置离职时间(花名册): userId={}, time={}", dimissionUserId, hrmInfo.getLastWorkDay());
+                            }
+                            
                             AdminUserDO newUser = AdminUserDO.builder()
                                     .username(username)
                                     .password(passwordEncoder.encode("123456"))
@@ -665,7 +695,7 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                                     .status(CommonStatusEnum.DISABLE.getStatus()) // 离职员工账号禁用
                                     .employeeStatus(EMPLOYEE_STATUS_DIMISSION)
                                     .hireDate(hrmInfo != null ? parseDate(hrmInfo.getConfirmJoinTime()) : null)
-                                    .resignDate(hrmInfo != null ? parseDate(hrmInfo.getLastWorkDay()) : null)
+                                    .resignDate(resignDateValue)
                                     .positionLevel(hrmInfo != null ? hrmInfo.getPositionLevel() : null)
                                     .build();
                             adminUserMapper.insert(newUser);
@@ -875,6 +905,57 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
         } catch (Exception e) {
             log.warn("解析日期失败: {}", dateStr);
             return null;
+        }
+    }
+    
+    /**
+     * 解析日期时间字符串为LocalDateTime（支持多种格式）
+     * 支持格式：
+     * - yyyy-MM-dd HH:mm:ss（如 2026-01-13 12:12:42）
+     * - yyyy-MM-dd（如 2026-01-13）
+     * - 时间戳（毫秒）
+     */
+    private LocalDateTime parseDatetime(String datetimeStr) {
+        if (StrUtil.isEmpty(datetimeStr)) {
+            return null;
+        }
+        try {
+            // 尝试多种格式
+            if (datetimeStr.length() == 19) {
+                // yyyy-MM-dd HH:mm:ss 格式
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+                return LocalDateTime.parse(datetimeStr, formatter);
+            } else if (datetimeStr.length() == 10) {
+                // yyyy-MM-dd 格式
+                LocalDate date = LocalDate.parse(datetimeStr, DateTimeFormatter.ISO_LOCAL_DATE);
+                return date.atStartOfDay();
+            } else if (datetimeStr.length() == 13) {
+                // 时间戳（毫秒）
+                return LocalDateTime.ofInstant(
+                        java.time.Instant.ofEpochMilli(Long.parseLong(datetimeStr)),
+                        java.time.ZoneId.systemDefault());
+            } else if (datetimeStr.matches("\\d+")) {
+                // 其他长度的时间戳（可能是秒或毫秒）
+                long timestamp = Long.parseLong(datetimeStr);
+                if (timestamp > 10000000000L) {
+                    // 毫秒时间戳
+                    return LocalDateTime.ofInstant(
+                            java.time.Instant.ofEpochMilli(timestamp),
+                            java.time.ZoneId.systemDefault());
+                } else {
+                    // 秒时间戳
+                    return LocalDateTime.ofInstant(
+                            java.time.Instant.ofEpochSecond(timestamp),
+                            java.time.ZoneId.systemDefault());
+                }
+            }
+            // 尝试通用的日期时间格式解析
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            return LocalDateTime.parse(datetimeStr, formatter);
+        } catch (Exception e) {
+            log.warn("解析日期时间失败: {}", datetimeStr);
+            // 尝试回退到 parseDate
+            return parseDate(datetimeStr);
         }
     }
 

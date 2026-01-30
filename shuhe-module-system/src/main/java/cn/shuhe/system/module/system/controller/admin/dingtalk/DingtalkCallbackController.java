@@ -2,7 +2,7 @@ package cn.shuhe.system.module.system.controller.admin.dingtalk;
 
 import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.module.system.dal.dataobject.dingtalkconfig.DingtalkConfigDO;
-import cn.shuhe.system.module.system.service.dingtalk.OutsideConfirmService;
+import cn.shuhe.system.module.system.service.dingtalk.ServiceLaunchConfirmService;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkApiService;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkConfigService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,7 +33,7 @@ import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
 public class DingtalkCallbackController {
 
     @Resource
-    private OutsideConfirmService outsideConfirmService;
+    private ServiceLaunchConfirmService serviceLaunchConfirmService;
     
     @Resource
     private DingtalkApiService dingtalkApiService;
@@ -42,28 +42,26 @@ public class DingtalkCallbackController {
     private DingtalkConfigService dingtalkConfigService;
 
     /**
-     * 外出确认回调接口
+     * 服务发起确认回调接口
      * 
      * 员工在钉钉点击"确认外出"按钮后，会跳转到此页面
      * 系统自动发起钉钉OA外出申请
      */
-    @GetMapping("/outside-confirm")
-    @PermitAll // 允许匿名访问，因为这是钉钉回调接口，不需要登录
-    @Operation(summary = "外出确认回调", description = "员工点击钉钉消息中的确认按钮后触发")
-    @Parameter(name = "memberId", description = "外出人员记录ID", required = true)
+    @GetMapping("/service-launch-confirm")
+    @PermitAll
+    @Operation(summary = "服务发起确认回调", description = "员工点击钉钉消息中的确认按钮后触发（统一服务发起版本）")
+    @Parameter(name = "memberId", description = "执行人记录ID", required = true)
     @Parameter(name = "token", description = "验证令牌", required = true)
-    public void handleOutsideConfirm(
+    public void handleServiceLaunchConfirm(
             @RequestParam("memberId") Long memberId,
             @RequestParam("token") String token,
             HttpServletResponse response) throws IOException {
         
-        log.info("【外出确认回调】收到确认请求，memberId={}", memberId);
+        log.info("【服务发起确认回调】收到确认请求，memberId={}", memberId);
         
         try {
-            // 1. 验证 token 并处理确认
-            OutsideConfirmService.ConfirmResult result = outsideConfirmService.confirmOutside(memberId, token);
+            ServiceLaunchConfirmService.ConfirmResult result = serviceLaunchConfirmService.confirmOutside(memberId, token);
             
-            // 2. 返回结果页面（简单的HTML页面）
             response.setContentType("text/html;charset=UTF-8");
             if (result.isSuccess()) {
                 response.getWriter().write(buildSuccessHtml(result.getMessage()));
@@ -71,25 +69,25 @@ public class DingtalkCallbackController {
                 response.getWriter().write(buildErrorHtml(result.getMessage()));
             }
         } catch (Exception e) {
-            log.error("【外出确认回调】处理失败", e);
+            log.error("【服务发起确认回调】处理失败", e);
             response.setContentType("text/html;charset=UTF-8");
             response.getWriter().write(buildErrorHtml("处理失败：" + e.getMessage()));
         }
     }
 
     /**
-     * 外出确认API接口（供前端调用）
+     * 服务发起确认API接口（供前端调用）
      */
-    @PostMapping("/outside-confirm-api")
-    @PermitAll // 允许匿名访问，因为这是钉钉回调接口，不需要登录
-    @Operation(summary = "外出确认API", description = "通过API确认外出")
-    public CommonResult<Boolean> confirmOutsideApi(
+    @PostMapping("/service-launch-confirm-api")
+    @PermitAll
+    @Operation(summary = "服务发起确认API", description = "通过API确认外出（统一服务发起版本）")
+    public CommonResult<Boolean> confirmServiceLaunchApi(
             @RequestParam("memberId") Long memberId,
             @RequestParam("token") String token) {
         
-        log.info("【外出确认API】收到确认请求，memberId={}", memberId);
+        log.info("【服务发起确认API】收到确认请求，memberId={}", memberId);
         
-        OutsideConfirmService.ConfirmResult result = outsideConfirmService.confirmOutside(memberId, token);
+        ServiceLaunchConfirmService.ConfirmResult result = serviceLaunchConfirmService.confirmOutside(memberId, token);
         if (result.isSuccess()) {
             return success(true);
         } else {

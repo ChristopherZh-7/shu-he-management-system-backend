@@ -87,8 +87,13 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
 
     @Override
     public Long createProjectRound(ProjectRoundSaveReqVO createReqVO) {
-        // 校验服务项是否存在（projectId 实际上是 serviceItemId，历史原因）
-        ServiceItemDO serviceItem = serviceItemMapper.selectById(createReqVO.getProjectId());
+        // 优先使用 serviceItemId，兼容历史数据（projectId 曾用于存储 serviceItemId）
+        Long serviceItemId = createReqVO.getServiceItemId() != null 
+                ? createReqVO.getServiceItemId() 
+                : createReqVO.getProjectId();
+        
+        // 校验服务项是否存在
+        ServiceItemDO serviceItem = serviceItemMapper.selectById(serviceItemId);
         if (serviceItem == null) {
             throw exception(SERVICE_ITEM_NOT_EXISTS);
         }
@@ -98,7 +103,7 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
             Integer maxCount = serviceItem.getMaxCount();
             if (maxCount != null && maxCount > 0) {
                 // 统计有效轮次数量（待执行0 + 执行中1 + 已完成2，不包括已取消3）
-                Long validRoundCount = projectRoundMapper.selectValidRoundCount(createReqVO.getProjectId());
+                Long validRoundCount = projectRoundMapper.selectValidRoundCount(serviceItemId);
                 if (validRoundCount >= maxCount) {
                     throw exception(PROJECT_ROUND_COUNT_EXCEED_LIMIT, maxCount);
                 }
@@ -106,23 +111,29 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
         }
 
         // 校验轮次时间在合同范围内
-        Long contractId = getContractIdForRound(createReqVO.getServiceItemId(), serviceItem.getContractId());
-        validateRoundTimeInContractRange(contractId, createReqVO.getPlanStartTime(), createReqVO.getPlanEndTime());
+        Long contractId = getContractIdForRound(serviceItemId, serviceItem.getContractId());
+        validateRoundTimeInContractRange(contractId, createReqVO.getDeadline(), createReqVO.getPlanEndTime());
 
-        // 获取最大轮次序号
-        Integer maxRoundNo = projectRoundMapper.selectMaxRoundNo(createReqVO.getProjectId());
-        int newRoundNo = maxRoundNo + 1;
+        // 获取最大轮次序号（如果请求中指定了 roundNo，使用指定的；否则自动生成）
+        int newRoundNo;
+        if (createReqVO.getRoundNo() != null && createReqVO.getRoundNo() > 0) {
+            newRoundNo = createReqVO.getRoundNo();
+        } else {
+            Integer maxRoundNo = projectRoundMapper.selectMaxRoundNoByServiceItemId(serviceItemId);
+            newRoundNo = (maxRoundNo != null ? maxRoundNo : 0) + 1;
+        }
 
         // 转换并保存
         ProjectRoundDO round = new ProjectRoundDO();
         round.setProjectId(createReqVO.getProjectId());
-        round.setServiceItemId(createReqVO.getServiceItemId());
+        round.setServiceItemId(serviceItemId); // 使用解析后的 serviceItemId
         round.setName(createReqVO.getName());
-        round.setPlanStartTime(createReqVO.getPlanStartTime());
+        round.setDeadline(createReqVO.getDeadline());
         round.setPlanEndTime(createReqVO.getPlanEndTime());
         round.setRemark(createReqVO.getRemark());
         round.setRoundNo(newRoundNo);
-        round.setStatus(0); // 默认待执行
+        // 状态：如果指定了就用指定的，否则默认待执行
+        round.setStatus(createReqVO.getStatus() != null ? createReqVO.getStatus() : 0);
         round.setProgress(0);
 
         // 处理执行人ID列表，转换为JSON字符串
@@ -151,15 +162,29 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
         // 校验轮次时间在合同范围内
         ProjectDO project = projectMapper.selectById(existingRound.getProjectId());
         Long contractId = getContractIdForRound(existingRound.getServiceItemId(), project != null ? project.getContractId() : null);
-        validateRoundTimeInContractRange(contractId, updateReqVO.getPlanStartTime(), updateReqVO.getPlanEndTime());
+        validateRoundTimeInContractRange(contractId, updateReqVO.getDeadline(), updateReqVO.getPlanEndTime());
 
         // 更新
         ProjectRoundDO updateObj = new ProjectRoundDO();
         updateObj.setId(updateReqVO.getId());
         updateObj.setName(updateReqVO.getName());
-        updateObj.setPlanStartTime(updateReqVO.getPlanStartTime());
+        updateObj.setDeadline(updateReqVO.getDeadline());
         updateObj.setPlanEndTime(updateReqVO.getPlanEndTime());
         updateObj.setRemark(updateReqVO.getRemark());
+        
+        // 更新状态和实际时间
+        if (updateReqVO.getStatus() != null) {
+            updateObj.setStatus(updateReqVO.getStatus());
+        }
+        if (updateReqVO.getActualStartTime() != null) {
+            updateObj.setActualStartTime(updateReqVO.getActualStartTime());
+        }
+        if (updateReqVO.getActualEndTime() != null) {
+            updateObj.setActualEndTime(updateReqVO.getActualEndTime());
+        }
+        if (updateReqVO.getRoundNo() != null) {
+            updateObj.setRoundNo(updateReqVO.getRoundNo());
+        }
         
         // 处理执行人ID列表
         if (CollUtil.isNotEmpty(updateReqVO.getExecutorIds())) {
@@ -203,11 +228,11 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
     /**
      * 校验轮次时间在合同范围内
      */
-    private void validateRoundTimeInContractRange(Long contractId, LocalDateTime planStartTime, LocalDateTime planEndTime) {
+    private void validateRoundTimeInContractRange(Long contractId, LocalDateTime deadline, LocalDateTime planEndTime) {
         if (contractId == null) {
             return; // 没有关联合同，不校验
         }
-        if (planStartTime == null && planEndTime == null) {
+        if (deadline == null && planEndTime == null) {
             return; // 没有设置时间，不校验
         }
 
@@ -219,13 +244,15 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
         LocalDateTime contractStart = contractTime.get("startTime");
         LocalDateTime contractEnd = contractTime.get("endTime");
 
-        // 校验开始时间不能早于合同开始时间
-        if (planStartTime != null && contractStart != null && planStartTime.isBefore(contractStart)) {
+        // 校验截止日期不能早于合同开始时间（只比较日期，忽略时分秒）
+        if (deadline != null && contractStart != null 
+                && deadline.toLocalDate().isBefore(contractStart.toLocalDate())) {
             throw exception(PROJECT_ROUND_TIME_BEFORE_CONTRACT, contractStart.toLocalDate().toString());
         }
 
-        // 校验结束时间不能晚于合同结束时间
-        if (planEndTime != null && contractEnd != null && planEndTime.isAfter(contractEnd)) {
+        // 校验截止日期不能晚于合同结束时间（只比较日期，忽略时分秒）
+        if (deadline != null && contractEnd != null 
+                && deadline.toLocalDate().isAfter(contractEnd.toLocalDate())) {
             throw exception(PROJECT_ROUND_TIME_AFTER_CONTRACT, contractEnd.toLocalDate().toString());
         }
     }
@@ -331,8 +358,8 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
         String title = "轮次任务开始通知";
         
         // 格式化时间
-        String startTime = round.getPlanStartTime() != null 
-                ? round.getPlanStartTime().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) 
+        String deadline = round.getDeadline() != null 
+                ? round.getDeadline().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) 
                 : "-";
         String endTime = round.getPlanEndTime() != null 
                 ? round.getPlanEndTime().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) 
@@ -343,14 +370,14 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
                 "- **客户**：%s\n" +
                 "- **服务类型**：%s\n" +
                 "- **轮次**：%s\n" +
-                "- **计划开始**：%s\n" +
+                "- **截止日期**：%s\n" +
                 "- **计划结束**：%s\n\n" +
                 "请及时处理！",
                 title,
                 customerName,
                 serviceTypeName,
                 roundName,
-                startTime,
+                deadline,
                 endTime
         );
 
@@ -364,7 +391,7 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
                 templateParams.put("customerName", customerName);
                 templateParams.put("serviceTypeName", serviceTypeName);
                 templateParams.put("roundName", roundName);
-                templateParams.put("startTime", startTime);
+                templateParams.put("deadline", deadline);
                 templateParams.put("endTime", endTime);
                 reqDTO.setTemplateParams(templateParams);
                 notifyMessageSendApi.sendSingleMessageToAdmin(reqDTO);
@@ -436,7 +463,7 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createRoundByServiceItem(Long serviceItemId, String processInstanceId,
-            LocalDateTime planStartTime, LocalDateTime planEndTime) {
+            LocalDateTime deadline, LocalDateTime planEndTime) {
         // 1. 校验服务项存在
         ServiceItemDO serviceItem = serviceItemMapper.selectById(serviceItemId);
         if (serviceItem == null) {
@@ -459,7 +486,7 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
         round.setProcessInstanceId(processInstanceId);
         round.setRoundNo(newRoundNo);
         round.setName("第" + newRoundNo + "次");
-        round.setPlanStartTime(planStartTime);
+        round.setDeadline(deadline);
         round.setPlanEndTime(planEndTime);
         round.setStatus(0); // 待执行
         round.setProgress(0);
@@ -467,8 +494,51 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
 
         // 注意：不在创建时计数，而是在点击"开始"时才增加已使用次数
 
-        log.info("【服务执行】服务项 {} 创建了第 {} 轮执行，轮次ID: {}, 流程实例ID: {}, 计划开始: {}, 计划结束: {}",
-                serviceItemId, newRoundNo, round.getId(), processInstanceId, planStartTime, planEndTime);
+        log.info("【服务执行】服务项 {} 创建了第 {} 轮执行，轮次ID: {}, 流程实例ID: {}, 截止日期: {}, 计划结束: {}",
+                serviceItemId, newRoundNo, round.getId(), processInstanceId, deadline, planEndTime);
+
+        return round.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createRoundByServiceItem(Long serviceItemId, String processInstanceId,
+            LocalDateTime deadline, LocalDateTime planEndTime,
+            Boolean isOutside, Boolean isCrossDept, Long serviceLaunchId) {
+        // 1. 校验服务项存在
+        ServiceItemDO serviceItem = serviceItemMapper.selectById(serviceItemId);
+        if (serviceItem == null) {
+            throw exception(SERVICE_ITEM_NOT_EXISTS);
+        }
+
+        // 2. 检查是否可以发起新的执行（次数限制）
+        if (!serviceItemService.canStartExecution(serviceItemId)) {
+            throw exception(SERVICE_ITEM_EXECUTION_LIMIT_EXCEEDED);
+        }
+
+        // 3. 获取最大轮次序号
+        Integer maxRoundNo = projectRoundMapper.selectMaxRoundNoByServiceItemId(serviceItemId);
+        int newRoundNo = maxRoundNo + 1;
+
+        // 4. 创建轮次
+        ProjectRoundDO round = new ProjectRoundDO();
+        round.setProjectId(serviceItem.getProjectId());
+        round.setServiceItemId(serviceItemId);
+        round.setProcessInstanceId(processInstanceId);
+        round.setRoundNo(newRoundNo);
+        round.setName("第" + newRoundNo + "次");
+        round.setDeadline(deadline);
+        round.setPlanEndTime(planEndTime);
+        round.setStatus(0); // 待执行
+        round.setProgress(0);
+        // 设置外出和跨部门标识
+        round.setIsOutside(isOutside);
+        round.setIsCrossDept(isCrossDept);
+        round.setServiceLaunchId(serviceLaunchId);
+        projectRoundMapper.insert(round);
+
+        log.info("【服务执行】服务项 {} 创建了第 {} 轮执行，轮次ID: {}, 外出: {}, 跨部门: {}, 服务发起ID: {}",
+                serviceItemId, newRoundNo, round.getId(), isOutside, isCrossDept, serviceLaunchId);
 
         return round.getId();
     }

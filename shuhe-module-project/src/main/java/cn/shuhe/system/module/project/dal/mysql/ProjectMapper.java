@@ -6,8 +6,10 @@ import cn.shuhe.system.framework.mybatis.core.mapper.BaseMapperX;
 import cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectPageReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -16,6 +18,30 @@ import java.util.Set;
  */
 @Mapper
 public interface ProjectMapper extends BaseMapperX<ProjectDO> {
+
+    /**
+     * 按状态统计数量（可选按项目ID列表过滤）
+     *
+     * @param status    状态，null 表示不按状态过滤
+     * @param projectIds 项目ID列表，null 表示不过滤（查全部）
+     * @return 数量
+     */
+    default Long selectCountByStatusAndIds(Integer status, List<Long> projectIds) {
+        LambdaQueryWrapper<ProjectDO> wrapper = new LambdaQueryWrapper<ProjectDO>()
+                .eq(status != null, ProjectDO::getStatus, status)
+                .in(CollUtil.isNotEmpty(projectIds), ProjectDO::getId, projectIds);
+        return selectCount(wrapper);
+    }
+
+    /**
+     * 统计指定时间之后创建的数量（可选按项目ID列表过滤）
+     */
+    default Long selectCountByCreateTimeAfterAndIds(LocalDateTime after, List<Long> projectIds) {
+        LambdaQueryWrapper<ProjectDO> wrapper = new LambdaQueryWrapper<ProjectDO>()
+                .ge(ProjectDO::getCreateTime, after)
+                .in(CollUtil.isNotEmpty(projectIds), ProjectDO::getId, projectIds);
+        return selectCount(wrapper);
+    }
 
     default PageResult<ProjectDO> selectPage(ProjectPageReqVO reqVO) {
         return selectPage(reqVO, new LambdaQueryWrapperX<ProjectDO>()

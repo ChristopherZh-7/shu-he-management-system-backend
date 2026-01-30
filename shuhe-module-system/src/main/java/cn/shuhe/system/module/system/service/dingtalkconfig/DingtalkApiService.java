@@ -33,6 +33,8 @@ public class DingtalkApiService {
     private static final String DINGTALK_HRM_DIMISSION_LIST_URL = "https://oapi.dingtalk.com/topapi/smartwork/hrm/employee/querydimission";
     private static final String DINGTALK_HRM_ROSTER_META_URL = "https://oapi.dingtalk.com/topapi/smartwork/hrm/roster/meta/get";
     private static final String DINGTALK_HRM_EMPLOYEE_ROSTER_URL = "https://oapi.dingtalk.com/topapi/smartwork/hrm/employee/v2/list";
+    // 新版离职信息API（可获取离职时间）
+    private static final String DINGTALK_HRM_DIMISSION_INFO_URL = "https://api.dingtalk.com/v1.0/hrm/employees/dimissionInfos";
 
     /**
      * 获取钉钉access_token
@@ -437,6 +439,93 @@ public class DingtalkApiService {
     }
 
     /**
+     * 批量获取员工离职信息（包含离职时间等详细信息）
+     * 使用新版API: GET /v1.0/hrm/employees/dimissionInfos
+     *
+     * @param accessToken access_token
+     * @param userIds 员工userId列表
+     * @return 离职信息Map，key为userId，value为离职时间
+     */
+    public Map<String, String> getDimissionInfos(String accessToken, List<String> userIds) {
+        Map<String, String> resultMap = new HashMap<>();
+        if (userIds == null || userIds.isEmpty()) {
+            return resultMap;
+        }
+        
+        // 每次最多查询50人
+        int batchSize = 50;
+        for (int i = 0; i < userIds.size(); i += batchSize) {
+            List<String> batchUserIds = userIds.subList(i, Math.min(i + batchSize, userIds.size()));
+            Map<String, String> batchResult = getDimissionInfosBatch(accessToken, batchUserIds);
+            resultMap.putAll(batchResult);
+        }
+        return resultMap;
+    }
+    
+    /**
+     * 批量获取离职信息（单批次，最多50人）
+     */
+    private Map<String, String> getDimissionInfosBatch(String accessToken, List<String> userIds) {
+        Map<String, String> resultMap = new HashMap<>();
+        if (userIds == null || userIds.isEmpty()) {
+            return resultMap;
+        }
+        
+        // 新版API使用GET请求，userIdList作为Query参数（JSON数组格式，需URL编码）
+        // 根据钉钉API文档，userIdList需要是JSON数组格式，如 ["userId1","userId2"]
+        String userIdListJson = JSONUtil.toJsonStr(userIds);
+        String userIdListParamEncoded = cn.hutool.core.util.URLUtil.encodeAll(userIdListJson);
+        String url = DINGTALK_HRM_DIMISSION_INFO_URL + "?userIdList=" + userIdListParamEncoded;
+        
+        log.info("调用钉钉离职信息API, userIds数量={}", userIds.size());
+        
+        try {
+            // 新版API需要在Header中传递access_token
+            cn.hutool.http.HttpRequest request = cn.hutool.http.HttpRequest.get(url)
+                    .header("x-acs-dingtalk-access-token", accessToken)
+                    .header("Content-Type", "application/json");
+            
+            String result = request.execute().body();
+            log.info("钉钉离职信息API返回: {}", result);
+            
+            JSONObject json = JSONUtil.parseObj(result);
+            
+            // 检查是否有错误
+            if (json.containsKey("code")) {
+                String code = json.getStr("code");
+                String message = json.getStr("message", "未知错误");
+                log.warn("获取钉钉离职信息失败: code={}, message={}", code, message);
+                return resultMap;
+            }
+            
+            // 解析返回的离职信息列表
+            JSONArray resultList = json.getJSONArray("result");
+            if (resultList != null && !resultList.isEmpty()) {
+                for (int i = 0; i < resultList.size(); i++) {
+                    JSONObject info = resultList.getJSONObject(i);
+                    String userId = info.getStr("userId");
+                    // 离职时间字段可能是 lastWorkDay 或 gmtQuit
+                    String dimissionTime = info.getStr("lastWorkDay");
+                    if (StrUtil.isEmpty(dimissionTime)) {
+                        dimissionTime = info.getStr("gmtQuit");
+                    }
+                    if (StrUtil.isEmpty(dimissionTime)) {
+                        dimissionTime = info.getStr("gmtDimission");
+                    }
+                    if (StrUtil.isNotEmpty(userId) && StrUtil.isNotEmpty(dimissionTime)) {
+                        resultMap.put(userId, dimissionTime);
+                        log.info("获取到离职时间: userId={}, dimissionTime={}", userId, dimissionTime);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("调用钉钉离职信息API异常: {}", e.getMessage());
+        }
+        
+        return resultMap;
+    }
+
+    /**
      * 获取员工花名册信息（包含入职日期、离职日期等）
      *
      * @param accessToken access_token
@@ -470,10 +559,10 @@ public class DingtalkApiService {
         params.put("agentid", agentId);  // 必须参数
         params.put("userid_list", String.join(",", userIds));
         // 需要的花名册字段
-        // sys00-name: 姓名, sys01-confirmJoinTime: 入职时间, sys01-regularTime: 转正日期
+        // sys00-name: 姓名, sys00-confirmJoinTime: 入职时间（注意是sys00分组）, sys01-regularTime: 转正日期
         // 离职相关字段（钉钉API可能不返回）: sys01-terminateTime, sys02-lastWorkDay, sys02-quitDate, sys02-terminationDate
         // 需要的花名册字段，包含职级 sys01-positionLevel（注意职级在sys01分组下）
-        params.put("field_filter_list", "sys00-name,sys00-mobile,sys00-email,sys01-confirmJoinTime,sys01-regularTime,sys01-terminateTime,sys02-lastWorkDay,sys02-quitDate,sys02-terminationDate,sys00-avatar,sys01-positionLevel");
+        params.put("field_filter_list", "sys00-name,sys00-mobile,sys00-email,sys00-confirmJoinTime,sys01-regularTime,sys01-terminateTime,sys02-lastWorkDay,sys02-quitDate,sys02-terminationDate,sys00-avatar,sys01-positionLevel");
 
         log.info("调用钉钉花名册API, agentId={}, userIds={}", agentId, userIds);
         String result = HttpUtil.post(url, JSONUtil.toJsonStr(params));
@@ -578,8 +667,8 @@ public class DingtalkApiService {
             case "sys00-avatar":
                 info.setAvatar(fieldValue);
                 break;
-            case "sys01-confirmJoinTime":
-                // 入职日期
+            case "sys00-confirmJoinTime":
+                // 入职日期（注意是sys00分组，不是sys01）
                 info.setConfirmJoinTime(fieldValue);
                 break;
             case "sys01-regularTime":

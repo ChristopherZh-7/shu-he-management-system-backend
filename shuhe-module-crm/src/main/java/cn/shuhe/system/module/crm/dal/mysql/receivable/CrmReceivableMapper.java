@@ -14,8 +14,10 @@ import cn.shuhe.system.module.crm.enums.common.CrmSceneTypeEnum;
 import cn.shuhe.system.module.crm.util.CrmPermissionUtils;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.lang.Nullable;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -92,6 +94,33 @@ public interface CrmReceivableMapper extends BaseMapperX<CrmReceivableDO> {
 
     default Long selectCountByContractId(Long contractId) {
         return selectCount(CrmReceivableDO::getContractId, contractId);
+    }
+
+    /**
+     * 仪表板：指定时间范围内已审批通过的回款金额合计（单位：元）
+     * sceneType 为 null 表示全部，OWNER 表示仅本人负责
+     */
+    default BigDecimal selectSumPriceForDashboard(Long userId, @Nullable Integer sceneType,
+                                                    LocalDateTime start, LocalDateTime end) {
+        QueryWrapper<CrmReceivableDO> q = new QueryWrapper<>();
+        q.select("COALESCE(SUM(price),0) as total")
+                .eq("audit_status", CrmAuditStatusEnum.APPROVE.getStatus())
+                .between("return_time", start, end);
+        if (sceneType != null && CrmSceneTypeEnum.OWNER.getType().equals(sceneType)) {
+            q.eq("owner_user_id", userId);
+        }
+        List<Map<String, Object>> list = selectMaps(q);
+        if (list == null || list.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        Object total = list.get(0).get("total");
+        if (total == null) {
+            return BigDecimal.ZERO;
+        }
+        if (total instanceof BigDecimal) {
+            return (BigDecimal) total;
+        }
+        return new BigDecimal(total.toString());
     }
 
 }

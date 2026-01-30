@@ -44,4 +44,13 @@ public interface HolidayService {
      */
     List<HolidayDO> getHolidaysByYear(int year);
 
+    /**
+     * 计算两个日期之间的工作日数量
+     *
+     * @param startDate 开始日期
+     * @param endDate 结束日期
+     * @return 工作日数量
+     */
+    int countWorkdaysBetween(java.time.LocalDate startDate, java.time.LocalDate endDate);
+
 }

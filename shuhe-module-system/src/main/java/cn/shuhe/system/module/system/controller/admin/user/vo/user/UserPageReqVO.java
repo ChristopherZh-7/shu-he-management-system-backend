@@ -38,4 +38,7 @@ public class UserPageReqVO extends PageParam {
     @Schema(description = "角色编号", example = "1024")
     private Long roleId;
 
+    @Schema(description = "员工状态：1-在职 2-离职", example = "1")
+    private Integer employeeStatus;
+
 }

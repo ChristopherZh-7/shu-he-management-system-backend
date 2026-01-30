@@ -159,6 +159,49 @@ public class HolidayServiceImpl implements HolidayService {
         return holidays;
     }
 
+    @Override
+    public int countWorkdaysBetween(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null || startDate.isAfter(endDate)) {
+            return 0;
+        }
+
+        // 批量获取日期范围内的所有年份数据，避免 N+1 查询
+        int startYear = startDate.getYear();
+        int endYear = endDate.getYear();
+        
+        // 预加载所有相关年份的节假日数据到内存
+        Map<LocalDate, HolidayDO> holidayMap = new java.util.HashMap<>();
+        for (int year = startYear; year <= endYear; year++) {
+            List<HolidayDO> yearHolidays = getHolidaysByYear(year);
+            if (yearHolidays != null) {
+                for (HolidayDO h : yearHolidays) {
+                    holidayMap.put(h.getDate(), h);
+                }
+            }
+        }
+
+        // 在内存中计算工作日数量
+        int workingDays = 0;
+        LocalDate current = startDate;
+        while (!current.isAfter(endDate)) {
+            HolidayDO holiday = holidayMap.get(current);
+            if (holiday != null) {
+                if (holiday.getIsWorkday() != null && holiday.getIsWorkday() == 1) {
+                    workingDays++;
+                }
+            } else {
+                // 默认按周末判断
+                DayOfWeek dayOfWeek = current.getDayOfWeek();
+                if (dayOfWeek != DayOfWeek.SATURDAY && dayOfWeek != DayOfWeek.SUNDAY) {
+                    workingDays++;
+                }
+            }
+            current = current.plusDays(1);
+        }
+
+        return workingDays;
+    }
+
     /**
      * 同步默认节假日数据（只排除周末）
      */

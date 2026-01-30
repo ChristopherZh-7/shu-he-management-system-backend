@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
+import java.util.List;
+
 @Schema(description = "管理后台 - 项目保存 Request VO")
 @Data
 public class ProjectSaveReqVO {
@@ -33,6 +35,14 @@ public class ProjectSaveReqVO {
 
     @Schema(description = "合同编号", example = "HT-2026-001")
     private String contractNo;
+
+    // ========== 项目负责人 ==========
+
+    @Schema(description = "项目负责人ID列表", example = "[1, 2]")
+    private List<Long> managerIds;
+
+    @Schema(description = "项目负责人姓名列表", example = "[\"张三\", \"李四\"]")
+    private List<String> managerNames;
 
     // ========== 状态 ==========
 

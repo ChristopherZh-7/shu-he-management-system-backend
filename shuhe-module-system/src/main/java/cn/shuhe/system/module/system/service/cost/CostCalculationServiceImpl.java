@@ -77,6 +77,7 @@ public class CostCalculationServiceImpl implements CostCalculationService {
 
     static {
         // 安全服务/数据安全工资表
+        SALARY_SERVICE_DATA.put("INTERN", new BigDecimal("3000")); // 实习生
         SALARY_SERVICE_DATA.put("P1-1", new BigDecimal("6000"));
         SALARY_SERVICE_DATA.put("P1-2", new BigDecimal("7000"));
         SALARY_SERVICE_DATA.put("P1-3", new BigDecimal("8000"));
@@ -88,6 +89,7 @@ public class CostCalculationServiceImpl implements CostCalculationService {
         SALARY_SERVICE_DATA.put("P3-3", new BigDecimal("17000"));
 
         // 安全运营工资表
+        SALARY_OPERATION.put("INTERN", new BigDecimal("3000")); // 实习生
         SALARY_OPERATION.put("P1-1", new BigDecimal("5500"));
         SALARY_OPERATION.put("P1-2", new BigDecimal("6000"));
         SALARY_OPERATION.put("P1-3", new BigDecimal("6500"));
@@ -116,16 +118,14 @@ public class CostCalculationServiceImpl implements CostCalculationService {
 
     @Override
     public BigDecimal calculateBaseSalary(Integer deptType, String positionLevel) {
-        if (deptType == null || StrUtil.isEmpty(positionLevel)) {
+        if (deptType == null) {
+            log.debug("部门类型为空，无法计算工资");
             return BigDecimal.ZERO;
         }
 
         // 标准化职级格式（支持多种格式：P1-1, 初级P1-1, 中级P2-1 等）
+        // 如果职级为空或无法识别，normalizePositionLevel 会返回默认值 P1-1
         String normalizedLevel = normalizePositionLevel(positionLevel);
-        if (normalizedLevel == null) {
-            log.warn("无法识别的职级格式: {}", positionLevel);
-            return BigDecimal.ZERO;
-        }
 
         // 根据部门类型选择工资表
         Map<String, BigDecimal> salaryTable;
@@ -617,11 +617,19 @@ public class CostCalculationServiceImpl implements CostCalculationService {
 
     /**
      * 标准化职级格式
-     * 支持格式：P1-1, 初级P1-1, 中级P2-1, 高级P3-2 等
+     * 支持格式：P1-1, 初级P1-1, 中级P2-1, 高级P3-2, 实习 等
      */
     private String normalizePositionLevel(String positionLevel) {
         if (StrUtil.isEmpty(positionLevel)) {
-            return null;
+            // 职级为空时，使用默认最低职级 P1-1 进行成本核算
+            log.debug("职级为空，使用默认职级 P1-1 进行成本核算");
+            return "P1-1";
+        }
+
+        // 处理特殊职级：实习
+        String trimmedLevel = positionLevel.trim();
+        if ("实习".equals(trimmedLevel) || "实习生".equals(trimmedLevel) || "intern".equalsIgnoreCase(trimmedLevel)) {
+            return "INTERN";
         }
 
         // 尝试提取 Px-y 格式
@@ -633,7 +641,9 @@ public class CostCalculationServiceImpl implements CostCalculationService {
             return matcher.group().toUpperCase();
         }
 
-        return null;
+        // 对于无法识别的职级格式，使用默认最低职级 P1-1
+        log.warn("无法识别的职级格式: {}，使用默认职级 P1-1 进行成本核算", positionLevel);
+        return "P1-1";
     }
 
     /**

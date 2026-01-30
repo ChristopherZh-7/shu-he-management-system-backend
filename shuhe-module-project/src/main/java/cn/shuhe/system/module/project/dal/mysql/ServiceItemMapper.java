@@ -23,7 +23,6 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
                 .eqIfPresent(ServiceItemDO::getServiceType, reqVO.getServiceType())
                 .eqIfPresent(ServiceItemDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ServiceItemDO::getPriority, reqVO.getPriority())
-                .eqIfPresent(ServiceItemDO::getManagerId, reqVO.getManagerId())
                 .likeIfPresent(ServiceItemDO::getName, reqVO.getName())
                 .likeIfPresent(ServiceItemDO::getCode, reqVO.getCode())
                 .likeIfPresent(ServiceItemDO::getCustomerName, reqVO.getCustomerName())
@@ -96,6 +95,50 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
                 .eq(ServiceItemDO::getProjectId, projectId)
                 .eq(ServiceItemDO::getServiceType, "outside")
                 .orderByDesc(ServiceItemDO::getId));
+    }
+
+    /**
+     * 根据安全运营合同ID查询服务项列表
+     */
+    default List<ServiceItemDO> selectListBySoContractId(Long soContractId) {
+        return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getSoContractId, soContractId)
+                .eq(ServiceItemDO::getVisible, 1)
+                .orderByDesc(ServiceItemDO::getId));
+    }
+
+    /**
+     * 根据部门类型查询项目ID列表（去重）
+     * 用于过滤：只显示有指定deptType服务项的项目
+     */
+    default List<Long> selectProjectIdsByDeptType(Integer deptType) {
+        return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getDeptType, deptType)
+                .eq(ServiceItemDO::getVisible, 1)
+                .select(ServiceItemDO::getProjectId))
+                .stream()
+                .map(ServiceItemDO::getProjectId)
+                .distinct()
+                .toList();
+    }
+
+    /**
+     * 根据项目ID和部门类型统计服务项数量
+     */
+    default Long selectCountByProjectIdAndDeptType(Long projectId, Integer deptType) {
+        return selectCount(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getProjectId, projectId)
+                .eq(ServiceItemDO::getDeptType, deptType)
+                .eq(ServiceItemDO::getVisible, 1));
+    }
+
+    /**
+     * 根据部门服务单ID统计服务项数量
+     */
+    default Long selectCountByDeptServiceId(Long deptServiceId) {
+        return selectCount(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getDeptServiceId, deptServiceId)
+                .eq(ServiceItemDO::getVisible, 1));
     }
 
 }

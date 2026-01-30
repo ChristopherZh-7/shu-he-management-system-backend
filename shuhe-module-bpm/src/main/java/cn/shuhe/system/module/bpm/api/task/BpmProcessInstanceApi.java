@@ -19,6 +19,14 @@ public interface BpmProcessInstanceApi {
      */
     String createProcessInstance(Long userId, @Valid BpmProcessInstanceCreateReqDTO reqDTO);
 
-
+    /**
+     * 检查用户是否是指定流程实例的任务审批人（包括待办任务和已完成任务）
+     * 用于：审批人在审批过程中和审批完成后，都能查看相关业务数据
+     *
+     * @param userId            用户编号
+     * @param processInstanceId 流程实例编号
+     * @return 是否是审批人（当前或曾经）
+     */
+    boolean isTaskAssignee(Long userId, String processInstanceId);
 
 }

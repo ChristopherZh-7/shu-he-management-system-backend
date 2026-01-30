@@ -18,6 +18,7 @@ import cn.shuhe.system.module.system.controller.admin.user.vo.user.UserSimpleRes
 import cn.shuhe.system.module.system.dal.dataobject.dept.DeptDO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.PostDO;
 import cn.shuhe.system.module.system.dal.dataobject.user.AdminUserDO;
+import cn.shuhe.system.module.system.dal.mysql.cost.ContractInfoMapper;
 import cn.shuhe.system.module.system.dal.mysql.dept.PostMapper;
 import cn.shuhe.system.module.system.service.dept.DeptService;
 import cn.shuhe.system.module.system.service.user.AdminUserService;
@@ -57,6 +58,9 @@ public class ServiceItemController {
     @Resource
     private DeptService deptService;
 
+    @Resource
+    private ContractInfoMapper contractInfoMapper;
+
     /**
      * 部门类型对应的岗位code映射
      */
@@ -66,21 +70,23 @@ public class ServiceItemController {
             3, List.of("shujuanquanfuwugongchengshi", "shujuanquanfuwuzhuguan") // 数据安全
     );
 
+    /**
+     * 部门类型对应的管理岗位code映射（组长、主管）
+     */
+    private static final Map<Integer, List<String>> DEPT_TYPE_MANAGER_POST_CODES = Map.of(
+            1, List.of("anquanjishufuwuzuzhang"), // 安全服务管理
+            2, List.of("anquanyunyingfuwuzuzhang", "anquanyunyingfuwuzhuguan"), // 安全运营管理
+            3, List.of("shujuanquanfuwuzhuguan") // 数据安全管理
+    );
+
     @PostMapping("/create")
     @Operation(summary = "创建服务项")
     @PreAuthorize("@ss.hasPermission('project:service-item:create')")
     public CommonResult<Long> createServiceItem(@Valid @RequestBody ServiceItemSaveReqVO createReqVO) {
-        // 根据当前用户的部门，向上遍历找到顶级父部门
-        if (createReqVO.getDeptId() == null) {
-            Long loginUserId = cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId();
-            if (loginUserId != null) {
-                AdminUserDO user = adminUserService.getUser(loginUserId);
-                if (user != null && user.getDeptId() != null) {
-                    // 向上遍历找到顶级父部门
-                    Long topDeptId = findTopDeptId(user.getDeptId());
-                    createReqVO.setDeptId(topDeptId);
-                }
-            }
+        // 根据 deptType 找到对应的部门ID（在哪个页面创建就属于哪个部门）
+        if (createReqVO.getDeptId() == null && createReqVO.getDeptType() != null) {
+            Long deptId = findDeptIdByDeptType(createReqVO.getDeptType());
+            createReqVO.setDeptId(deptId);
         }
         // 校验 deptId 不能为空
         if (createReqVO.getDeptId() == null) {
@@ -94,13 +100,13 @@ public class ServiceItemController {
     @Operation(summary = "批量创建服务项")
     @PreAuthorize("@ss.hasPermission('project:service-item:create')")
     public CommonResult<List<Long>> batchCreateServiceItem(@Valid @RequestBody ServiceItemBatchSaveReqVO batchReqVO) {
-        // 获取当前用户的顶级部门ID
-        Long topDeptId = getLoginUserTopDeptId();
-        if (topDeptId == null) {
+        // 根据 deptType 找到对应的部门ID（在哪个页面创建就属于哪个部门）
+        Long deptId = findDeptIdByDeptType(batchReqVO.getDeptType());
+        if (deptId == null) {
             throw cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception(
                     cn.shuhe.system.module.project.enums.ErrorCodeConstants.SERVICE_ITEM_DEPT_NOT_SET);
         }
-        return success(serviceItemService.batchCreateServiceItem(batchReqVO, topDeptId));
+        return success(serviceItemService.batchCreateServiceItem(batchReqVO, deptId));
     }
 
     @GetMapping("/get-import-template")
@@ -136,45 +142,70 @@ public class ServiceItemController {
             @RequestParam("file") MultipartFile file,
             @RequestParam("projectId") Long projectId,
             @RequestParam("deptType") Integer deptType) throws Exception {
-        // 获取当前用户的顶级部门ID
-        Long topDeptId = getLoginUserTopDeptId();
-        if (topDeptId == null) {
+        // 根据 deptType 找到对应的部门ID（在哪个页面导入就属于哪个部门）
+        Long deptId = findDeptIdByDeptType(deptType);
+        if (deptId == null) {
             throw cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception(
                     cn.shuhe.system.module.project.enums.ErrorCodeConstants.SERVICE_ITEM_DEPT_NOT_SET);
         }
         List<ServiceItemImportExcelVO> list = ExcelUtils.read(file, ServiceItemImportExcelVO.class);
-        return success(serviceItemService.importServiceItemList(projectId, deptType, list, topDeptId));
+        return success(serviceItemService.importServiceItemList(projectId, deptType, list, deptId));
     }
 
     /**
-     * 获取当前登录用户的顶级部门ID
+     * 根据部门类型找到对应的部门ID
+     * 
+     * 逻辑：在哪个页面（deptType）创建服务项，就属于哪个部门
+     * 例如：在安全服务页面（deptType=1）创建，就属于安全技术服务部
+     * 
+     * @param deptType 部门类型：1安全服务 2安全运营 3数据安全
+     * @return 对应的部门ID
      */
-    private Long getLoginUserTopDeptId() {
-        Long loginUserId = cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId();
-        if (loginUserId != null) {
-            AdminUserDO user = adminUserService.getUser(loginUserId);
-            if (user != null && user.getDeptId() != null) {
-                return findTopDeptId(user.getDeptId());
-            }
+    private Long findDeptIdByDeptType(Integer deptType) {
+        if (deptType == null) {
+            return null;
         }
-        return null;
+        // 查找有对应 deptType 的部门
+        DeptDO dept = deptService.getDeptByDeptType(deptType);
+        return dept != null ? dept.getId() : null;
     }
 
     /**
-     * 向上遍历找到顶级父部门ID
-     * 顶级部门的 parentId 为 0 或 null
+     * 向上查找顶级部门ID
+     * 
+     * 用于服务项列表过滤：同一顶级部门下的用户能看到相同的服务项
+     * 
+     * @param deptId 当前部门ID
+     * @return 顶级部门ID（公司级部门的直属子部门）
      */
     private Long findTopDeptId(Long deptId) {
-        DeptDO dept = deptService.getDept(deptId);
-        if (dept == null) {
+        if (deptId == null) {
+            return null;
+        }
+        DeptDO currentDept = deptService.getDept(deptId);
+        if (currentDept == null) {
             return deptId;
         }
-        // 如果 parentId 为 0 或 null，说明已经是顶级部门
-        if (dept.getParentId() == null || dept.getParentId() == 0L) {
-            return dept.getId();
+        // 如果已经是顶级部门（parentId为0或null），直接返回
+        if (currentDept.getParentId() == null || currentDept.getParentId() == 0) {
+            return deptId;
         }
-        // 递归向上查找
-        return findTopDeptId(dept.getParentId());
+        // 向上查找，直到找到 parentId=0 的部门的直属子部门
+        Long parentId = currentDept.getParentId();
+        Long currentId = deptId;
+        while (parentId != null && parentId != 0) {
+            DeptDO parentDept = deptService.getDept(parentId);
+            if (parentDept == null) {
+                break;
+            }
+            if (parentDept.getParentId() == null || parentDept.getParentId() == 0) {
+                // 当前 parentDept 是公司级部门，返回 currentId（公司的直属子部门）
+                return currentId;
+            }
+            currentId = parentId;
+            parentId = parentDept.getParentId();
+        }
+        return currentId;
     }
 
     @PutMapping("/update")
@@ -208,6 +239,8 @@ public class ServiceItemController {
         // 设置实时已执行次数（从数据库查询）
         if (serviceItem != null) {
             respVO.setUsedCount(serviceItemService.getExecutedCount(id));
+            // 填充合同名称
+            fillContractName(respVO, serviceItem.getContractId());
         }
         return success(respVO);
     }
@@ -216,15 +249,10 @@ public class ServiceItemController {
     @Operation(summary = "获得服务项分页")
     @PreAuthorize("@ss.hasPermission('project:service-item:query')")
     public CommonResult<PageResult<ServiceItemRespVO>> getServiceItemPage(@Valid ServiceItemPageReqVO pageReqVO) {
-        // 自动设置当前用户的顶级部门ID，实现同一顶级部门下的用户能看到相同的服务项
-        Long loginUserId = cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId();
-        if (loginUserId != null) {
-            AdminUserDO user = adminUserService.getUser(loginUserId);
-            if (user != null && user.getDeptId() != null) {
-                // 向上查找顶级部门
-                Long topDeptId = findTopDeptId(user.getDeptId());
-                pageReqVO.setDeptId(topDeptId);
-            }
+        // 根据 deptType 找到对应的部门ID进行过滤，保证与创建时使用相同的部门ID
+        if (pageReqVO.getDeptType() != null) {
+            Long deptId = findDeptIdByDeptType(pageReqVO.getDeptType());
+            pageReqVO.setDeptId(deptId);
         }
 
         PageResult<ServiceItemDO> pageResult = serviceItemService.getServiceItemPage(pageReqVO);
@@ -238,6 +266,8 @@ public class ServiceItemController {
             }
             // 设置实时已执行次数（从数据库查询）
             respVO.setUsedCount(serviceItemService.getExecutedCount(serviceItem.getId()));
+            // 填充合同名称
+            fillContractName(respVO, serviceItem.getContractId());
         }
         return success(result);
     }
@@ -245,20 +275,18 @@ public class ServiceItemController {
     @GetMapping("/list")
     @Operation(summary = "获得服务项列表（根据项目ID）")
     @Parameter(name = "projectId", description = "项目ID", required = true)
+    @Parameter(name = "deptType", description = "部门类型", required = false)
     @PreAuthorize("@ss.hasPermission('project:service-item:query')")
-    public CommonResult<List<ServiceItemRespVO>> getServiceItemList(@RequestParam("projectId") Long projectId) {
-        // 获取当前用户的顶级部门ID
+    public CommonResult<List<ServiceItemRespVO>> getServiceItemList(
+            @RequestParam("projectId") Long projectId,
+            @RequestParam(value = "deptType", required = false) Integer deptType) {
+        // 根据 deptType 找到对应的部门ID进行过滤
         Long deptId = null;
-        Long loginUserId = cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId();
-        if (loginUserId != null) {
-            AdminUserDO user = adminUserService.getUser(loginUserId);
-            if (user != null && user.getDeptId() != null) {
-                // 向上查找顶级部门
-                deptId = findTopDeptId(user.getDeptId());
-            }
+        if (deptType != null) {
+            deptId = findDeptIdByDeptType(deptType);
         }
 
-        // 按项目ID和顶级部门ID过滤
+        // 按项目ID和部门ID过滤
         List<ServiceItemDO> list = serviceItemService.getServiceItemListByProjectIdAndDeptId(projectId, deptId);
         List<ServiceItemRespVO> result = BeanUtils.toBean(list, ServiceItemRespVO.class);
         // 处理标签和实时已执行次数
@@ -270,6 +298,8 @@ public class ServiceItemController {
             }
             // 设置实时已执行次数（从数据库查询）
             respVO.setUsedCount(serviceItemService.getExecutedCount(serviceItem.getId()));
+            // 填充合同名称
+            fillContractName(respVO, serviceItem.getContractId());
         }
         return success(result);
     }
@@ -299,6 +329,55 @@ public class ServiceItemController {
     public CommonResult<List<UserSimpleRespVO>> getUserListByDeptType(@RequestParam("deptType") Integer deptType) {
         // 获取部门类型对应的岗位code列表
         List<String> postCodes = DEPT_TYPE_POST_CODES.get(deptType);
+        if (CollUtil.isEmpty(postCodes)) {
+            return success(Collections.emptyList());
+        }
+
+        // 根据岗位code查询岗位ID
+        List<Long> postIds = new ArrayList<>();
+        for (String code : postCodes) {
+            PostDO post = postMapper.selectByCode(code);
+            if (post != null) {
+                postIds.add(post.getId());
+            }
+        }
+        if (CollUtil.isEmpty(postIds)) {
+            return success(Collections.emptyList());
+        }
+
+        // 根据岗位ID查询用户列表
+        List<AdminUserDO> users = adminUserService.getUserListByPostIds(postIds);
+        if (CollUtil.isEmpty(users)) {
+            return success(Collections.emptyList());
+        }
+
+        // 拼接部门信息
+        Map<Long, DeptDO> deptMap = deptService.getDeptMap(
+                convertList(users, AdminUserDO::getDeptId));
+
+        // 转换为简单响应
+        List<UserSimpleRespVO> result = users.stream().map(user -> {
+            UserSimpleRespVO vo = new UserSimpleRespVO();
+            vo.setId(user.getId());
+            vo.setNickname(user.getNickname());
+            vo.setDeptId(user.getDeptId());
+            DeptDO dept = deptMap.get(user.getDeptId());
+            if (dept != null) {
+                vo.setDeptName(dept.getName());
+            }
+            return vo;
+        }).collect(Collectors.toList());
+
+        return success(result);
+    }
+
+    @GetMapping("/manager-list-by-dept-type")
+    @Operation(summary = "根据部门类型获取管理人员列表", description = "根据部门类型返回管理岗位（组长、主管）的用户列表")
+    @Parameter(name = "deptType", description = "部门类型：1安全服务 2安全运营 3数据安全", required = true)
+    @PreAuthorize("@ss.hasPermission('project:service-item:query')")
+    public CommonResult<List<UserSimpleRespVO>> getManagerListByDeptType(@RequestParam("deptType") Integer deptType) {
+        // 获取部门类型对应的管理岗位code列表
+        List<String> postCodes = DEPT_TYPE_MANAGER_POST_CODES.get(deptType);
         if (CollUtil.isEmpty(postCodes)) {
             return success(Collections.emptyList());
         }
@@ -375,6 +454,23 @@ public class ServiceItemController {
             }
         }
         return success(result);
+    }
+
+    /**
+     * 填充合同名称
+     */
+    private void fillContractName(ServiceItemRespVO respVO, Long contractId) {
+        if (contractId == null) {
+            return;
+        }
+        try {
+            Map<String, Object> contractInfo = contractInfoMapper.selectContractInfo(contractId);
+            if (contractInfo != null && contractInfo.get("contractName") != null) {
+                respVO.setContractName((String) contractInfo.get("contractName"));
+            }
+        } catch (Exception e) {
+            // 忽略合同查询异常，不影响主流程
+        }
     }
 
 }

@@ -6,7 +6,6 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -36,6 +35,14 @@ public class ServiceItemDO extends BaseDO {
      * 关联 {@link ProjectDO#getId()}
      */
     private Long projectId;
+
+    /**
+     * 所属部门服务单 ID
+     * 
+     * 关联 {@link ProjectDeptServiceDO#getId()}
+     * 用于将服务项归属到具体的部门服务单下
+     */
+    private Long deptServiceId;
 
     /**
      * 服务项编号
@@ -110,16 +117,6 @@ public class ServiceItemDO extends BaseDO {
     // ========== 人员信息 ==========
 
     /**
-     * 服务项经理 ID
-     */
-    private Long managerId;
-
-    /**
-     * 服务项经理姓名
-     */
-    private String managerName;
-
-    /**
      * 所属部门 ID
      */
     private Long deptId;
@@ -143,18 +140,11 @@ public class ServiceItemDO extends BaseDO {
      */
     private Integer priority;
 
-    // ========== 商务信息 ==========
-
-    /**
-     * 服务项金额
-     */
-    private BigDecimal amount;
-
     // ========== 服务频次配置 ==========
 
     /**
      * 频次类型
-     * 0-按需（不限制）1-按月 2-按季 3-按年
+     * 0-按需（不限制）1-按月 2-按季 3-按年 4-按周
      */
     private Integer frequencyType;
 
@@ -190,5 +180,13 @@ public class ServiceItemDO extends BaseDO {
      * 外出服务项创建时为0，审批通过后变为1
      */
     private Integer visible;
+
+    // ========== 安全运营关联 ==========
+
+    /**
+     * 安全运营合同ID
+     * 安全运营的服务项通过此字段关联到安全运营合同
+     */
+    private Long soContractId;
 
 }

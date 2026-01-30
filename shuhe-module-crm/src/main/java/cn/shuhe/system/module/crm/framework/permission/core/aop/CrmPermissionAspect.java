@@ -5,7 +5,10 @@ import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.shuhe.system.framework.common.util.spring.SpringExpressionUtils;
 import cn.shuhe.system.framework.web.core.util.WebFrameworkUtils;
+import cn.shuhe.system.module.bpm.api.task.BpmProcessInstanceApi;
+import cn.shuhe.system.module.crm.dal.dataobject.contract.CrmContractDO;
 import cn.shuhe.system.module.crm.dal.dataobject.permission.CrmPermissionDO;
+import cn.shuhe.system.module.crm.dal.mysql.contract.CrmContractMapper;
 import cn.shuhe.system.module.crm.enums.common.CrmBizTypeEnum;
 import cn.shuhe.system.module.crm.enums.permission.CrmPermissionLevelEnum;
 import cn.shuhe.system.module.crm.framework.permission.core.annotations.CrmPermission;
@@ -43,6 +46,12 @@ public class CrmPermissionAspect {
     @Resource
     private AdminUserApi adminUserApi;
 
+    @Resource
+    private BpmProcessInstanceApi bpmProcessInstanceApi;
+
+    @Resource
+    private CrmContractMapper contractMapper;
+
     @Before("@annotation(crmPermission)")
     public void doBefore(JoinPoint joinPoint, CrmPermission crmPermission) {
         // 1.1 获取相关属性值
@@ -62,10 +71,10 @@ public class CrmPermissionAspect {
         // 2. 逐个校验权限
         List<CrmPermissionDO> permissionList = crmPermissionService.getPermissionListByBiz(bizType, bizIds);
         Map<Long, List<CrmPermissionDO>> multiMap = convertMultiMap(permissionList, CrmPermissionDO::getBizId);
-        bizIds.forEach(bizId -> validatePermission(bizType, multiMap.get(bizId), permissionLevel));
+        bizIds.forEach(bizId -> validatePermission(bizType, bizId, multiMap.get(bizId), permissionLevel));
     }
 
-    private void validatePermission(Integer bizType, List<CrmPermissionDO> bizPermissions, Integer permissionLevel) {
+    private void validatePermission(Integer bizType, Long bizId, List<CrmPermissionDO> bizPermissions, Integer permissionLevel) {
         // 1. 如果是超级管理员则直接通过
         if (CrmPermissionUtils.isCrmAdmin()) {
             return;
@@ -104,10 +113,74 @@ public class CrmPermissionAspect {
             }
         }
 
-        // 4. 没有权限，抛出异常
+        // 4. 【新增】如果是 READ 权限，检查用户是否是 BPM 流程的审批人
+        if (CrmPermissionLevelEnum.isRead(permissionLevel)) {
+            if (isBpmTaskAssignee(bizType, bizId, userId)) {
+                log.info("[validatePermission][userId({}) 是 bizType({}) bizId({}) 的BPM审批人，允许访问]",
+                        userId, bizType, bizId);
+                return;
+            }
+        }
+
+        // 5. 没有权限，抛出异常
         log.info("[doBefore][userId({}) 要求权限({}) 实际权限({}) 数据校验错误]", // 打个 info 日志，方便后续排查问题、审计
                 userId, permissionLevel, toJsonString(userPermission));
         throw exception(CRM_PERMISSION_DENIED, CrmBizTypeEnum.getNameByType(bizType));
+    }
+
+    /**
+     * 检查用户是否是指定业务对象的 BPM 流程审批人
+     *
+     * @param bizType 业务类型
+     * @param bizId   业务ID
+     * @param userId  用户ID
+     * @return 是否是审批人
+     */
+    private boolean isBpmTaskAssignee(Integer bizType, Long bizId, Long userId) {
+        // 情况一：合同类型 - 直接检查合同的审批人
+        if (ObjUtil.equal(bizType, CrmBizTypeEnum.CRM_CONTRACT.getType())) {
+            return isContractBpmAssignee(bizId, userId);
+        }
+        // 情况二：客户类型 - 检查客户关联的合同是否有审批人
+        if (ObjUtil.equal(bizType, CrmBizTypeEnum.CRM_CUSTOMER.getType())) {
+            return isCustomerContractBpmAssignee(bizId, userId);
+        }
+        return false;
+    }
+
+    /**
+     * 检查用户是否是指定合同的 BPM 审批人
+     */
+    private boolean isContractBpmAssignee(Long contractId, Long userId) {
+        CrmContractDO contract = contractMapper.selectById(contractId);
+        if (contract == null || StrUtil.isEmpty(contract.getProcessInstanceId())) {
+            return false;
+        }
+        return bpmProcessInstanceApi.isTaskAssignee(userId, contract.getProcessInstanceId());
+    }
+
+    /**
+     * 检查用户是否是指定客户关联的任意合同的 BPM 审批人
+     * 用于：审批人查看合同时，需要读取客户关联的回款等信息
+     */
+    private boolean isCustomerContractBpmAssignee(Long customerId, Long userId) {
+        // 查询该客户关联的所有审批中的合同
+        List<CrmContractDO> contracts = contractMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<CrmContractDO>()
+                        .eq(CrmContractDO::getCustomerId, customerId)
+                        .isNotNull(CrmContractDO::getProcessInstanceId)
+                        .ne(CrmContractDO::getProcessInstanceId, "")
+        );
+        if (CollUtil.isEmpty(contracts)) {
+            return false;
+        }
+        // 检查用户是否是任意一个合同的审批人
+        for (CrmContractDO contract : contracts) {
+            if (bpmProcessInstanceApi.isTaskAssignee(userId, contract.getProcessInstanceId())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

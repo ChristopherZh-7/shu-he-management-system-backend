@@ -24,7 +24,7 @@ public class FilePresignedUrlRespVO {
      * 前端上传完文件后，需要使用该 URL 进行访问
      */
     @Schema(description = "文件访问 URL", requiredMode = Schema.RequiredMode.REQUIRED,
-            example = "https://test.shuhe.iocoder.cn/758d3a5387507358c7236de4c8f96de1c7f5097ff6a7722b34772fb7b76b140f.png")
+            example = "https://test.shuhe.example.com/758d3a5387507358c7236de4c8f96de1c7f5097ff6a7722b34772fb7b76b140f.png")
     private String url;
 
     /**

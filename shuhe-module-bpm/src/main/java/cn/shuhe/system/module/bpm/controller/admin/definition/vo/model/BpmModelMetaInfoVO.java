@@ -28,7 +28,7 @@ import java.util.List;
 @Data
 public class BpmModelMetaInfoVO {
 
-    @Schema(description = "流程图标", example = "https://www.iocoder.cn/shuhe.jpg")
+    @Schema(description = "流程图标", example = "https://www.example.com/shuhe.jpg")
     @URL(message = "流程图标格式不正确")
     private String icon;
 

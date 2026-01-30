@@ -161,4 +161,20 @@ public interface ErrorCodeConstants {
     ErrorCode DINGTALK_MAPPING_NOT_EXISTS = new ErrorCode(1_002_029_000, "钉钉数据映射不存在");
     ErrorCode DINGTALK_CONFIG_NOT_EXISTS = new ErrorCode(1_002_029_001, "钉钉配置不存在");
 
+    // ========== 合同收入分配 1-002-030-000 ==========
+    ErrorCode CONTRACT_NOT_EXISTS = new ErrorCode(1_002_030_000, "合同不存在");
+    ErrorCode CONTRACT_DEPT_ALLOCATION_NOT_EXISTS = new ErrorCode(1_002_030_001, "合同部门分配记录不存在");
+    ErrorCode CONTRACT_DEPT_ALLOCATION_EXISTS = new ErrorCode(1_002_030_002, "该合同已分配给该部门，请勿重复分配");
+    ErrorCode CONTRACT_ALLOCATION_AMOUNT_EXCEED = new ErrorCode(1_002_030_003, "分配金额超过合同剩余可分配金额");
+    ErrorCode CONTRACT_DEPT_ALLOCATION_AMOUNT_LESS_THAN_SERVICE_ITEM = new ErrorCode(1_002_030_004, "部门分配金额不能小于已分配给服务项的金额");
+    ErrorCode SERVICE_ITEM_NOT_EXISTS = new ErrorCode(1_002_030_010, "服务项不存在");
+    ErrorCode SERVICE_ITEM_ALLOCATION_NOT_EXISTS = new ErrorCode(1_002_030_011, "服务项分配记录不存在");
+    ErrorCode SERVICE_ITEM_ALLOCATION_EXISTS = new ErrorCode(1_002_030_012, "该服务项已分配金额，请勿重复分配");
+    ErrorCode SERVICE_ITEM_ALLOCATION_AMOUNT_EXCEED = new ErrorCode(1_002_030_013, "分配金额超过部门剩余可分配金额");
+
+    // ========== 外出费用 1-002-031-000 ==========
+    ErrorCode OUTSIDE_COST_RECORD_NOT_EXISTS = new ErrorCode(1_002_031_000, "外出费用记录不存在");
+    ErrorCode OUTSIDE_COST_SETTLE_USER_NOT_EXISTS = new ErrorCode(1_002_031_001, "结算人不存在");
+    ErrorCode OUTSIDE_COST_STATUS_ERROR = new ErrorCode(1_002_031_002, "外出费用记录状态不正确");
+
 }

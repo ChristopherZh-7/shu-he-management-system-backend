@@ -122,6 +122,8 @@ public class CrmContractServiceImpl implements CrmContractService {
     @Resource
     private cn.shuhe.system.module.project.service.ServiceItemService serviceItemService;
     @Resource
+    private cn.shuhe.system.module.project.service.ProjectDeptServiceService projectDeptServiceService;
+    @Resource
     private CrmCustomerMapper customerMapper;
 
     @Override
@@ -642,31 +644,64 @@ public class CrmContractServiceImpl implements CrmContractService {
         List<ContractAssignDeptInfo> assignDeptInfoList = cn.hutool.json.JSONUtil.toList(
                 contract.getAssignDeptIds(), ContractAssignDeptInfo.class);
 
-        // 4. 查找要领取的部门
-        ContractAssignDeptInfo targetDept = assignDeptInfoList.stream()
-                .filter(info -> info.getDeptId().equals(deptId))
-                .findFirst()
-                .orElseThrow(() -> exception(CONTRACT_NOT_EXISTS));
-
-        // 5. 校验该部门是否已被领取
-        if (Boolean.TRUE.equals(targetDept.getClaimed())) {
-            throw exception(CONTRACT_ALREADY_CLAIMED);
-        }
-
-        // 6. 校验当前用户是否是该部门的负责人
+        // 4. 自动匹配用户负责的部门与合同分派部门（忽略前端传入的 deptId）
+        // 获取用户负责的部门列表
         List<DeptRespDTO> leaderDepts = deptApi.getDeptListByLeaderUserId(userId);
-        boolean isLeader = leaderDepts != null && leaderDepts.stream()
-                .anyMatch(dept -> dept.getId().equals(deptId));
-        if (!isLeader) {
-            log.warn("【合同领取】用户 {} 不是部门 {} 的负责人，无法领取", userId, deptId);
-            throw exception(CONTRACT_NOT_EXISTS); // 没有权限
+        if (leaderDepts == null || leaderDepts.isEmpty()) {
+            log.warn("【合同领取】用户 {} 不是任何部门的负责人，无法领取", userId);
+            throw exception(CONTRACT_NOT_EXISTS);
         }
+        log.info("【合同领取】用户 {} 负责的部门列表: {}", userId, 
+                leaderDepts.stream()
+                        .map(d -> String.format("id=%d, name=%s, deptType=%s", d.getId(), d.getName(), d.getDeptType()))
+                        .collect(java.util.stream.Collectors.joining("; ")));
 
-        // 7. 获取用户信息
+        // 在合同分派部门中找到用户有权限领取的部门（通过 deptType 匹配）
+        ContractAssignDeptInfo matchedDept = null;
+        DeptRespDTO matchedLeaderDept = null;
+        
+        for (ContractAssignDeptInfo assignDept : assignDeptInfoList) {
+            // 跳过已领取的部门
+            if (Boolean.TRUE.equals(assignDept.getClaimed())) {
+                continue;
+            }
+            // 获取分派部门的 deptType
+            DeptRespDTO assignDeptInfo = deptApi.getDept(assignDept.getDeptId());
+            if (assignDeptInfo == null || assignDeptInfo.getDeptType() == null) {
+                continue;
+            }
+            Integer assignDeptType = assignDeptInfo.getDeptType();
+            
+            // 检查用户负责的部门是否与此分派部门有相同的 deptType
+            for (DeptRespDTO leaderDept : leaderDepts) {
+                if (assignDeptType.equals(leaderDept.getDeptType())) {
+                    matchedDept = assignDept;
+                    matchedLeaderDept = leaderDept;
+                    log.info("【合同领取】匹配成功: 用户部门(id={}, name={}, deptType={}) 匹配合同分派部门(id={}, name={}, deptType={})",
+                            leaderDept.getId(), leaderDept.getName(), leaderDept.getDeptType(),
+                            assignDept.getDeptId(), assignDept.getDeptName(), assignDeptType);
+                    break;
+                }
+            }
+            if (matchedDept != null) {
+                break;
+            }
+        }
+        
+        if (matchedDept == null) {
+            log.warn("【合同领取】用户 {} 负责的部门与合同分派部门无匹配，无法领取", userId);
+            throw exception(CONTRACT_NOT_EXISTS);
+        }
+        
+        // 使用匹配到的部门进行领取（覆盖前端传入的 deptId）
+        ContractAssignDeptInfo targetDept = matchedDept;
+        Long actualDeptId = matchedDept.getDeptId();
+
+        // 5. 获取用户信息
         AdminUserRespDTO user = adminUserApi.getUser(userId);
         String userName = user != null ? user.getNickname() : "";
 
-        // 8. 更新该部门的领取状态
+        // 6. 更新该部门的领取状态
         targetDept.setClaimed(true);
         targetDept.setClaimUserId(userId);
         targetDept.setClaimUserName(userName);
@@ -700,18 +735,93 @@ public class CrmContractServiceImpl implements CrmContractService {
             log.info("【合同领取】用户 {} 已有合同 {} 的权限，跳过创建权限", userId, id);
         }
 
-        // 12. 将领取部门及其子部门的所有用户添加为项目成员
-        addDeptUsersToProject(contract, deptId);
+        // 7. 将领取部门及其子部门的所有用户添加为项目成员
+        addDeptUsersToProject(contract, actualDeptId);
 
-        // 13. 为领取部门创建外出服务项（隐藏状态）
-        createOutsideServiceItemForDept(contract, deptId, targetDept.getDeptName());
+        // 8. 更新部门服务单的领取状态
+        claimDeptService(contract, actualDeptId, targetDept.getDeptName(), userId, userName);
 
-        log.info("【合同领取】用户 {} 成功领取合同 {} 的部门 {} 份额", userId, id, deptId);
+        // 注意：不再自动创建服务项，服务项由用户手动创建或通过其他流程生成
+
+        log.info("【合同领取】用户 {} 成功领取合同 {} 的部门 {} 份额", userId, id, actualDeptId);
+    }
+
+    /**
+     * 检查 childDeptId 是否是 parentDeptId 的后代部门
+     *
+     * @param childDeptId  子部门ID
+     * @param parentDeptId 父部门ID
+     * @return 如果 childDeptId 是 parentDeptId 的后代，返回 true
+     */
+    private boolean isDescendantOf(Long childDeptId, Long parentDeptId) {
+        if (childDeptId == null || parentDeptId == null) {
+            return false;
+        }
+        if (childDeptId.equals(parentDeptId)) {
+            return true;
+        }
+        // 向上查找父部门
+        Long currentId = childDeptId;
+        int maxDepth = 10; // 防止无限循环
+        while (maxDepth-- > 0) {
+            DeptRespDTO dept = deptApi.getDept(currentId);
+            if (dept == null || dept.getParentId() == null || dept.getParentId() == 0) {
+                return false;
+            }
+            if (dept.getParentId().equals(parentDeptId)) {
+                return true;
+            }
+            currentId = dept.getParentId();
+        }
+        return false;
+    }
+
+    /**
+     * 领取部门服务单
+     */
+    private void claimDeptService(CrmContractDO contract, Long deptId, String deptName, Long userId, String userName) {
+        try {
+            // 获取部门类型
+            DeptRespDTO dept = deptApi.getDept(deptId);
+            if (dept == null || dept.getDeptType() == null) {
+                log.warn("【合同领取】部门 {} 不存在或没有设置部门类型，跳过更新部门服务单", deptId);
+                return;
+            }
+            Integer deptType = dept.getDeptType();
+
+            // 查找对应的部门服务单
+            ProjectDO project = projectService.getProjectByContractId(contract.getId());
+            if (project == null) {
+                log.warn("【合同领取】合同 {} 没有对应的项目，跳过更新部门服务单", contract.getId());
+                return;
+            }
+
+            var deptService = projectDeptServiceService.getDeptServiceByProjectIdAndDeptType(project.getId(), deptType);
+            if (deptService == null) {
+                log.warn("【合同领取】项目 {} 没有部门类型为 {} 的部门服务单，跳过更新", project.getId(), deptType);
+                return;
+            }
+
+            // 更新部门服务单的领取信息
+            projectDeptServiceService.claimDeptService(
+                    deptService.getId(),
+                    deptId,
+                    deptName,
+                    userId,
+                    userName
+            );
+
+            log.info("【合同领取】成功更新部门服务单领取状态，deptServiceId={}, deptType={}", deptService.getId(), deptType);
+
+        } catch (Exception e) {
+            log.error("【合同领取】更新部门服务单失败: {}", e.getMessage(), e);
+            // 不抛出异常，避免影响合同领取流程
+        }
     }
 
     @Override
     public PageResult<CrmContractDO> getPendingClaimContractPage(CrmContractPageReqVO pageReqVO, Long userId) {
-        // 获取当前用户作为负责人的部门列表
+        // 1. 获取当前用户作为负责人的部门列表
         List<DeptRespDTO> leaderDepts = deptApi.getDeptListByLeaderUserId(userId);
         if (leaderDepts == null || leaderDepts.isEmpty()) {
             log.debug("【待领取合同】用户 {} 不是任何部门的负责人", userId);
@@ -719,7 +829,48 @@ public class CrmContractServiceImpl implements CrmContractService {
         }
         List<Long> leaderDeptIds = leaderDepts.stream().map(DeptRespDTO::getId).toList();
         log.debug("【待领取合同】用户 {} 是以下部门的负责人: {}", userId, leaderDeptIds);
-        return contractMapper.selectPageByClaimStatusAndLeaderDeptIds(pageReqVO, leaderDeptIds);
+        
+        // 2. 查询待领取合同（全局 claimStatus=0 且包含用户负责部门的合同）
+        PageResult<CrmContractDO> pageResult = contractMapper.selectPageByClaimStatusAndLeaderDeptIds(pageReqVO, leaderDeptIds);
+        if (pageResult.getList().isEmpty()) {
+            return pageResult;
+        }
+        
+        // 3. 二次过滤：只保留当前用户负责的部门中至少有一个未领取的合同
+        // 避免已领取的合同继续显示在待领取列表中
+        List<CrmContractDO> filteredList = pageResult.getList().stream()
+                .filter(contract -> hasUnclaimedDeptForUser(contract.getAssignDeptIds(), leaderDeptIds))
+                .toList();
+        
+        log.debug("【待领取合同】用户 {} 过滤前数量: {}, 过滤后数量: {}", 
+                userId, pageResult.getList().size(), filteredList.size());
+        
+        // 4. 返回过滤后的结果（注意：total 保持不变，实际显示数量可能减少）
+        return new PageResult<>(filteredList, pageResult.getTotal());
+    }
+    
+    /**
+     * 检查合同的分派部门中，用户负责的部门是否有未领取的
+     * 
+     * @param assignDeptIdsJson 分派部门 JSON 字符串
+     * @param leaderDeptIds 用户负责的部门ID列表
+     * @return 如果用户负责的部门中有未领取的，返回 true
+     */
+    private boolean hasUnclaimedDeptForUser(String assignDeptIdsJson, List<Long> leaderDeptIds) {
+        if (cn.hutool.core.util.StrUtil.isEmpty(assignDeptIdsJson)) {
+            return false;
+        }
+        try {
+            List<ContractAssignDeptInfo> assignDeptInfoList = cn.hutool.json.JSONUtil.toList(
+                    assignDeptIdsJson, ContractAssignDeptInfo.class);
+            // 检查用户负责的部门中是否有未领取的
+            return assignDeptInfoList.stream()
+                    .anyMatch(info -> leaderDeptIds.contains(info.getDeptId()) 
+                            && !Boolean.TRUE.equals(info.getClaimed()));
+        } catch (Exception e) {
+            log.warn("【待领取合同】解析分派部门信息失败: {}", assignDeptIdsJson, e);
+            return false;
+        }
     }
 
     /**
@@ -949,10 +1100,10 @@ public class CrmContractServiceImpl implements CrmContractService {
     }
 
     /**
-     * 审批通过后为合同创建项目（不需要 CrmContractSaveReqVO）
+     * 审批通过后为合同创建项目和部门服务单
      */
     private void createProjectForContractOnApproval(CrmContractDO contract) {
-        log.info("【合同-项目】审批通过，开始为合同 {} 创建项目", contract.getNo());
+        log.info("【合同-项目】审批通过，开始为合同 {} 创建项目和部门服务单", contract.getNo());
         try {
             // 确定部门类型（默认为1-安全服务）
             Integer deptType = 1;
@@ -979,8 +1130,20 @@ public class CrmContractServiceImpl implements CrmContractService {
 
             Long projectId = projectService.createProject(projectReqVO);
 
-            // 注意：项目成员将在部门领取时添加，此时项目对所有人不可见
-            // 只有当部门领取合同时，该部门的用户才会被添加为项目成员，从而看到项目
+            // 根据分派部门创建部门服务单
+            List<Integer> deptTypes = getDeptTypesFromAssignDepts(contract);
+            if (!deptTypes.isEmpty()) {
+                projectDeptServiceService.batchCreateDeptService(
+                        projectId,
+                        contract.getId(),
+                        contract.getNo(),
+                        contract.getCustomerId(),
+                        customerName,
+                        deptTypes
+                );
+                log.info("【合同-项目】为合同 {} 创建了 {} 个部门服务单，部门类型: {}",
+                        contract.getNo(), deptTypes.size(), deptTypes);
+            }
 
             log.info("【合同-项目】审批通过，为合同 {} 创建了项目 {} (项目成员将在部门领取时添加)", contract.getNo(), projectId);
 
@@ -988,6 +1151,48 @@ public class CrmContractServiceImpl implements CrmContractService {
             log.error("【合同-项目】审批通过后为合同 {} 创建项目失败: {}", contract.getNo(), e.getMessage(), e);
             // 不抛出异常，避免影响审批流程
         }
+    }
+
+    /**
+     * 从合同的分派部门中解析出部门类型列表
+     */
+    private List<Integer> getDeptTypesFromAssignDepts(CrmContractDO contract) {
+        List<Integer> deptTypes = new ArrayList<>();
+        
+        if (cn.hutool.core.util.StrUtil.isEmpty(contract.getAssignDeptIds())) {
+            // 如果没有分派部门，默认创建安全服务的部门服务单
+            deptTypes.add(1);
+            return deptTypes;
+        }
+        
+        try {
+            List<ContractAssignDeptInfo> assignDeptInfoList = cn.hutool.json.JSONUtil.toList(
+                    contract.getAssignDeptIds(), ContractAssignDeptInfo.class);
+            
+            // 获取分派部门的详细信息，提取 deptType
+            List<Long> deptIds = assignDeptInfoList.stream()
+                    .map(ContractAssignDeptInfo::getDeptId)
+                    .toList();
+            
+            if (!deptIds.isEmpty()) {
+                List<DeptRespDTO> depts = deptApi.getDeptList(deptIds);
+                for (DeptRespDTO dept : depts) {
+                    Integer deptTypeVal = dept.getDeptType();
+                    if (deptTypeVal != null && !deptTypes.contains(deptTypeVal)) {
+                        deptTypes.add(deptTypeVal);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("【合同-项目】解析分派部门信息失败: {}", e.getMessage());
+        }
+        
+        // 如果解析失败或没有有效的部门类型，默认创建安全服务的部门服务单
+        if (deptTypes.isEmpty()) {
+            deptTypes.add(1);
+        }
+        
+        return deptTypes;
     }
 
     /**
@@ -1041,15 +1246,15 @@ public class CrmContractServiceImpl implements CrmContractService {
     }
 
     /**
-     * 为领取部门创建外出服务项（隐藏状态）
-     * 外出请求发起时选择此服务项，审批通过后变为可见
+     * 为领取部门创建可见的服务项
+     * 这样部门可以在项目列表中看到这个项目
      */
-    private void createOutsideServiceItemForDept(CrmContractDO contract, Long deptId, String deptName) {
+    private void createServiceItemForDept(CrmContractDO contract, Long deptId, String deptName) {
         try {
             // 查找合同对应的项目
             ProjectDO project = projectService.getProjectByContractId(contract.getId());
             if (project == null) {
-                log.warn("【合同-外出服务项】合同 {} 没有对应的项目，跳过创建外出服务项", contract.getId());
+                log.warn("【合同-服务项】合同 {} 没有对应的项目，跳过创建服务项", contract.getId());
                 return;
             }
 
@@ -1057,25 +1262,33 @@ public class CrmContractServiceImpl implements CrmContractService {
             DeptRespDTO dept = deptApi.getDept(deptId);
             Integer deptType = dept != null ? dept.getDeptType() : 1;
 
-            // 创建外出服务项（隐藏状态，但已是进行中）
+            // 检查是否已存在该部门的服务项（避免重复创建）
+            List<cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO> existingItems =
+                    serviceItemService.getServiceItemListByProjectIdAndDeptId(project.getId(), deptId);
+            if (CollUtil.isNotEmpty(existingItems)) {
+                log.info("【合同-服务项】部门 {} ({}) 已有服务项，跳过创建", deptId, deptName);
+                return;
+            }
+
+            // 创建可见的服务项
             cn.shuhe.system.module.project.controller.admin.vo.ServiceItemSaveReqVO serviceItemReqVO =
                     new cn.shuhe.system.module.project.controller.admin.vo.ServiceItemSaveReqVO();
             serviceItemReqVO.setProjectId(project.getId());
-            serviceItemReqVO.setName("外出服务-" + deptName);
-            serviceItemReqVO.setServiceType("outside");  // 外出类型
+            serviceItemReqVO.setName(deptName + "-服务项");
+            serviceItemReqVO.setServiceType("normal");  // 常规类型
             serviceItemReqVO.setDeptType(deptType);
             serviceItemReqVO.setDeptId(deptId);
-            serviceItemReqVO.setStatus(1);  // 状态：进行中
-            serviceItemReqVO.setVisible(0);  // 默认隐藏，审批通过后变为可见
+            serviceItemReqVO.setStatus(0);  // 状态：草稿
+            serviceItemReqVO.setVisible(1);  // 可见，让部门能在项目列表中看到
             serviceItemReqVO.setDescription("由合同 " + contract.getNo() + " 领取时自动创建");
 
             Long serviceItemId = serviceItemService.createServiceItem(serviceItemReqVO);
 
-            log.info("【合同-外出服务项】为部门 {} ({}) 创建了外出服务项 {}，关联项目 {}",
-                    deptId, deptName, serviceItemId, project.getId());
+            log.info("【合同-服务项】为部门 {} ({}) 创建了服务项 {}，deptType={}，关联项目 {}",
+                    deptId, deptName, serviceItemId, deptType, project.getId());
 
         } catch (Exception e) {
-            log.error("【合同-外出服务项】创建外出服务项失败: {}", e.getMessage(), e);
+            log.error("【合同-服务项】创建服务项失败: {}", e.getMessage(), e);
             // 不抛出异常，避免影响合同领取流程
         }
     }

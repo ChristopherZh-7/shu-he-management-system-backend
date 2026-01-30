@@ -21,19 +21,10 @@ public interface ReportGenerateService {
     /**
      * 获取可用的报告模板列表
      *
-     * @param type 模板类型（可选）：outside-request, pentest, retest
+     * @param type 模板类型（可选）：pentest, retest
      * @return 模板列表
      */
     List<ReportTemplate> getReportTemplates(String type);
-
-    /**
-     * 生成外协请求报告
-     *
-     * @param requestId 外协请求ID
-     * @param templateCode 模板编码（对应模板文件名）
-     * @return Word 文档字节数组
-     */
-    byte[] generateOutsideRequestReport(Long requestId, String templateCode);
 
     /**
      * 生成项目报告

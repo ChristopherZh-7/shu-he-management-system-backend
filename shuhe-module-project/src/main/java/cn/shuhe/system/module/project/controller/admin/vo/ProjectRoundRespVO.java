@@ -1,5 +1,6 @@
 package cn.shuhe.system.module.project.controller.admin.vo;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -16,6 +17,9 @@ public class ProjectRoundRespVO {
     @Schema(description = "项目ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Long projectId;
 
+    @Schema(description = "服务项ID", example = "1")
+    private Long serviceItemId;
+
     @Schema(description = "轮次序号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Integer roundNo;
 
@@ -24,10 +28,10 @@ public class ProjectRoundRespVO {
 
     // ========== 时间信息 ==========
 
-    @Schema(description = "计划开始时间")
-    private LocalDateTime planStartTime;
+    @Schema(description = "截止日期（任务应在此日期前完成）")
+    private LocalDateTime deadline;
 
-    @Schema(description = "计划结束时间")
+    @Schema(description = "计划结束时间（保留字段）")
     private LocalDateTime planEndTime;
 
     @Schema(description = "实际开始时间")
@@ -60,6 +64,19 @@ public class ProjectRoundRespVO {
 
     @Schema(description = "备注")
     private String remark;
+
+    // ========== 来源标识 ==========
+
+    @Schema(description = "是否外出")
+    @JsonProperty("isOutside")
+    private Boolean isOutside;
+
+    @Schema(description = "是否跨部门")
+    @JsonProperty("isCrossDept")
+    private Boolean isCrossDept;
+
+    @Schema(description = "关联的服务发起ID")
+    private Long serviceLaunchId;
 
     // ========== 渗透测试附件（来自服务执行申请）==========
 

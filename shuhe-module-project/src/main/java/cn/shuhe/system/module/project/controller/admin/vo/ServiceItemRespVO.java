@@ -3,7 +3,6 @@ package cn.shuhe.system.module.project.controller.admin.vo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -46,6 +45,9 @@ public class ServiceItemRespVO {
     @Schema(description = "合同编号", example = "HT-2026-001")
     private String contractNo;
 
+    @Schema(description = "合同名称", example = "2026年安全服务项目")
+    private String contractName;
+
     // ========== 时间信息 ==========
 
     @Schema(description = "计划开始时间")
@@ -62,12 +64,6 @@ public class ServiceItemRespVO {
 
     // ========== 人员信息 ==========
 
-    @Schema(description = "服务项经理ID", example = "1")
-    private Long managerId;
-
-    @Schema(description = "服务项经理姓名", example = "张三")
-    private String managerName;
-
     @Schema(description = "所属部门ID", example = "100")
     private Long deptId;
 
@@ -82,14 +78,9 @@ public class ServiceItemRespVO {
     @Schema(description = "优先级：0低 1中 2高", example = "1")
     private Integer priority;
 
-    // ========== 商务信息 ==========
-
-    @Schema(description = "服务项金额", example = "50000.00")
-    private BigDecimal amount;
-
     // ========== 服务频次配置 ==========
 
-    @Schema(description = "频次类型：0按需(不限) 1按月 2按季 3按年", example = "1")
+    @Schema(description = "频次类型：0按需(不限) 1按月 2按季 3按年 4按周", example = "1")
     private Integer frequencyType;
 
     @Schema(description = "每周期最大执行次数（按需时无效）", example = "2")

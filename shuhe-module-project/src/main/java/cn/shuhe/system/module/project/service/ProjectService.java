@@ -4,6 +4,7 @@ import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectPageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
+import cn.shuhe.system.module.system.controller.admin.dashboard.vo.DashboardStatisticsRespVO;
 import jakarta.validation.Valid;
 
 import java.util.List;
@@ -85,5 +86,23 @@ public interface ProjectService {
      * @param roleType  角色类型（1-项目经理 2-执行人员 3-审核人员）
      */
     void addProjectMember(Long projectId, Long userId, String nickname, Integer roleType);
+
+    /**
+     * 获取项目统计（用于工作台/分析页）
+     * 权限与列表一致：超管看全部，普通用户只看参与的项目
+     *
+     * @param userId 用户ID
+     * @return 项目统计
+     */
+    DashboardStatisticsRespVO.ProjectStats getProjectStats(Long userId);
+
+    /**
+     * 获取项目状态分布（饼图）
+     *
+     * @param userId  用户ID
+     * @param isAdmin 是否管理员
+     * @return 项目分布
+     */
+    List<DashboardStatisticsRespVO.PieChartData> getProjectDistribution(Long userId, boolean isAdmin);
 
 }

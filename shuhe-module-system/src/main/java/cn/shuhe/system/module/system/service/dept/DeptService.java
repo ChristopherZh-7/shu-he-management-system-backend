@@ -129,4 +129,17 @@ public interface DeptService {
      */
     List<DeptDO> getDeptListByDeptType(Integer deptType);
 
+    /**
+     * 根据部门类型获取单个部门（返回第一个匹配的部门）
+     * 
+     * 用于服务项创建时，根据 deptType 找到对应的部门
+     *
+     * @param deptType 部门类型：1安全服务 2安全运营 3数据安全
+     * @return 部门信息，如果不存在则返回 null
+     */
+    default DeptDO getDeptByDeptType(Integer deptType) {
+        List<DeptDO> list = getDeptListByDeptType(deptType);
+        return list != null && !list.isEmpty() ? list.get(0) : null;
+    }
+
 }

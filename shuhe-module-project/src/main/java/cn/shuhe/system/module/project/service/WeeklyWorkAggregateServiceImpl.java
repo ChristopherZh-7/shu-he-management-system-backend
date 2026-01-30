@@ -1,0 +1,345 @@
+package cn.shuhe.system.module.project.service;
+
+import cn.hutool.core.collection.CollUtil;
+import cn.hutool.json.JSONUtil;
+import cn.shuhe.system.framework.common.util.object.BeanUtils;
+import cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils;
+import cn.shuhe.system.module.project.controller.admin.vo.ProjectWorkRecordRespVO;
+import cn.shuhe.system.module.project.controller.admin.vo.WeeklyWorkAggregateReqVO;
+import cn.shuhe.system.module.project.controller.admin.vo.WeeklyWorkAggregateRespVO;
+import cn.shuhe.system.module.project.controller.admin.vo.WeeklyWorkAggregateRespVO.DailyWorkVO;
+import cn.shuhe.system.module.project.dal.dataobject.DailyManagementRecordDO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectWorkRecordDO;
+import cn.shuhe.system.module.project.dal.mysql.DailyManagementRecordMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectWorkRecordMapper;
+import cn.shuhe.system.module.system.api.dept.DeptApi;
+import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
+import cn.shuhe.system.module.system.api.user.AdminUserApi;
+import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
+import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.validation.annotation.Validated;
+
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.temporal.WeekFields;
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * 周工作聚合服务实现类
+ * 聚合日常管理记录和项目管理记录，按日期展示
+ */
+@Service
+@Validated
+@Slf4j
+public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateService {
+
+    @Resource
+    private DailyManagementRecordMapper dailyManagementRecordMapper;
+
+    @Resource
+    private ProjectWorkRecordMapper projectWorkRecordMapper;
+
+    @Resource
+    private AdminUserApi adminUserApi;
+
+    @Resource
+    private DeptApi deptApi;
+
+    /**
+     * 星期名称映射
+     */
+    private static final Map<Integer, String> DAY_OF_WEEK_NAMES = Map.of(
+            1, "周一",
+            2, "周二",
+            3, "周三",
+            4, "周四",
+            5, "周五",
+            6, "周六",
+            7, "周日"
+    );
+
+    @Override
+    public WeeklyWorkAggregateRespVO getWeeklyWorkAggregate(WeeklyWorkAggregateReqVO reqVO) {
+        // 确定查询的用户ID
+        Long userId = reqVO.getUserId();
+        if (userId == null) {
+            userId = SecurityFrameworkUtils.getLoginUserId();
+        }
+
+        // 计算该周的日期范围
+        LocalDate[] weekDates = calculateWeekDates(reqVO.getYear(), reqVO.getWeekNumber());
+        LocalDate weekStartDate = weekDates[0];
+        LocalDate weekEndDate = weekDates[1];
+
+        // 1. 查询日常管理记录
+        DailyManagementRecordDO dailyRecord = dailyManagementRecordMapper.selectByCreatorAndYearAndWeek(
+                String.valueOf(userId), reqVO.getYear(), reqVO.getWeekNumber());
+
+        // 2. 查询项目管理记录（该周内的所有记录）
+        List<ProjectWorkRecordDO> projectRecords = new ArrayList<>();
+        if (Boolean.TRUE.equals(reqVO.getIncludeProjectRecords())) {
+            projectRecords = projectWorkRecordMapper.selectListByCreatorAndDateRange(userId, weekStartDate, weekEndDate);
+        }
+
+        // 3. 按日期分组项目记录
+        Map<LocalDate, List<ProjectWorkRecordDO>> projectRecordsByDate = projectRecords.stream()
+                .collect(Collectors.groupingBy(ProjectWorkRecordDO::getRecordDate));
+
+        // 4. 构建每日工作列表（周一到周五）
+        List<DailyWorkVO> dailyWorks = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+
+        for (int i = 0; i < 5; i++) {
+            LocalDate currentDate = weekStartDate.plusDays(i);
+            DailyWorkVO dailyWork = new DailyWorkVO();
+            dailyWork.setDate(currentDate);
+            dailyWork.setDayOfWeek(currentDate.getDayOfWeek().getValue());
+            dailyWork.setDayOfWeekName(DAY_OF_WEEK_NAMES.get(currentDate.getDayOfWeek().getValue()));
+            dailyWork.setIsToday(currentDate.equals(today));
+
+            // 设置日常管理内容
+            if (dailyRecord != null) {
+                dailyWork.setDailyContent(getDailyContentByDayOfWeek(dailyRecord, currentDate.getDayOfWeek().getValue()));
+            }
+
+            // 设置项目记录
+            List<ProjectWorkRecordDO> dayProjectRecords = projectRecordsByDate.getOrDefault(currentDate, Collections.emptyList());
+            if (Boolean.TRUE.equals(reqVO.getIncludeProjectRecords())) {
+                dailyWork.setProjectRecords(convertToProjectRecordRespVOs(dayProjectRecords));
+            }
+            dailyWork.setProjectRecordCount(dayProjectRecords.size());
+
+            dailyWorks.add(dailyWork);
+        }
+
+        // 5. 构建响应
+        WeeklyWorkAggregateRespVO respVO = new WeeklyWorkAggregateRespVO();
+        respVO.setYear(reqVO.getYear());
+        respVO.setWeekNumber(reqVO.getWeekNumber());
+        respVO.setWeekStartDate(weekStartDate);
+        respVO.setWeekEndDate(weekEndDate);
+        respVO.setDailyWorks(dailyWorks);
+
+        if (dailyRecord != null) {
+            respVO.setDailyRecordId(dailyRecord.getId());
+            respVO.setWeeklySummary(dailyRecord.getWeeklySummary());
+            respVO.setNextWeekPlan(dailyRecord.getNextWeekPlan());
+            if (dailyRecord.getAttachments() != null && !dailyRecord.getAttachments().isEmpty()) {
+                respVO.setDailyRecordAttachments(JSONUtil.toList(dailyRecord.getAttachments(), String.class));
+            }
+        }
+
+        return respVO;
+    }
+
+    @Override
+    public WeeklyWorkAggregateRespVO getCurrentWeekAggregate() {
+        LocalDate today = LocalDate.now();
+        WeekFields weekFields = WeekFields.of(Locale.getDefault());
+
+        int year = today.getYear();
+        int weekNumber = today.get(weekFields.weekOfWeekBasedYear());
+
+        // 计算本周一
+        LocalDate monday = today.with(DayOfWeek.MONDAY);
+        // 如果周一在下一年，调整年份和周数
+        if (monday.getYear() != year) {
+            year = monday.getYear();
+            weekNumber = monday.get(weekFields.weekOfWeekBasedYear());
+        }
+
+        WeeklyWorkAggregateReqVO reqVO = new WeeklyWorkAggregateReqVO();
+        reqVO.setYear(year);
+        reqVO.setWeekNumber(weekNumber);
+        reqVO.setIncludeProjectRecords(true);
+
+        return getWeeklyWorkAggregate(reqVO);
+    }
+
+    /**
+     * 计算指定年份和周数的周一和周五日期
+     */
+    private LocalDate[] calculateWeekDates(int year, int weekNumber) {
+        WeekFields weekFields = WeekFields.of(Locale.getDefault());
+
+        // 获取该年第一天
+        LocalDate firstDayOfYear = LocalDate.of(year, 1, 1);
+        
+        // 计算该周的周一
+        LocalDate monday = firstDayOfYear
+                .with(weekFields.weekOfWeekBasedYear(), weekNumber)
+                .with(DayOfWeek.MONDAY);
+        
+        // 周五
+        LocalDate friday = monday.plusDays(4);
+
+        return new LocalDate[]{monday, friday};
+    }
+
+    /**
+     * 根据星期几获取日常管理记录中对应的内容
+     */
+    private String getDailyContentByDayOfWeek(DailyManagementRecordDO record, int dayOfWeek) {
+        return switch (dayOfWeek) {
+            case 1 -> record.getMondayContent();
+            case 2 -> record.getTuesdayContent();
+            case 3 -> record.getWednesdayContent();
+            case 4 -> record.getThursdayContent();
+            case 5 -> record.getFridayContent();
+            default -> null;
+        };
+    }
+
+    /**
+     * 将项目工作记录 DO 转换为 RespVO
+     */
+    private List<ProjectWorkRecordRespVO> convertToProjectRecordRespVOs(List<ProjectWorkRecordDO> records) {
+        if (CollUtil.isEmpty(records)) {
+            return Collections.emptyList();
+        }
+        return records.stream()
+                .map(this::convertToProjectRecordRespVO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 单个项目工作记录 DO 转 RespVO
+     */
+    private ProjectWorkRecordRespVO convertToProjectRecordRespVO(ProjectWorkRecordDO record) {
+        ProjectWorkRecordRespVO respVO = BeanUtils.toBean(record, ProjectWorkRecordRespVO.class);
+        // 处理附件（JSON转List）
+        if (record.getAttachments() != null && !record.getAttachments().isEmpty()) {
+            respVO.setAttachments(JSONUtil.toList(record.getAttachments(), String.class));
+        }
+        return respVO;
+    }
+
+    /**
+     * 总经办部门名称（总经理所在部门）
+     */
+    private static final String GENERAL_MANAGER_DEPT_NAME = "总经办";
+
+    @Override
+    public List<Map<String, Object>> getViewableUserList() {
+        Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
+        AdminUserRespDTO currentUser = adminUserApi.getUser(currentUserId);
+        
+        List<Map<String, Object>> result = new ArrayList<>();
+        
+        // 1. 先添加自己（放在第一位）
+        Map<String, Object> selfMap = new HashMap<>();
+        selfMap.put("id", currentUserId);
+        selfMap.put("nickname", currentUser != null ? currentUser.getNickname() : "当前用户");
+        selfMap.put("deptName", "");
+        selfMap.put("isSelf", true);
+        
+        DeptRespDTO currentDept = null;
+        if (currentUser != null && currentUser.getDeptId() != null) {
+            currentDept = deptApi.getDept(currentUser.getDeptId());
+            if (currentDept != null) {
+                selfMap.put("deptName", currentDept.getName());
+            }
+        }
+        result.add(selfMap);
+        
+        // 2. 获取当前用户的部门
+        if (currentUser == null || currentUser.getDeptId() == null) {
+            return result;
+        }
+        
+        Long deptId = currentUser.getDeptId();
+        
+        // 3. 判断是否是总经办（总经理）- 可以查看所有部门
+        boolean isGeneralManager = currentDept != null && 
+                                   GENERAL_MANAGER_DEPT_NAME.equals(currentDept.getName());
+        
+        // 4. 判断当前用户是否是部门领导
+        boolean isLeader = currentDept != null && 
+                           currentDept.getLeaderUserId() != null && 
+                           currentDept.getLeaderUserId().equals(currentUserId);
+        
+        // 如果不是领导且不是总经办，只能看自己
+        if (!isLeader && !isGeneralManager) {
+            log.info("【周工作日历】用户 {} 不是部门领导也不是总经办，只能查看自己的数据", currentUserId);
+            return result;
+        }
+        
+        Set<Long> allDeptIds = new HashSet<>();
+        Map<Long, String> deptNameMap = new HashMap<>();
+        
+        if (isGeneralManager) {
+            // 5a. 总经办可以看所有业务部门（安全服务、安全运营、数据安全）
+            log.info("【周工作日历】用户 {} 是总经办成员，可查看所有部门数据", currentUserId);
+            
+            // 获取三种类型的业务部门：1-安全服务 2-安全运营 3-数据安全
+            for (int deptType = 1; deptType <= 3; deptType++) {
+                List<DeptRespDTO> deptsByType = deptApi.getDeptListByDeptType(deptType);
+                if (CollUtil.isNotEmpty(deptsByType)) {
+                    for (DeptRespDTO dept : deptsByType) {
+                        allDeptIds.add(dept.getId());
+                        deptNameMap.put(dept.getId(), dept.getName());
+                        
+                        // 获取该部门的所有子部门
+                        List<DeptRespDTO> childDepts = deptApi.getChildDeptList(dept.getId());
+                        if (CollUtil.isNotEmpty(childDepts)) {
+                            for (DeptRespDTO child : childDepts) {
+                                allDeptIds.add(child.getId());
+                                deptNameMap.put(child.getId(), child.getName());
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 也添加总经办和人事行政部
+            allDeptIds.add(deptId);
+            deptNameMap.put(deptId, currentDept.getName());
+        } else {
+            // 5b. 普通领导只能看本部门及子部门
+            allDeptIds.add(deptId);
+            if (currentDept != null) {
+                deptNameMap.put(deptId, currentDept.getName());
+            }
+            
+            // 获取所有子部门
+            List<DeptRespDTO> childDepts = deptApi.getChildDeptList(deptId);
+            if (CollUtil.isNotEmpty(childDepts)) {
+                for (DeptRespDTO child : childDepts) {
+                    allDeptIds.add(child.getId());
+                    deptNameMap.put(child.getId(), child.getName());
+                }
+            }
+            
+            log.info("【周工作日历】领导 {} 可查看部门: {}", currentUserId, allDeptIds);
+        }
+        
+        // 6. 获取这些部门的所有用户
+        List<AdminUserRespDTO> users = adminUserApi.getUserListByDeptIds(allDeptIds);
+        if (CollUtil.isEmpty(users)) {
+            return result;
+        }
+        
+        // 7. 构建用户列表（排除自己，因为已经添加过了）
+        for (AdminUserRespDTO user : users) {
+            // 跳过自己（已经在第一位了）
+            if (user.getId().equals(currentUserId)) {
+                continue;
+            }
+            
+            Map<String, Object> userMap = new HashMap<>();
+            userMap.put("id", user.getId());
+            userMap.put("nickname", user.getNickname());
+            userMap.put("deptName", user.getDeptId() != null ? deptNameMap.getOrDefault(user.getDeptId(), "") : "");
+            userMap.put("isSelf", false);
+            result.add(userMap);
+        }
+        
+        log.info("【周工作日历】用户 {} 可查看 {} 个员工", currentUserId, result.size());
+        
+        return result;
+    }
+
+}
