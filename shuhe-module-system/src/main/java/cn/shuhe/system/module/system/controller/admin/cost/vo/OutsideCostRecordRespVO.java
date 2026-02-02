@@ -35,6 +35,12 @@ public class OutsideCostRecordRespVO {
     @Schema(description = "服务项名称")
     private String serviceItemName;
 
+    @Schema(description = "服务类型（字典值）")
+    private String serviceType;
+
+    @Schema(description = "部门类型：1-安全服务 2-安全运营 3-数据安全")
+    private Integer deptType;
+
     @Schema(description = "发起部门ID（A部门）")
     private Long requestDeptId;
 

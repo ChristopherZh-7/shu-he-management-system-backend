@@ -61,6 +61,16 @@ public class OutsideCostRecordDO extends BaseDO {
     private String serviceItemName;
 
     /**
+     * 服务类型（字典值，快照）
+     */
+    private String serviceType;
+
+    /**
+     * 部门类型（1-安全服务 2-安全运营 3-数据安全）
+     */
+    private Integer deptType;
+
+    /**
      * 发起部门ID（A部门，找人的部门）
      */
     private Long requestDeptId;

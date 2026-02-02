@@ -6,17 +6,23 @@ import cn.shuhe.system.module.project.controller.admin.vo.SecurityOperationMembe
 import cn.shuhe.system.module.project.controller.admin.vo.SecurityOperationSiteRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.SecurityOperationSiteSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
+import cn.shuhe.system.module.project.dal.dataobject.SecurityOperationContractDO;
 import cn.shuhe.system.module.project.dal.dataobject.SecurityOperationMemberDO;
 import cn.shuhe.system.module.project.dal.dataobject.SecurityOperationSiteDO;
+import cn.shuhe.system.module.project.dal.mysql.ContractDeptAllocationInfoMapper;
 import cn.shuhe.system.module.project.dal.mysql.ContractTimeMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
+import cn.shuhe.system.module.project.dal.mysql.SecurityOperationContractMapper;
 import cn.shuhe.system.module.project.dal.mysql.SecurityOperationMemberMapper;
 import cn.shuhe.system.module.project.dal.mysql.SecurityOperationSiteMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,7 +52,19 @@ public class SecurityOperationSiteServiceImpl implements SecurityOperationSiteSe
     @Resource
     private ContractTimeMapper contractTimeMapper;
 
+    @Resource
+    private SecurityOperationContractMapper securityOperationContractMapper;
+
+    @Resource
+    private ContractDeptAllocationInfoMapper contractDeptAllocationInfoMapper;
+
+    /**
+     * 安全运营服务部的部门类型
+     */
+    private static final int DEPT_TYPE_SECURITY_OPERATION = 2;
+
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Long createSite(SecurityOperationSiteSaveReqVO createReqVO) {
         // 校验项目是否存在，并获取项目信息
         ProjectDO project = projectMapper.selectById(createReqVO.getProjectId());
@@ -59,6 +77,9 @@ public class SecurityOperationSiteServiceImpl implements SecurityOperationSiteSe
         site.setStatus(1); // 默认启用
         site.setSort(0);
         
+        LocalDate startDate = null;
+        LocalDate endDate = null;
+        
         // 自动从 CRM 合同获取时间（保持一致性）
         if (project.getContractId() != null) {
             Map<String, LocalDateTime> contractTime = contractTimeMapper.selectContractTime(project.getContractId());
@@ -67,14 +88,19 @@ public class SecurityOperationSiteServiceImpl implements SecurityOperationSiteSe
                 LocalDateTime endTime = contractTime.get("endTime");
                 // LocalDateTime 转 LocalDate
                 if (startTime != null) {
-                    site.setStartDate(startTime.toLocalDate());
+                    startDate = startTime.toLocalDate();
+                    site.setStartDate(startDate);
                 }
                 if (endTime != null) {
-                    site.setEndDate(endTime.toLocalDate());
+                    endDate = endTime.toLocalDate();
+                    site.setEndDate(endDate);
                 }
                 log.info("[createSite][从CRM合同自动获取时间，contractId={}，startDate={}，endDate={}]",
                         project.getContractId(), site.getStartDate(), site.getEndDate());
             }
+            
+            // 【关键】自动创建 security_operation_contract（如果不存在）
+            ensureSecurityOperationContractExists(project, startDate, endDate);
         }
         
         siteMapper.insert(site);
@@ -82,6 +108,77 @@ public class SecurityOperationSiteServiceImpl implements SecurityOperationSiteSe
         log.info("[createSite][创建驻场点成功，id={}，projectId={}，name={}]", 
                 site.getId(), site.getProjectId(), site.getName());
         return site.getId();
+    }
+
+    /**
+     * 确保 security_operation_contract 存在
+     * 如果不存在则自动创建
+     * 
+     * @param project 项目
+     * @param startDate 开始日期
+     * @param endDate 结束日期
+     */
+    private void ensureSecurityOperationContractExists(ProjectDO project, LocalDate startDate, LocalDate endDate) {
+        Long contractId = project.getContractId();
+        if (contractId == null) {
+            log.warn("[ensureSecurityOperationContractExists][项目没有关联合同，projectId={}]", project.getId());
+            return;
+        }
+
+        // 检查是否已存在 security_operation_contract
+        SecurityOperationContractDO existingContract = securityOperationContractMapper.selectByContractId(contractId);
+        if (existingContract != null) {
+            log.debug("[ensureSecurityOperationContractExists][安全运营合同已存在，contractId={}，soContractId={}]", 
+                    contractId, existingContract.getId());
+            return;
+        }
+
+        // 获取合同部门分配信息（安全运营服务部，deptType=2）
+        Map<String, Object> allocationInfo = contractDeptAllocationInfoMapper.selectByContractIdAndDeptType(
+                contractId, DEPT_TYPE_SECURITY_OPERATION);
+        
+        Long allocationId = null;
+        String contractNo = null;
+        String customerName = null;
+        
+        if (allocationInfo != null) {
+            Object allocIdObj = allocationInfo.get("allocationId");
+            if (allocIdObj instanceof Number) {
+                allocationId = ((Number) allocIdObj).longValue();
+            }
+            contractNo = (String) allocationInfo.get("contractNo");
+            customerName = (String) allocationInfo.get("customerName");
+        }
+
+        // 获取费用分配信息（管理费、驻场费）
+        Map<String, BigDecimal> fees = contractDeptAllocationInfoMapper.selectSecurityOperationFees(contractId);
+        BigDecimal managementFee = BigDecimal.ZERO;
+        BigDecimal onsiteFee = BigDecimal.ZERO;
+        if (fees != null) {
+            managementFee = fees.get("managementFee") != null ? fees.get("managementFee") : BigDecimal.ZERO;
+            onsiteFee = fees.get("onsiteFee") != null ? fees.get("onsiteFee") : BigDecimal.ZERO;
+        }
+
+        // 创建 security_operation_contract
+        SecurityOperationContractDO soContract = SecurityOperationContractDO.builder()
+                .contractId(contractId)
+                .contractNo(contractNo != null ? contractNo : project.getCode())
+                .contractDeptAllocationId(allocationId)
+                .customerId(project.getCustomerId())
+                .customerName(customerName != null ? customerName : project.getCustomerName())
+                .name(project.getName())
+                .onsiteStartDate(startDate)
+                .onsiteEndDate(endDate)
+                .managementFee(managementFee)
+                .onsiteFee(onsiteFee)
+                .managementCount(0)
+                .onsiteCount(0)
+                .status(1) // 进行中
+                .build();
+
+        securityOperationContractMapper.insert(soContract);
+        log.info("[ensureSecurityOperationContractExists][自动创建安全运营合同成功，contractId={}，soContractId={}]", 
+                contractId, soContract.getId());
     }
 
     @Override

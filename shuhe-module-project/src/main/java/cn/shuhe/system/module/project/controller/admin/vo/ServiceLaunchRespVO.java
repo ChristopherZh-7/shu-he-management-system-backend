@@ -103,6 +103,21 @@ public class ServiceLaunchRespVO {
     @Schema(description = "轮次ID")
     private Long roundId;
 
+    @Schema(description = "审批人所在部门ID")
+    private Long approverDeptId;
+
+    @Schema(description = "审批人所在部门名称")
+    private String approverDeptName;
+
+    @Schema(description = "是否需要在审批时选择执行的子部门")
+    private Boolean needSelectExecuteDept;
+
+    @Schema(description = "实际执行部门ID（审批时选择的子部门）")
+    private Long actualExecuteDeptId;
+
+    @Schema(description = "实际执行部门名称")
+    private String actualExecuteDeptName;
+
     @Schema(description = "备注")
     private String remark;
 

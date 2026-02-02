@@ -133,6 +133,33 @@ public interface ServiceLaunchService {
     Long handleApproved(Long id, List<Long> executorUserIds);
 
     /**
+     * 处理审批通过（支持选择子部门）
+     *
+     * @param id 编号
+     * @param actualExecuteDeptId 实际执行部门ID（审批时选择的子部门）
+     * @param executorUserIds 执行人员ID列表
+     * @return 创建的轮次ID
+     */
+    Long handleApprovedWithDept(Long id, Long actualExecuteDeptId, List<Long> executorUserIds);
+
+    /**
+     * 设置实际执行部门（审批时选择）
+     *
+     * @param id 编号
+     * @param actualExecuteDeptId 实际执行部门ID
+     */
+    void setActualExecuteDept(Long id, Long actualExecuteDeptId);
+
+    /**
+     * 获取指定部门的子部门列表
+     * 用于审批时选择实际执行的子部门
+     *
+     * @param parentDeptId 父部门ID
+     * @return 子部门列表
+     */
+    List<Map<String, Object>> getChildDeptList(Long parentDeptId);
+
+    /**
      * 处理审批拒绝
      *
      * @param id 编号

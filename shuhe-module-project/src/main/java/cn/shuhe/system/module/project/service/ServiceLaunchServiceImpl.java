@@ -105,7 +105,19 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
             }
         }
 
-        // 6. 创建发起记录
+        // 6. 确定审批人（向上递归查找负责人）
+        Long executeDeptId = createReqVO.getExecuteDeptId();
+        Long approverDeptId = deptApi.findLeaderDeptIdRecursively(executeDeptId);
+        Long approverUserId = deptApi.findLeaderUserIdRecursively(executeDeptId);
+        
+        // 判断是否需要在审批时选择执行的子部门
+        // 如果审批人所在部门不是用户选择的执行部门（即审批人是父部门负责人），则需要选择
+        boolean needSelectExecuteDept = approverDeptId != null && !approverDeptId.equals(executeDeptId);
+        
+        log.info("【统一服务发起】执行部门={}, 审批人部门={}, 审批人={}, 需要选择子部门={}",
+                executeDeptId, approverDeptId, approverUserId, needSelectExecuteDept);
+
+        // 7. 创建发起记录
         ServiceLaunchDO launch = BeanUtils.toBean(createReqVO, ServiceLaunchDO.class);
         launch.setProjectId(serviceItem.getProjectId());
         launch.setServiceItemDeptId(serviceItemDeptId);
@@ -113,6 +125,14 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
         launch.setRequestDeptId(requestDeptId);
         launch.setIsCrossDept(Boolean.TRUE.equals(isCrossDept));
         launch.setStatus(0); // 待审批
+        
+        // 设置审批人相关信息
+        launch.setApproverDeptId(approverDeptId);
+        launch.setNeedSelectExecuteDept(needSelectExecuteDept);
+        // 如果不需要选择子部门，实际执行部门就是用户选择的部门
+        if (!needSelectExecuteDept) {
+            launch.setActualExecuteDeptId(executeDeptId);
+        }
 
         // 渗透测试附件（转换为JSON存储）
         if (createReqVO.getAuthorizationUrls() != null && !createReqVO.getAuthorizationUrls().isEmpty()) {
@@ -272,10 +292,57 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
 
     @Override
     public List<Map<String, Object>> getDeptList() {
-        // 获取所有安全类型部门（deptType = 1, 2, 3）
+        // 获取所有安全类型部门的叶子部门（deptType = 1, 2, 3）
+        // 叶子部门：没有子部门的部门，用户只能选择叶子部门
         List<Map<String, Object>> result = new ArrayList<>();
         
-        // 分别获取三种类型的部门
+        // 分别获取三种类型的叶子部门
+        for (int deptType = 1; deptType <= 3; deptType++) {
+            List<cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO> leafDepts = deptApi.getLeafDeptListByDeptType(deptType);
+            if (leafDepts != null) {
+                for (cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO dept : leafDepts) {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", dept.getId());
+                    map.put("name", dept.getName());
+                    map.put("parentId", dept.getParentId());
+                    map.put("deptType", deptType);
+                    
+                    // 向上递归查找负责人（当前部门没有则找父部门）
+                    Long leaderUserId = deptApi.findLeaderUserIdRecursively(dept.getId());
+                    Long leaderDeptId = deptApi.findLeaderDeptIdRecursively(dept.getId());
+                    
+                    map.put("leaderUserId", leaderUserId);
+                    map.put("leaderDeptId", leaderDeptId);
+                    // 标记审批人是否来自父部门（需要在审批时先选子部门）
+                    map.put("isLeaderFromParent", leaderDeptId != null && !leaderDeptId.equals(dept.getId()));
+                    
+                    // 获取负责人名称
+                    if (leaderUserId != null) {
+                        cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO leader = adminUserApi.getUser(leaderUserId);
+                        map.put("leaderUserName", leader != null ? leader.getNickname() : null);
+                    }
+                    
+                    // 获取审批人所在部门名称
+                    if (leaderDeptId != null) {
+                        cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO leaderDept = deptApi.getDept(leaderDeptId);
+                        map.put("leaderDeptName", leaderDept != null ? leaderDept.getName() : null);
+                    }
+                    
+                    result.add(map);
+                }
+            }
+        }
+        
+        log.info("【获取执行部门列表】返回{}个叶子部门, 详情: {}", result.size(), result);
+        return result;
+    }
+    
+    /**
+     * 获取所有部门列表（包含非叶子部门，用于部门层级判断）
+     */
+    public List<Map<String, Object>> getAllDeptList() {
+        List<Map<String, Object>> result = new ArrayList<>();
+        
         for (int deptType = 1; deptType <= 3; deptType++) {
             List<cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO> depts = deptApi.getDeptListByDeptType(deptType);
             if (depts != null) {
@@ -287,7 +354,6 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
                     map.put("deptType", deptType);
                     map.put("leaderUserId", dept.getLeaderUserId());
                     
-                    // 获取负责人名称
                     if (dept.getLeaderUserId() != null) {
                         cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO leader = adminUserApi.getUser(dept.getLeaderUserId());
                         map.put("leaderUserName", leader != null ? leader.getNickname() : null);
@@ -449,9 +515,13 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
         serviceLaunchMapper.updateById(updateObj);
 
         // 如果是跨部门，创建跨部门费用记录
+        // 使用实际执行部门（如果已选择）或原执行部门
+        Long effectiveExecuteDeptId = launch.getActualExecuteDeptId() != null 
+                ? launch.getActualExecuteDeptId() 
+                : launch.getExecuteDeptId();
         if (Boolean.TRUE.equals(launch.getIsCrossDept())) {
-            log.info("【统一服务发起】跨部门服务，创建费用记录。launchId={}, serviceItemDeptId={}, executeDeptId={}",
-                    id, launch.getServiceItemDeptId(), launch.getExecuteDeptId());
+            log.info("【统一服务发起】跨部门服务，创建费用记录。launchId={}, serviceItemDeptId={}, effectiveExecuteDeptId={}",
+                    id, launch.getServiceItemDeptId(), effectiveExecuteDeptId);
             try {
                 Long costRecordId = outsideCostApi.createCostRecordByServiceLaunch(id);
                 if (costRecordId != null) {
@@ -475,6 +545,91 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
     @Override
     public void handleCancelled(Long id) {
         updateStatus(id, 3);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long handleApprovedWithDept(Long id, Long actualExecuteDeptId, List<Long> executorUserIds) {
+        ServiceLaunchDO launch = serviceLaunchMapper.selectById(id);
+        if (launch == null) {
+            log.warn("【统一服务发起】记录不存在，id={}", id);
+            return null;
+        }
+
+        // 如果需要选择子部门，必须传入实际执行部门
+        if (Boolean.TRUE.equals(launch.getNeedSelectExecuteDept()) && actualExecuteDeptId == null) {
+            log.warn("【统一服务发起】需要选择执行子部门但未传入，launchId={}", id);
+            throw exception(SERVICE_LAUNCH_NEED_SELECT_DEPT);
+        }
+
+        // 设置实际执行部门
+        if (actualExecuteDeptId != null) {
+            setActualExecuteDept(id, actualExecuteDeptId);
+        }
+
+        // 调用原有的审批通过逻辑
+        return handleApproved(id, executorUserIds);
+    }
+
+    @Override
+    public void setActualExecuteDept(Long id, Long actualExecuteDeptId) {
+        ServiceLaunchDO launch = validateServiceLaunchExists(id);
+        if (launch.getStatus() != 0) {
+            throw exception(SERVICE_LAUNCH_STATUS_NOT_PENDING);
+        }
+
+        // 获取部门名称
+        String deptName = "";
+        if (actualExecuteDeptId != null) {
+            DeptRespDTO dept = deptApi.getDept(actualExecuteDeptId);
+            deptName = dept != null ? dept.getName() : "";
+        }
+
+        ServiceLaunchDO updateObj = new ServiceLaunchDO();
+        updateObj.setId(id);
+        updateObj.setActualExecuteDeptId(actualExecuteDeptId);
+        serviceLaunchMapper.updateById(updateObj);
+        
+        log.info("【统一服务发起】设置实际执行部门，launchId={}, actualExecuteDeptId={}, deptName={}", 
+                id, actualExecuteDeptId, deptName);
+    }
+
+    @Override
+    public List<Map<String, Object>> getChildDeptList(Long parentDeptId) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        
+        if (parentDeptId == null) {
+            return result;
+        }
+
+        // 获取所有子部门（包括孙子部门）
+        List<DeptRespDTO> allChildDepts = deptApi.getChildDeptList(parentDeptId);
+        if (allChildDepts == null || allChildDepts.isEmpty()) {
+            return result;
+        }
+        
+        // 只返回直接子部门（parentId == parentDeptId）
+        for (DeptRespDTO dept : allChildDepts) {
+            if (parentDeptId.equals(dept.getParentId())) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", dept.getId());
+                map.put("name", dept.getName());
+                map.put("parentId", dept.getParentId());
+                map.put("leaderUserId", dept.getLeaderUserId());
+                
+                // 获取负责人名称
+                if (dept.getLeaderUserId() != null) {
+                    AdminUserRespDTO leader = adminUserApi.getUser(dept.getLeaderUserId());
+                    map.put("leaderUserName", leader != null ? leader.getNickname() : null);
+                }
+                
+                result.add(map);
+            }
+        }
+        
+        log.info("【获取子部门列表】parentDeptId={}, 总子部门{}个, 直接子部门{}个", 
+                parentDeptId, allChildDepts.size(), result.size());
+        return result;
     }
 
     private void updateStatus(Long id, Integer status) {
@@ -588,6 +743,22 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
                 respVO.setCredentialsUrls(JSONUtil.toList(launch.getCredentialsUrls(), String.class));
             } catch (Exception e) {
                 log.warn("解析账号密码URL列表失败: {}", launch.getCredentialsUrls());
+            }
+        }
+
+        // 获取审批人所在部门名称
+        if (launch.getApproverDeptId() != null) {
+            DeptRespDTO approverDept = deptApi.getDept(launch.getApproverDeptId());
+            if (approverDept != null) {
+                respVO.setApproverDeptName(approverDept.getName());
+            }
+        }
+
+        // 获取实际执行部门名称
+        if (launch.getActualExecuteDeptId() != null) {
+            DeptRespDTO actualExecuteDept = deptApi.getDept(launch.getActualExecuteDeptId());
+            if (actualExecuteDept != null) {
+                respVO.setActualExecuteDeptName(actualExecuteDept.getName());
             }
         }
 

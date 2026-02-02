@@ -4,8 +4,15 @@ import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.module.project.controller.admin.vo.SecurityOperationMemberRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.SecurityOperationMemberSaveReqVO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
+import cn.shuhe.system.module.project.dal.dataobject.SecurityOperationContractDO;
 import cn.shuhe.system.module.project.dal.dataobject.SecurityOperationMemberDO;
+import cn.shuhe.system.module.project.dal.dataobject.SecurityOperationSiteDO;
+import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
+import cn.shuhe.system.module.project.dal.mysql.SecurityOperationContractMapper;
 import cn.shuhe.system.module.project.dal.mysql.SecurityOperationMemberMapper;
+import cn.shuhe.system.module.project.dal.mysql.SecurityOperationSiteMapper;
+import cn.shuhe.system.module.project.service.SecurityOperationContractService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,6 +42,18 @@ public class SecurityOperationMemberController {
     @Resource
     private SecurityOperationMemberMapper memberMapper;
 
+    @Resource
+    private SecurityOperationSiteMapper siteMapper;
+
+    @Resource
+    private ProjectMapper projectMapper;
+
+    @Resource
+    private SecurityOperationContractMapper securityOperationContractMapper;
+
+    @Resource
+    private SecurityOperationContractService securityOperationContractService;
+
     @PostMapping("/create")
     @Operation(summary = "创建驻场人员")
     @PreAuthorize("@ss.hasPermission('project:security-operation:update')")
@@ -52,8 +71,57 @@ public class SecurityOperationMemberController {
         if (member.getMemberType() == null) {
             member.setMemberType(SecurityOperationMemberDO.MEMBER_TYPE_ONSITE);
         }
+        
+        // 【关键】自动关联 security_operation_contract
+        // 如果没有传 soContractId，根据 siteId -> projectId -> contractId -> soContract 查找
+        if (member.getSoContractId() == null && member.getSiteId() != null) {
+            Long soContractId = findSoContractIdBySiteId(member.getSiteId());
+            if (soContractId != null) {
+                member.setSoContractId(soContractId);
+                log.info("[createMember][自动关联安全运营合同，siteId={}，soContractId={}]", 
+                        member.getSiteId(), soContractId);
+            }
+        }
+        
         memberMapper.insert(member);
+        
+        // 更新安全运营合同的人员统计
+        if (member.getSoContractId() != null) {
+            securityOperationContractService.updateMemberCount(member.getSoContractId());
+        }
+        
         return success(member.getId());
+    }
+
+    /**
+     * 根据驻场点ID查找安全运营合同ID
+     * 
+     * @param siteId 驻场点ID
+     * @return 安全运营合同ID，如果找不到返回null
+     */
+    private Long findSoContractIdBySiteId(Long siteId) {
+        // 1. 根据 siteId 获取 projectId
+        SecurityOperationSiteDO site = siteMapper.selectById(siteId);
+        if (site == null || site.getProjectId() == null) {
+            log.warn("[findSoContractIdBySiteId][驻场点不存在或没有关联项目，siteId={}]", siteId);
+            return null;
+        }
+
+        // 2. 根据 projectId 获取 contractId
+        ProjectDO project = projectMapper.selectById(site.getProjectId());
+        if (project == null || project.getContractId() == null) {
+            log.warn("[findSoContractIdBySiteId][项目不存在或没有关联合同，projectId={}]", site.getProjectId());
+            return null;
+        }
+
+        // 3. 根据 contractId 获取 security_operation_contract
+        SecurityOperationContractDO soContract = securityOperationContractMapper.selectByContractId(project.getContractId());
+        if (soContract == null) {
+            log.warn("[findSoContractIdBySiteId][安全运营合同不存在，contractId={}]", project.getContractId());
+            return null;
+        }
+
+        return soContract.getId();
     }
 
     @PutMapping("/update")

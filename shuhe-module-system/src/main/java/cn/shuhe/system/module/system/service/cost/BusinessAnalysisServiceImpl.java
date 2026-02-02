@@ -1,6 +1,8 @@
 package cn.shuhe.system.module.system.service.cost;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONUtil;
 import cn.shuhe.system.module.system.controller.admin.cost.vo.BusinessAnalysisReqVO;
 import cn.shuhe.system.module.system.controller.admin.cost.vo.BusinessAnalysisRespVO;
 import cn.shuhe.system.module.system.controller.admin.cost.vo.BusinessAnalysisRespVO.*;
@@ -385,11 +387,9 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
         // 获取部门下所有员工（包括子部门）- 使用缓存
         List<AdminUserDO> employees = getEmployeesUnderDeptWithCache(dept.getId(), ctx);
         
-        // 计算部门汇总
+        // 计算部门汇总（合同收入和员工成本）
         BigDecimal totalContractIncome = BigDecimal.ZERO;
         BigDecimal totalEmployeeCost = BigDecimal.ZERO;
-        BigDecimal totalOutsideIncome = BigDecimal.ZERO;
-        BigDecimal totalOutsideExpense = BigDecimal.ZERO;
 
         // 计算每个员工的数据并汇总
         List<EmployeeAnalysis> employeeAnalysisList = new ArrayList<>();
@@ -400,16 +400,17 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
                         empAnalysis.getContractIncome() != null ? empAnalysis.getContractIncome() : BigDecimal.ZERO);
                 totalEmployeeCost = totalEmployeeCost.add(
                         empAnalysis.getEmployeeCost() != null ? empAnalysis.getEmployeeCost() : BigDecimal.ZERO);
-                totalOutsideIncome = totalOutsideIncome.add(
-                        empAnalysis.getOutsideIncome() != null ? empAnalysis.getOutsideIncome() : BigDecimal.ZERO);
-                totalOutsideExpense = totalOutsideExpense.add(
-                        empAnalysis.getOutsideExpense() != null ? empAnalysis.getOutsideExpense() : BigDecimal.ZERO);
                 
                 if (includeEmployees) {
                     employeeAnalysisList.add(empAnalysis);
                 }
             }
         }
+
+        // 计算部门的跨部门收入/支出（包括本部门和所有子部门）
+        LocalDateTime cutoffDateTime = ctx.getCutoffDate().atTime(LocalTime.MAX);
+        BigDecimal totalOutsideIncome = calculateDeptOutsideIncome(dept.getId(), ctx.getYear(), cutoffDateTime);
+        BigDecimal totalOutsideExpense = calculateDeptOutsideExpense(dept.getId(), ctx.getYear(), cutoffDateTime);
 
         // 计算利润
         BigDecimal totalIncome = totalContractIncome.add(totalOutsideIncome);
@@ -510,8 +511,6 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
         
         BigDecimal totalContractIncome = BigDecimal.ZERO;
         BigDecimal totalEmployeeCost = BigDecimal.ZERO;
-        BigDecimal totalOutsideIncome = BigDecimal.ZERO;
-        BigDecimal totalOutsideExpense = BigDecimal.ZERO;
         int totalEmployeeCount = directEmployees.size();
 
         List<EmployeeAnalysis> employeeAnalysisList = new ArrayList<>();
@@ -522,16 +521,22 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
                         empAnalysis.getContractIncome() != null ? empAnalysis.getContractIncome() : BigDecimal.ZERO);
                 totalEmployeeCost = totalEmployeeCost.add(
                         empAnalysis.getEmployeeCost() != null ? empAnalysis.getEmployeeCost() : BigDecimal.ZERO);
-                totalOutsideIncome = totalOutsideIncome.add(
-                        empAnalysis.getOutsideIncome() != null ? empAnalysis.getOutsideIncome() : BigDecimal.ZERO);
-                totalOutsideExpense = totalOutsideExpense.add(
-                        empAnalysis.getOutsideExpense() != null ? empAnalysis.getOutsideExpense() : BigDecimal.ZERO);
                 
                 if (includeEmployees) {
                     employeeAnalysisList.add(empAnalysis);
                 }
             }
         }
+
+        // 计算本部门直属的跨部门收支（不包括子部门）
+        LocalDateTime cutoffDateTime = ctx.getCutoffDate().atTime(LocalTime.MAX);
+        BigDecimal directOutsideIncome = outsideCostRecordMapper.sumIncomeByDeptIdAndYear(dept.getId(), ctx.getYear(), cutoffDateTime);
+        BigDecimal directOutsideExpense = outsideCostRecordMapper.sumExpenseByDeptIdAndYear(dept.getId(), ctx.getYear(), cutoffDateTime);
+        if (directOutsideIncome == null) directOutsideIncome = BigDecimal.ZERO;
+        if (directOutsideExpense == null) directOutsideExpense = BigDecimal.ZERO;
+        
+        BigDecimal totalOutsideIncome = directOutsideIncome;
+        BigDecimal totalOutsideExpense = directOutsideExpense;
 
         // 递归处理子部门
         List<DeptDO> childDepts = ctx.getChildDeptCache().get(dept.getId());
@@ -657,10 +662,8 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
         // 计算部门汇总
         BigDecimal totalContractIncome = BigDecimal.ZERO;
         BigDecimal totalEmployeeCost = BigDecimal.ZERO;
-        BigDecimal totalOutsideIncome = BigDecimal.ZERO;
-        BigDecimal totalOutsideExpense = BigDecimal.ZERO;
 
-        // 计算每个员工的数据并汇总
+        // 计算每个员工的数据并汇总（合同收入和员工成本）
         List<EmployeeAnalysis> employeeAnalysisList = new ArrayList<>();
         for (AdminUserDO employee : employees) {
             EmployeeAnalysis empAnalysis = buildEmployeeAnalysis(employee, year, cutoffDate, includeEmployees);
@@ -669,16 +672,17 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
                         empAnalysis.getContractIncome() != null ? empAnalysis.getContractIncome() : BigDecimal.ZERO);
                 totalEmployeeCost = totalEmployeeCost.add(
                         empAnalysis.getEmployeeCost() != null ? empAnalysis.getEmployeeCost() : BigDecimal.ZERO);
-                totalOutsideIncome = totalOutsideIncome.add(
-                        empAnalysis.getOutsideIncome() != null ? empAnalysis.getOutsideIncome() : BigDecimal.ZERO);
-                totalOutsideExpense = totalOutsideExpense.add(
-                        empAnalysis.getOutsideExpense() != null ? empAnalysis.getOutsideExpense() : BigDecimal.ZERO);
                 
                 if (includeEmployees) {
                     employeeAnalysisList.add(empAnalysis);
                 }
             }
         }
+
+        // 计算部门的跨部门收入/支出（包括本部门和所有子部门）
+        LocalDateTime cutoffDateTime = cutoffDate.atTime(LocalTime.MAX);
+        BigDecimal totalOutsideIncome = calculateDeptOutsideIncome(dept.getId(), year, cutoffDateTime);
+        BigDecimal totalOutsideExpense = calculateDeptOutsideExpense(dept.getId(), year, cutoffDateTime);
 
         // 计算利润
         BigDecimal totalIncome = totalContractIncome.add(totalOutsideIncome);
@@ -822,11 +826,9 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
         
         BigDecimal totalContractIncome = BigDecimal.ZERO;
         BigDecimal totalEmployeeCost = BigDecimal.ZERO;
-        BigDecimal totalOutsideIncome = BigDecimal.ZERO;
-        BigDecimal totalOutsideExpense = BigDecimal.ZERO;
         int totalEmployeeCount = directEmployees.size();
 
-        // 计算直属员工的数据
+        // 计算直属员工的数据（合同收入和员工成本）
         List<EmployeeAnalysis> employeeAnalysisList = new ArrayList<>();
         for (AdminUserDO employee : directEmployees) {
             EmployeeAnalysis empAnalysis = buildEmployeeAnalysis(employee, year, cutoffDate, includeEmployees);
@@ -835,16 +837,22 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
                         empAnalysis.getContractIncome() != null ? empAnalysis.getContractIncome() : BigDecimal.ZERO);
                 totalEmployeeCost = totalEmployeeCost.add(
                         empAnalysis.getEmployeeCost() != null ? empAnalysis.getEmployeeCost() : BigDecimal.ZERO);
-                totalOutsideIncome = totalOutsideIncome.add(
-                        empAnalysis.getOutsideIncome() != null ? empAnalysis.getOutsideIncome() : BigDecimal.ZERO);
-                totalOutsideExpense = totalOutsideExpense.add(
-                        empAnalysis.getOutsideExpense() != null ? empAnalysis.getOutsideExpense() : BigDecimal.ZERO);
                 
                 if (includeEmployees) {
                     employeeAnalysisList.add(empAnalysis);
                 }
             }
         }
+
+        // 计算本部门直属的跨部门收支（不包括子部门）
+        LocalDateTime cutoffDateTime = cutoffDate.atTime(LocalTime.MAX);
+        BigDecimal directOutsideIncome = outsideCostRecordMapper.sumIncomeByDeptIdAndYear(dept.getId(), year, cutoffDateTime);
+        BigDecimal directOutsideExpense = outsideCostRecordMapper.sumExpenseByDeptIdAndYear(dept.getId(), year, cutoffDateTime);
+        if (directOutsideIncome == null) directOutsideIncome = BigDecimal.ZERO;
+        if (directOutsideExpense == null) directOutsideExpense = BigDecimal.ZERO;
+        
+        BigDecimal totalOutsideIncome = directOutsideIncome;
+        BigDecimal totalOutsideExpense = directOutsideExpense;
 
         // 递归获取直接子部门（不获取所有后代）
         List<DeptDO> childDepts = deptMapper.selectListByParentId(Collections.singleton(dept.getId()));
@@ -1119,6 +1127,7 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
     
     /**
      * 从 LocalDateTime 或 Date 对象获取 LocalDate
+     * 支持：LocalDate, LocalDateTime, Timestamp, java.sql.Date, java.util.Date, Long（毫秒时间戳）
      */
     private LocalDate getLocalDateFromDateTime(Object value) {
         if (value == null) return null;
@@ -1128,6 +1137,17 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
         if (value instanceof java.sql.Date) return ((java.sql.Date) value).toLocalDate();
         if (value instanceof java.util.Date) {
             return new java.sql.Date(((java.util.Date) value).getTime()).toLocalDate();
+        }
+        // 支持 Long 类型的毫秒时间戳
+        if (value instanceof Long) {
+            return java.time.Instant.ofEpochMilli((Long) value)
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .toLocalDate();
+        }
+        if (value instanceof Number) {
+            return java.time.Instant.ofEpochMilli(((Number) value).longValue())
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .toLocalDate();
         }
         return null;
     }
@@ -1199,17 +1219,46 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
 
     /**
      * 统计执行人数量
+     * 
+     * 支持多种格式：
+     * - JSON 数组: [1,2,3] 或 ["1","2","3"]
+     * - 逗号分隔: 1,2,3
+     * - 单个ID: 123
      */
     private int countExecutors(String executorIds) {
-        if (executorIds == null || executorIds.isEmpty()) {
+        if (executorIds == null || executorIds.trim().isEmpty()) {
             return 1;
         }
-        // executorIds 可能是 JSON 数组 "[1,2,3]" 或逗号分隔 "1,2,3"
-        String cleaned = executorIds.replace("[", "").replace("]", "").replace(" ", "");
+        
+        String trimmed = executorIds.trim();
+        
+        // 尝试使用 JSON 解析
+        if (trimmed.startsWith("[")) {
+            try {
+                JSONArray jsonArray = JSONUtil.parseArray(trimmed);
+                int count = jsonArray.size();
+                return count > 0 ? count : 1;
+            } catch (Exception e) {
+                log.debug("[统计执行人] JSON解析失败，使用兜底逻辑，executorIds={}", executorIds);
+            }
+        }
+        
+        // 兜底：使用逗号分隔解析
+        String cleaned = trimmed.replace("[", "").replace("]", "")
+                .replace("\"", "").replace(" ", "");
         if (cleaned.isEmpty()) {
             return 1;
         }
-        return cleaned.split(",").length;
+        
+        String[] parts = cleaned.split(",");
+        // 过滤空字符串
+        int count = 0;
+        for (String part : parts) {
+            if (part != null && !part.trim().isEmpty()) {
+                count++;
+            }
+        }
+        return count > 0 ? count : 1;
     }
 
     /**
@@ -1397,14 +1446,16 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
     }
 
     /**
-     * 递归收集子部门ID
+     * 收集所有子部门ID（包括所有后代）
+     * 
+     * 注意：deptService.getChildDeptList 已经返回所有后代部门，不需要再递归
      */
     private void collectChildDeptIds(Long parentId, Set<Long> result) {
-        List<DeptDO> children = deptService.getChildDeptList(parentId);
-        if (CollUtil.isNotEmpty(children)) {
-            for (DeptDO child : children) {
+        // getChildDeptList 方法内部已经递归获取了所有后代部门，直接使用即可
+        List<DeptDO> allDescendants = deptService.getChildDeptList(parentId);
+        if (CollUtil.isNotEmpty(allDescendants)) {
+            for (DeptDO child : allDescendants) {
                 result.add(child.getId());
-                collectChildDeptIds(child.getId(), result);
             }
         }
     }
@@ -1573,6 +1624,69 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
             return new java.sql.Date(((java.util.Date) value).getTime()).toLocalDate();
         }
         return null;
+    }
+
+    // ========== 跨部门费用计算 ==========
+
+    /**
+     * 计算部门的跨部门收入（包括子部门）
+     * 跨部门收入 = 作为目标方（target_dept_id）的费用总和
+     */
+    private BigDecimal calculateDeptOutsideIncome(Long deptId, int year, LocalDateTime cutoffDateTime) {
+        BigDecimal total = BigDecimal.ZERO;
+        
+        // 获取本部门及所有子部门的ID
+        List<Long> allDeptIds = getAllDescendantDeptIds(deptId);
+        allDeptIds.add(deptId);
+        
+        // 批量查询这些部门的跨部门收入
+        for (Long id : allDeptIds) {
+            BigDecimal income = outsideCostRecordMapper.sumIncomeByDeptIdAndYear(id, year, cutoffDateTime);
+            if (income != null) {
+                total = total.add(income);
+            }
+        }
+        
+        return total;
+    }
+
+    /**
+     * 计算部门的跨部门支出（包括子部门）
+     * 跨部门支出 = 作为发起方（request_dept_id）的费用总和
+     */
+    private BigDecimal calculateDeptOutsideExpense(Long deptId, int year, LocalDateTime cutoffDateTime) {
+        BigDecimal total = BigDecimal.ZERO;
+        
+        // 获取本部门及所有子部门的ID
+        List<Long> allDeptIds = getAllDescendantDeptIds(deptId);
+        allDeptIds.add(deptId);
+        
+        // 批量查询这些部门的跨部门支出
+        for (Long id : allDeptIds) {
+            BigDecimal expense = outsideCostRecordMapper.sumExpenseByDeptIdAndYear(id, year, cutoffDateTime);
+            if (expense != null) {
+                total = total.add(expense);
+            }
+        }
+        
+        return total;
+    }
+
+    /**
+     * 获取部门的所有后代部门ID（子部门、孙子部门等）
+     * 
+     * 注意：deptService.getChildDeptList 已经返回所有后代部门，不需要再递归
+     */
+    private List<Long> getAllDescendantDeptIds(Long deptId) {
+        // getChildDeptList 方法内部已经递归获取了所有后代部门，直接使用即可
+        List<DeptDO> allDescendants = deptService.getChildDeptList(deptId);
+        if (CollUtil.isEmpty(allDescendants)) {
+            return new ArrayList<>();
+        }
+        return allDescendants.stream()
+                .map(DeptDO::getId)
+                .distinct()  // 确保去重，防止任何可能的重复
+                .collect(Collectors.toList());
     }
 
 }

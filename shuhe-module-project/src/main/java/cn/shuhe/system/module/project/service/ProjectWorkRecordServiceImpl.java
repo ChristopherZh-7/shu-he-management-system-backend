@@ -83,11 +83,15 @@ public class ProjectWorkRecordServiceImpl implements ProjectWorkRecordService {
             fillProjectName(record);
         }
         
-        // 5. 填充服务项名称（如果没传）
-        if (record.getServiceItemName() == null && record.getServiceItemId() != null) {
+        // 5. 填充服务项信息（如果没传）
+        if (record.getServiceItemId() != null) {
             ServiceItemDO serviceItem = serviceItemMapper.selectById(record.getServiceItemId());
             if (serviceItem != null) {
-                record.setServiceItemName(serviceItem.getName());
+                if (record.getServiceItemName() == null) {
+                    record.setServiceItemName(serviceItem.getName());
+                }
+                // 填充服务类型
+                record.setServiceType(serviceItem.getServiceType());
             }
         }
         
@@ -149,11 +153,15 @@ public class ProjectWorkRecordServiceImpl implements ProjectWorkRecordService {
             fillProjectName(updateRecord);
         }
         
-        // 填充服务项名称
-        if (updateRecord.getServiceItemName() == null && updateRecord.getServiceItemId() != null) {
+        // 填充服务项信息
+        if (updateRecord.getServiceItemId() != null) {
             ServiceItemDO serviceItem = serviceItemMapper.selectById(updateRecord.getServiceItemId());
             if (serviceItem != null) {
-                updateRecord.setServiceItemName(serviceItem.getName());
+                if (updateRecord.getServiceItemName() == null) {
+                    updateRecord.setServiceItemName(serviceItem.getName());
+                }
+                // 填充服务类型
+                updateRecord.setServiceType(serviceItem.getServiceType());
             }
         }
         

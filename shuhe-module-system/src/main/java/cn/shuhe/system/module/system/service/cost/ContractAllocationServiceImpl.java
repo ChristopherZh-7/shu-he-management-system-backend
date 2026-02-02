@@ -44,6 +44,9 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
     private OutsideCostRecordMapper outsideCostRecordMapper;
 
     @Resource
+    private SecurityOperationContractInfoMapper securityOperationContractInfoMapper;
+
+    @Resource
     private DeptService deptService;
 
     // ========== 合同部门分配 ==========
@@ -204,6 +207,28 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
             }
         }
 
+        // 4.1 获取该合同下有跨部门费用记录的部门（包括支出方和收入方）
+        // 这些部门可能没有服务项，但有跨部门支出记录，需要显示在合同分配页面
+        List<Long> outsideCostDeptIds = outsideCostRecordMapper.selectDeptIdsByContractIdFromOutsideCost(contractId);
+        for (Long deptId : outsideCostDeptIds) {
+            if (deptId != null && !allocationMap.containsKey(deptId)) {
+                DeptDO dept = deptService.getDept(deptId);
+                if (dept != null) {
+                    ContractDeptAllocationDO newAllocation = new ContractDeptAllocationDO();
+                    newAllocation.setContractId(contractId);
+                    newAllocation.setContractNo((String) contractInfo.get("contractNo"));
+                    newAllocation.setCustomerName((String) contractInfo.get("customerName"));
+                    newAllocation.setDeptId(deptId);
+                    newAllocation.setDeptName(dept.getName());
+                    newAllocation.setAllocatedAmount(BigDecimal.ZERO);
+                    contractDeptAllocationMapper.insert(newAllocation);
+                    allocationMap.put(deptId, newAllocation);
+                    log.info("【合同分配】为跨部门费用涉及的部门创建分配记录，contractId={}, deptId={}, deptName={}",
+                            contractId, deptId, dept.getName());
+                }
+            }
+        }
+
         // 5. 重新获取分配列表（包含新创建的记录）
         List<ContractDeptAllocationDO> allocations = contractDeptAllocationMapper.selectByContractId(contractId);
         List<ContractDeptAllocationRespVO> deptAllocations = allocations.stream()
@@ -327,6 +352,12 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
         allocation.setRemark(reqVO.getRemark());
 
         serviceItemAllocationMapper.insert(allocation);
+
+        // 安全运营分配：同步更新 security_operation_contract 表的费用字段
+        if (isSecurityOperationAllocation) {
+            syncSecurityOperationFees(reqVO.getContractDeptAllocationId(), allocationType);
+        }
+
         return allocation.getId();
     }
 
@@ -358,6 +389,14 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
         update.setRemark(reqVO.getRemark());
 
         serviceItemAllocationMapper.updateById(update);
+
+        // 安全运营分配：同步更新 security_operation_contract 表的费用字段
+        String allocationType = existing.getAllocationType();
+        boolean isSecurityOperationAllocation = ServiceItemAllocationDO.ALLOCATION_TYPE_SO_MANAGEMENT.equals(allocationType)
+                || ServiceItemAllocationDO.ALLOCATION_TYPE_SO_ONSITE.equals(allocationType);
+        if (isSecurityOperationAllocation) {
+            syncSecurityOperationFees(existing.getContractDeptAllocationId(), allocationType);
+        }
     }
 
     @Override
@@ -367,7 +406,19 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
         if (existing == null) {
             throw exception(SERVICE_ITEM_ALLOCATION_NOT_EXISTS);
         }
+
+        // 保存删除前的信息，用于同步
+        Long allocationId = existing.getContractDeptAllocationId();
+        String allocationType = existing.getAllocationType();
+        boolean isSecurityOperationAllocation = ServiceItemAllocationDO.ALLOCATION_TYPE_SO_MANAGEMENT.equals(allocationType)
+                || ServiceItemAllocationDO.ALLOCATION_TYPE_SO_ONSITE.equals(allocationType);
+
         serviceItemAllocationMapper.deleteById(id);
+
+        // 安全运营分配：同步更新 security_operation_contract 表的费用字段（删除后费用变为0）
+        if (isSecurityOperationAllocation) {
+            syncSecurityOperationFees(allocationId, allocationType);
+        }
     }
 
     @Override
@@ -516,6 +567,48 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
             return (BigDecimal) value;
         }
         return new BigDecimal(value.toString());
+    }
+
+    /**
+     * 同步安全运营费用到 security_operation_contract 表
+     * 
+     * 当 service_item_allocation 表中的安全运营分配（管理费/驻场费）发生变化时，
+     * 同步更新 security_operation_contract 表中对应的费用字段，
+     * 确保经营分析页面和合同分配页面数据一致。
+     *
+     * @param contractDeptAllocationId 合同部门分配ID
+     * @param allocationType 分配类型（so_management 或 so_onsite）
+     */
+    private void syncSecurityOperationFees(Long contractDeptAllocationId, String allocationType) {
+        try {
+            // 从 service_item_allocation 表重新计算当前的费用汇总
+            Map<String, BigDecimal> fees = securityOperationContractInfoMapper
+                    .selectSecurityOperationFeesByAllocationId(contractDeptAllocationId);
+            
+            if (fees == null) {
+                log.warn("[同步安全运营费用] 未找到费用汇总数据，allocationId={}", contractDeptAllocationId);
+                return;
+            }
+
+            BigDecimal managementFee = fees.get("managementFee");
+            BigDecimal onsiteFee = fees.get("onsiteFee");
+            
+            if (managementFee == null) managementFee = BigDecimal.ZERO;
+            if (onsiteFee == null) onsiteFee = BigDecimal.ZERO;
+
+            // 同时更新两个费用字段，确保数据一致性
+            int updated1 = securityOperationContractInfoMapper.updateManagementFeeByAllocationId(
+                    contractDeptAllocationId, managementFee);
+            int updated2 = securityOperationContractInfoMapper.updateOnsiteFeeByAllocationId(
+                    contractDeptAllocationId, onsiteFee);
+            
+            log.info("[同步安全运营费用] 同步完成，allocationId={}, managementFee={}, onsiteFee={}, affectedRows=({},{})", 
+                    contractDeptAllocationId, managementFee, onsiteFee, updated1, updated2);
+        } catch (Exception e) {
+            // 同步失败不应影响主流程，仅记录警告日志
+            log.warn("[同步安全运营费用] 同步失败，allocationId={}, allocationType={}", 
+                    contractDeptAllocationId, allocationType, e);
+        }
     }
 
 }

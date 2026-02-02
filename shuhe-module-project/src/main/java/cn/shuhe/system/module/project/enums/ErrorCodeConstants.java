@@ -68,6 +68,7 @@ public interface ErrorCodeConstants {
     ErrorCode SERVICE_LAUNCH_CANNOT_DELETE = new ErrorCode(1_030_011_003, "服务发起已审批，无法删除");
     ErrorCode SERVICE_LAUNCH_MEMBER_NOT_EXISTS = new ErrorCode(1_030_011_004, "服务发起执行人记录不存在");
     ErrorCode SERVICE_LAUNCH_MEMBER_NOT_SELF = new ErrorCode(1_030_011_005, "只能操作自己的执行记录");
+    ErrorCode SERVICE_LAUNCH_NEED_SELECT_DEPT = new ErrorCode(1_030_011_006, "需要先选择执行的子部门");
 
     // ========== 安全运营 1-030-012-000 ==========
     ErrorCode SECURITY_OPERATION_CONTRACT_NOT_EXISTS = new ErrorCode(1_030_012_000, "安全运营合同不存在");
@@ -91,5 +92,14 @@ public interface ErrorCodeConstants {
     ErrorCode PROJECT_DEPT_SERVICE_EXISTS = new ErrorCode(1_030_015_001, "该项目下已存在相同部门类型的服务单");
     ErrorCode PROJECT_DEPT_SERVICE_ALREADY_CLAIMED = new ErrorCode(1_030_015_002, "部门服务单已被领取");
     ErrorCode PROJECT_DEPT_SERVICE_MANAGER_NOT_SET = new ErrorCode(1_030_015_003, "请先设置负责人才能开始");
+
+    // ========== 项目驻场点 1-030-016-000 ==========
+    ErrorCode PROJECT_SITE_NOT_EXISTS = new ErrorCode(1_030_016_000, "驻场点不存在");
+    ErrorCode PROJECT_SITE_NAME_DUPLICATE = new ErrorCode(1_030_016_001, "驻场点名称已存在");
+
+    // ========== 项目驻场人员 1-030-017-000 ==========
+    ErrorCode PROJECT_SITE_MEMBER_NOT_EXISTS = new ErrorCode(1_030_017_000, "驻场人员不存在");
+    ErrorCode PROJECT_SITE_MEMBER_USER_REQUIRED = new ErrorCode(1_030_017_001, "创建驻场人员时用户不能为空");
+    ErrorCode PROJECT_SITE_MEMBER_DUPLICATE = new ErrorCode(1_030_017_002, "该用户已在驻场点中");
 
 }

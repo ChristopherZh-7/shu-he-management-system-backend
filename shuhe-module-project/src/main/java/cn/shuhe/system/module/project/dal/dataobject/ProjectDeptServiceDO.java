@@ -165,4 +165,18 @@ public class ProjectDeptServiceDO extends BaseDO {
      */
     private String remark;
 
+    // ========== 实际执行部门（根据负责人所在部门） ==========
+
+    /**
+     * 实际执行部门ID（根据负责人所在部门确定）
+     * 当设置负责人时，会根据负责人的部门ID更新此字段
+     * 用于合同收入分配时显示实际的子部门
+     */
+    private Long actualDeptId;
+
+    /**
+     * 实际执行部门名称
+     */
+    private String actualDeptName;
+
 }

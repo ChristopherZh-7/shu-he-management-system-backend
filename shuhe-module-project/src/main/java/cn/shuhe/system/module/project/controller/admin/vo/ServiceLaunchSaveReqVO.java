@@ -56,6 +56,15 @@ public class ServiceLaunchSaveReqVO {
     @Schema(description = "备注")
     private String remark;
 
+    @Schema(description = "审批人所在部门ID（前端传递，用于确定审批人）")
+    private Long approverDeptId;
+
+    @Schema(description = "是否需要在审批时选择执行的子部门")
+    private Boolean needSelectExecuteDept;
+
+    @Schema(description = "实际执行部门ID（审批时选择的子部门）")
+    private Long actualExecuteDeptId;
+
     // ========== 渗透测试附件 ==========
 
     @Schema(description = "授权书附件URL列表")

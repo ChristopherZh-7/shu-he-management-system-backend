@@ -29,6 +29,9 @@ public class ProjectWorkRecordRespVO {
     @Schema(description = "服务项名称", example = "日常巡检")
     private String serviceItemName;
 
+    @Schema(description = "服务类型（字典值）", example = "penetration_test")
+    private String serviceType;
+
     @Schema(description = "记录日期", requiredMode = Schema.RequiredMode.REQUIRED, example = "2026-01-28")
     private LocalDate recordDate;
 

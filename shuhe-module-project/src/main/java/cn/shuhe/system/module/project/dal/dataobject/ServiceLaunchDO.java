@@ -133,6 +133,24 @@ public class ServiceLaunchDO extends BaseDO {
     private Long roundId;
 
     /**
+     * 审批人所在部门ID
+     * 如果用户选择的部门没有负责人，会向上递归查找
+     */
+    private Long approverDeptId;
+
+    /**
+     * 是否需要在审批时选择执行的子部门
+     * 当审批人是父部门负责人时，需要先选择哪个子部门执行
+     */
+    private Boolean needSelectExecuteDept;
+
+    /**
+     * 实际执行部门ID（审批时选择的子部门）
+     * 如果不需要选择子部门，则与executeDeptId相同
+     */
+    private Long actualExecuteDeptId;
+
+    /**
      * 备注
      */
     private String remark;

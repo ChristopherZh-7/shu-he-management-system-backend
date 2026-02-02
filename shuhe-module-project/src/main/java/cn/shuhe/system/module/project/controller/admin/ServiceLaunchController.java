@@ -129,6 +129,23 @@ public class ServiceLaunchController {
         return success(serviceLaunchService.getDeptLeaderList());
     }
 
+    @GetMapping("/child-dept-list")
+    @Operation(summary = "获取指定部门的子部门列表（审批时选择实际执行部门）")
+    @Parameter(name = "parentDeptId", description = "父部门ID", required = true)
+    public CommonResult<List<Map<String, Object>>> getChildDeptList(@RequestParam("parentDeptId") Long parentDeptId) {
+        return success(serviceLaunchService.getChildDeptList(parentDeptId));
+    }
+
+    @PutMapping("/set-actual-execute-dept")
+    @Operation(summary = "设置实际执行部门（审批时调用）")
+    @Parameter(name = "id", description = "发起ID", required = true)
+    @Parameter(name = "actualExecuteDeptId", description = "实际执行部门ID", required = true)
+    public CommonResult<Boolean> setActualExecuteDept(@RequestParam("id") Long id,
+                                                       @RequestParam("actualExecuteDeptId") Long actualExecuteDeptId) {
+        serviceLaunchService.setActualExecuteDept(id, actualExecuteDeptId);
+        return success(true);
+    }
+
     // ==================== 外出服务相关 ====================
 
     @GetMapping("/outside-page")

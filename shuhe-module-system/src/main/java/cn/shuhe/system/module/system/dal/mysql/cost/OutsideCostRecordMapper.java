@@ -122,4 +122,75 @@ public interface OutsideCostRecordMapper extends BaseMapperX<OutsideCostRecordDO
             "AND fill_time <= #{cutoffDate}")
     Integer countIncomeByDeptId(@Param("deptId") Long deptId, @Param("cutoffDate") java.time.LocalDateTime cutoffDate);
 
+    /**
+     * 查询合同下有跨部门费用记录的所有部门ID（包括支出方和收入方）
+     * 用于合同分配页面展示跨部门支出方部门
+     */
+    @Select("SELECT DISTINCT dept_id FROM (" +
+            "  SELECT request_dept_id AS dept_id FROM outside_cost_record " +
+            "  WHERE contract_id = #{contractId} AND deleted = 0 AND request_dept_id IS NOT NULL " +
+            "  UNION " +
+            "  SELECT target_dept_id AS dept_id FROM outside_cost_record " +
+            "  WHERE contract_id = #{contractId} AND deleted = 0 AND target_dept_id IS NOT NULL " +
+            ") t")
+    List<Long> selectDeptIdsByContractIdFromOutsideCost(@Param("contractId") Long contractId);
+
+    // ========== 按年度统计（用于经营分析） ==========
+
+    /**
+     * 统计某部门在指定年度的跨部门费用总支出（作为发起方）
+     * 使用 fill_time 作为时间判断依据
+     */
+    @Select("SELECT COALESCE(SUM(amount), 0) FROM outside_cost_record " +
+            "WHERE request_dept_id = #{deptId} AND status = 2 AND deleted = 0 " +
+            "AND YEAR(fill_time) = #{year} AND fill_time <= #{cutoffDate}")
+    BigDecimal sumExpenseByDeptIdAndYear(@Param("deptId") Long deptId, @Param("year") int year,
+                                          @Param("cutoffDate") java.time.LocalDateTime cutoffDate);
+
+    /**
+     * 统计某部门在指定年度的跨部门费用总收入（作为目标方）
+     * 使用 fill_time 作为时间判断依据
+     */
+    @Select("SELECT COALESCE(SUM(amount), 0) FROM outside_cost_record " +
+            "WHERE target_dept_id = #{deptId} AND status = 2 AND deleted = 0 " +
+            "AND YEAR(fill_time) = #{year} AND fill_time <= #{cutoffDate}")
+    BigDecimal sumIncomeByDeptIdAndYear(@Param("deptId") Long deptId, @Param("year") int year,
+                                         @Param("cutoffDate") java.time.LocalDateTime cutoffDate);
+
+    /**
+     * 批量统计多个部门在指定年度的跨部门费用支出
+     */
+    @Select("<script>" +
+            "SELECT request_dept_id as deptId, COALESCE(SUM(amount), 0) as amount " +
+            "FROM outside_cost_record " +
+            "WHERE request_dept_id IN " +
+            "<foreach item='deptId' collection='deptIds' open='(' separator=',' close=')'>" +
+            "#{deptId}" +
+            "</foreach> " +
+            "AND status = 2 AND deleted = 0 " +
+            "AND YEAR(fill_time) = #{year} AND fill_time &lt;= #{cutoffDate} " +
+            "GROUP BY request_dept_id" +
+            "</script>")
+    List<java.util.Map<String, Object>> batchSumExpenseByDeptIds(@Param("deptIds") List<Long> deptIds,
+                                                                   @Param("year") int year,
+                                                                   @Param("cutoffDate") java.time.LocalDateTime cutoffDate);
+
+    /**
+     * 批量统计多个部门在指定年度的跨部门费用收入
+     */
+    @Select("<script>" +
+            "SELECT target_dept_id as deptId, COALESCE(SUM(amount), 0) as amount " +
+            "FROM outside_cost_record " +
+            "WHERE target_dept_id IN " +
+            "<foreach item='deptId' collection='deptIds' open='(' separator=',' close=')'>" +
+            "#{deptId}" +
+            "</foreach> " +
+            "AND status = 2 AND deleted = 0 " +
+            "AND YEAR(fill_time) = #{year} AND fill_time &lt;= #{cutoffDate} " +
+            "GROUP BY target_dept_id" +
+            "</script>")
+    List<java.util.Map<String, Object>> batchSumIncomeByDeptIds(@Param("deptIds") List<Long> deptIds,
+                                                                  @Param("year") int year,
+                                                                  @Param("cutoffDate") java.time.LocalDateTime cutoffDate);
+
 }

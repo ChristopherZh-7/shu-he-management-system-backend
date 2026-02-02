@@ -87,6 +87,13 @@ public class OutsideCostRecordServiceImpl implements OutsideCostRecordService {
                 if (respVO.getContractName() == null || respVO.getContractName().isEmpty()) {
                     respVO.setContractName((String) launchInfo.get("contractName"));
                 }
+                // 填充服务类型和部门类型（用于前端字典转换）
+                if (respVO.getServiceType() == null || respVO.getServiceType().isEmpty()) {
+                    respVO.setServiceType((String) launchInfo.get("serviceType"));
+                }
+                if (respVO.getDeptType() == null) {
+                    respVO.setDeptType(getIntegerValue(launchInfo.get("deptType")));
+                }
                 return;
             }
         }
@@ -102,6 +109,13 @@ public class OutsideCostRecordServiceImpl implements OutsideCostRecordService {
                 // 如果合同名称为空，从关联数据中动态获取
                 if (respVO.getContractName() == null || respVO.getContractName().isEmpty()) {
                     respVO.setContractName((String) requestInfo.get("contractName"));
+                }
+                // 填充服务类型和部门类型（用于前端字典转换）
+                if (respVO.getServiceType() == null || respVO.getServiceType().isEmpty()) {
+                    respVO.setServiceType((String) requestInfo.get("serviceType"));
+                }
+                if (respVO.getDeptType() == null) {
+                    respVO.setDeptType(getIntegerValue(requestInfo.get("deptType")));
                 }
             }
         }
@@ -237,12 +251,12 @@ public class OutsideCostRecordServiceImpl implements OutsideCostRecordService {
 
         String title = "外出费用待填写";
         String content = String.format(
-                "### 外出费用待填写金额\\n\\n" +
-                "**合同编号**：%s\\n\\n" +
-                "**服务项**：%s\\n\\n" +
-                "**目标部门**：%s\\n\\n" +
-                "**外出地点**：%s\\n\\n" +
-                "**外出事由**：%s\\n\\n" +
+                "### 外出费用待填写金额\n\n" +
+                "**合同编号**：%s\n\n" +
+                "**服务项**：%s\n\n" +
+                "**目标部门**：%s\n\n" +
+                "**外出地点**：%s\n\n" +
+                "**外出事由**：%s\n\n" +
                 "您被指派为此次外出的费用结算人，请填写费用金额。",
                 record.getContractNo(),
                 record.getServiceItemName(),
@@ -407,6 +421,8 @@ public class OutsideCostRecordServiceImpl implements OutsideCostRecordService {
         record.setContractName((String) launchInfo.get("contractName"));
         record.setServiceItemId(getLongValue(launchInfo.get("serviceItemId")));
         record.setServiceItemName((String) launchInfo.get("serviceItemName"));
+        record.setServiceType((String) launchInfo.get("serviceType"));
+        record.setDeptType(getIntegerValue(launchInfo.get("deptType")));
         // 支出部门 = 请求方部门（考虑代发起后的实际部门）
         record.setRequestDeptId(requestDeptId);
         record.setRequestDeptName((String) launchInfo.get("requestDeptName"));
@@ -505,6 +521,23 @@ public class OutsideCostRecordServiceImpl implements OutsideCostRecordService {
         }
         try {
             return Long.parseLong(value.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Integer getIntegerValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Integer) {
+            return (Integer) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        try {
+            return Integer.parseInt(value.toString());
         } catch (NumberFormatException e) {
             return null;
         }

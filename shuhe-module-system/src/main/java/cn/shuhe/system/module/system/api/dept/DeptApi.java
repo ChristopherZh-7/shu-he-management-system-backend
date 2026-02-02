@@ -74,4 +74,37 @@ public interface DeptApi {
      */
     List<DeptRespDTO> getDeptListByDeptType(Integer deptType);
 
+    /**
+     * 检查部门是否是叶子部门（没有子部门）
+     *
+     * @param id 部门编号
+     * @return true-是叶子部门, false-有子部门
+     */
+    boolean isLeafDept(Long id);
+
+    /**
+     * 获取指定部门类型下的所有叶子部门（没有子部门的部门）
+     *
+     * @param deptType 部门类型
+     * @return 叶子部门列表
+     */
+    List<DeptRespDTO> getLeafDeptListByDeptType(Integer deptType);
+
+    /**
+     * 根据部门ID向上递归查找负责人ID
+     * 查找顺序：当前部门 → 父部门 → ... → 根部门 → 总经办
+     *
+     * @param deptId 部门ID
+     * @return 负责人ID，如果找不到返回null
+     */
+    Long findLeaderUserIdRecursively(Long deptId);
+
+    /**
+     * 查找负责人所在的部门ID（向上递归查找后返回的是哪个部门的负责人）
+     *
+     * @param deptId 起始部门ID
+     * @return 最终找到负责人的部门ID
+     */
+    Long findLeaderDeptIdRecursively(Long deptId);
+
 }

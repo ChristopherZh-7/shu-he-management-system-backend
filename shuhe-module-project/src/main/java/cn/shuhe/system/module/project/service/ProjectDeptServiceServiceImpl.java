@@ -6,6 +6,10 @@ import cn.shuhe.system.module.project.controller.admin.vo.ProjectDeptServicePage
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectDeptServiceSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDeptServiceDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectDeptServiceMapper;
+import cn.shuhe.system.module.system.api.dept.DeptApi;
+import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
+import cn.shuhe.system.module.system.api.user.AdminUserApi;
+import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,6 +33,12 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
 
     @Resource
     private ProjectDeptServiceMapper deptServiceMapper;
+
+    @Resource
+    private AdminUserApi adminUserApi;
+
+    @Resource
+    private DeptApi deptApi;
 
     @Override
     public Long createDeptService(ProjectDeptServiceSaveReqVO createReqVO) {
@@ -140,6 +150,23 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
         updateObj.setId(id);
         updateObj.setManagerIds(managerIds);
         updateObj.setManagerNames(managerNames);
+
+        // 根据第一个负责人的部门确定实际执行部门
+        if (managerIds != null && !managerIds.isEmpty()) {
+            Long firstManagerId = managerIds.get(0);
+            AdminUserRespDTO firstManager = adminUserApi.getUser(firstManagerId);
+            if (firstManager != null && firstManager.getDeptId() != null) {
+                Long actualDeptId = firstManager.getDeptId();
+                DeptRespDTO actualDept = deptApi.getDept(actualDeptId);
+                if (actualDept != null) {
+                    updateObj.setActualDeptId(actualDeptId);
+                    updateObj.setActualDeptName(actualDept.getName());
+                    log.info("【部门服务单】根据负责人{}确定实际执行部门: id={}, name={}",
+                            firstManagerId, actualDeptId, actualDept.getName());
+                }
+            }
+        }
+
         deptServiceMapper.updateById(updateObj);
 
         log.info("【部门服务单】设置负责人，id={}, managerIds={}", id, managerIds);

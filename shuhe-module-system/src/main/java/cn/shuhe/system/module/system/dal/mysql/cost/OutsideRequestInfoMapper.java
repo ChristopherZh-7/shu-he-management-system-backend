@@ -21,6 +21,7 @@ public interface OutsideRequestInfoMapper {
             "r.plan_start_time AS planStartTime, r.plan_end_time AS planEndTime, " +
             "r.status, " +
             "p.contract_id AS contractId, p.name AS serviceItemName, " +
+            "p.service_type AS serviceType, p.dept_type AS deptType, " +
             "c.no AS contractNo, c.name AS contractName, " +
             "req_dept.name AS requestDeptName, " +
             "target_dept.name AS targetDeptName, " +
