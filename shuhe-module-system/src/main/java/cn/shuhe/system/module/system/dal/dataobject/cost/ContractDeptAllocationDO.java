@@ -54,7 +54,27 @@ public class ContractDeptAllocationDO extends BaseDO {
     private String deptName;
 
     /**
-     * 分配金额
+     * 上级分配ID（NULL表示从合同直接分配的第一级）
+     */
+    private Long parentAllocationId;
+
+    /**
+     * 分配层级（1=一级部门, 2=二级, 以此类推）
+     */
+    private Integer allocationLevel;
+
+    /**
+     * 从上级获得的金额
+     */
+    private BigDecimal receivedAmount;
+
+    /**
+     * 已分配给下级的金额
+     */
+    private BigDecimal distributedAmount;
+
+    /**
+     * 分配金额（等于receivedAmount，保持向后兼容）
      */
     private BigDecimal allocatedAmount;
 

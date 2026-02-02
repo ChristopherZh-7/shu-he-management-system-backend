@@ -14,7 +14,22 @@ import java.util.List;
 public interface ProjectSiteMapper extends BaseMapperX<ProjectSiteDO> {
 
     /**
-     * 根据项目ID查询驻场点列表
+     * 根据项目ID和部门类型查询驻场点列表
+     *
+     * @param projectId 项目ID
+     * @param deptType  部门类型：1-安全服务 2-安全运营 3-数据安全
+     * @return 驻场点列表
+     */
+    default List<ProjectSiteDO> selectListByProjectIdAndDeptType(Long projectId, Integer deptType) {
+        return selectList(new LambdaQueryWrapperX<ProjectSiteDO>()
+                .eq(ProjectSiteDO::getProjectId, projectId)
+                .eq(ProjectSiteDO::getDeptType, deptType)
+                .orderByAsc(ProjectSiteDO::getSort)
+                .orderByAsc(ProjectSiteDO::getId));
+    }
+
+    /**
+     * 根据项目ID查询驻场点列表（所有部门）
      *
      * @param projectId 项目ID
      * @return 驻场点列表
@@ -27,14 +42,16 @@ public interface ProjectSiteMapper extends BaseMapperX<ProjectSiteDO> {
     }
 
     /**
-     * 根据项目ID查询启用状态的驻场点列表
+     * 根据项目ID和部门类型查询启用状态的驻场点列表
      *
      * @param projectId 项目ID
+     * @param deptType  部门类型
      * @return 驻场点列表
      */
-    default List<ProjectSiteDO> selectEnabledListByProjectId(Long projectId) {
+    default List<ProjectSiteDO> selectEnabledListByProjectIdAndDeptType(Long projectId, Integer deptType) {
         return selectList(new LambdaQueryWrapperX<ProjectSiteDO>()
                 .eq(ProjectSiteDO::getProjectId, projectId)
+                .eq(ProjectSiteDO::getDeptType, deptType)
                 .eq(ProjectSiteDO::getStatus, ProjectSiteDO.STATUS_ENABLED)
                 .orderByAsc(ProjectSiteDO::getSort)
                 .orderByAsc(ProjectSiteDO::getId));
@@ -44,11 +61,13 @@ public interface ProjectSiteMapper extends BaseMapperX<ProjectSiteDO> {
      * 统计驻场点数量
      *
      * @param projectId 项目ID
+     * @param deptType  部门类型
      * @return 数量
      */
-    default Long selectCountByProjectId(Long projectId) {
+    default Long selectCountByProjectIdAndDeptType(Long projectId, Integer deptType) {
         return selectCount(new LambdaQueryWrapperX<ProjectSiteDO>()
-                .eq(ProjectSiteDO::getProjectId, projectId));
+                .eq(ProjectSiteDO::getProjectId, projectId)
+                .eq(ProjectSiteDO::getDeptType, deptType));
     }
 
     /**

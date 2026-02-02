@@ -275,19 +275,32 @@ public class ServiceItemController {
     @GetMapping("/list")
     @Operation(summary = "获得服务项列表（根据项目ID）")
     @Parameter(name = "projectId", description = "项目ID", required = true)
-    @Parameter(name = "deptType", description = "部门类型", required = false)
+    @Parameter(name = "deptType", description = "部门类型：1-安全服务 2-安全运营 3-数据安全", required = false)
+    @Parameter(name = "serviceMode", description = "服务模式：1-驻场 2-二线", required = false)
     @PreAuthorize("@ss.hasPermission('project:service-item:query')")
     public CommonResult<List<ServiceItemRespVO>> getServiceItemList(
             @RequestParam("projectId") Long projectId,
-            @RequestParam(value = "deptType", required = false) Integer deptType) {
-        // 根据 deptType 找到对应的部门ID进行过滤
-        Long deptId = null;
-        if (deptType != null) {
-            deptId = findDeptIdByDeptType(deptType);
+            @RequestParam(value = "deptType", required = false) Integer deptType,
+            @RequestParam(value = "serviceMode", required = false) Integer serviceMode) {
+        List<ServiceItemDO> list;
+
+        // 根据传入的参数组合进行过滤
+        if (serviceMode != null && deptType != null) {
+            // 同时按部门类型和服务模式过滤（安全服务驻场详情页会用到）
+            list = serviceItemService.getServiceItemListByProjectIdAndServiceMode(projectId, serviceMode);
+            // 再按 deptType 过滤
+            list = list.stream().filter(item -> deptType.equals(item.getDeptType())).toList();
+        } else if (serviceMode != null) {
+            // 只按服务模式过滤
+            list = serviceItemService.getServiceItemListByProjectIdAndServiceMode(projectId, serviceMode);
+        } else if (deptType != null) {
+            // 只按部门类型过滤（安全运营详情页会用到）
+            list = serviceItemService.getServiceItemListByProjectIdAndDeptType(projectId, deptType);
+        } else {
+            // 无过滤条件，返回所有服务项
+            list = serviceItemService.getServiceItemListByProjectId(projectId);
         }
 
-        // 按项目ID和部门ID过滤
-        List<ServiceItemDO> list = serviceItemService.getServiceItemListByProjectIdAndDeptId(projectId, deptId);
         List<ServiceItemRespVO> result = BeanUtils.toBean(list, ServiceItemRespVO.class);
         // 处理标签和实时已执行次数
         for (int i = 0; i < list.size(); i++) {

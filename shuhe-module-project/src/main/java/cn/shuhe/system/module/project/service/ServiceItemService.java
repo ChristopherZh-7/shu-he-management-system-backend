@@ -72,6 +72,24 @@ public interface ServiceItemService {
     List<ServiceItemDO> getServiceItemListByProjectIdAndDeptId(Long projectId, Long deptId);
 
     /**
+     * 获得指定项目和服务模式的服务项列表
+     *
+     * @param projectId   项目ID
+     * @param serviceMode 服务模式：1-驻场 2-二线
+     * @return 服务项列表
+     */
+    List<ServiceItemDO> getServiceItemListByProjectIdAndServiceMode(Long projectId, Integer serviceMode);
+
+    /**
+     * 获得指定项目和部门类型的服务项列表
+     *
+     * @param projectId 项目ID
+     * @param deptType  部门类型：1-安全服务 2-安全运营 3-数据安全
+     * @return 服务项列表
+     */
+    List<ServiceItemDO> getServiceItemListByProjectIdAndDeptType(Long projectId, Integer deptType);
+
+    /**
      * 更新服务项状态
      *
      * @param id     服务项编号

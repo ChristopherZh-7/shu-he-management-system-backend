@@ -20,6 +20,9 @@ public class ProjectSiteRespVO {
     @Schema(description = "项目ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Long projectId;
 
+    @Schema(description = "部门类型：1-安全服务 2-安全运营 3-数据安全", example = "2")
+    private Integer deptType;
+
     @Schema(description = "驻场点名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "客户总部")
     private String name;
 

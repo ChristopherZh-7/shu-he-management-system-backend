@@ -76,6 +76,55 @@ public interface ContractAllocationService {
      */
     List<ContractDeptAllocationRespVO> getContractDeptAllocationsByDeptId(Long deptId);
 
+    // ========== 分层分配 ==========
+
+    /**
+     * 第一级分配：将合同金额分配给一级部门
+     *
+     * @param reqVO 分配信息
+     * @return 分配ID
+     */
+    Long createFirstLevelAllocation(ContractAllocationFirstLevelReqVO reqVO);
+
+    /**
+     * 分配给下级部门
+     *
+     * @param reqVO 分配信息
+     * @return 分配ID
+     */
+    Long distributeToChildDept(ContractAllocationDistributeReqVO reqVO);
+
+    /**
+     * 更新分配金额（调整已分配给自己的金额）
+     *
+     * @param allocationId 分配记录ID
+     * @param newAmount 新金额
+     */
+    void updateAllocationAmount(Long allocationId, java.math.BigDecimal newAmount);
+
+    /**
+     * 获取合同分配树形结构
+     *
+     * @param contractId 合同ID
+     * @return 树形分配列表
+     */
+    List<ContractDeptAllocationRespVO> getContractAllocationTree(Long contractId);
+
+    /**
+     * 获取可分配的一级部门列表
+     *
+     * @return 一级部门列表
+     */
+    List<cn.shuhe.system.module.system.dal.dataobject.dept.DeptDO> getFirstLevelDepts();
+
+    /**
+     * 获取指定部门的直接子部门列表
+     *
+     * @param parentDeptId 父部门ID
+     * @return 子部门列表
+     */
+    List<cn.shuhe.system.module.system.dal.dataobject.dept.DeptDO> getChildDepts(Long parentDeptId);
+
     // ========== 服务项分配 ==========
 
     /**

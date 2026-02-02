@@ -1,15 +1,14 @@
 package cn.shuhe.system.module.project.service;
 
 import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.util.ObjectUtil;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.module.project.controller.admin.vo.*;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectSiteMemberDO;
 import cn.shuhe.system.module.project.dal.dataobject.SecurityOperationContractDO;
-import cn.shuhe.system.module.project.dal.dataobject.SecurityOperationMemberDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
+import cn.shuhe.system.module.project.dal.mysql.ProjectSiteMemberMapper;
 import cn.shuhe.system.module.project.dal.mysql.SecurityOperationContractMapper;
-import cn.shuhe.system.module.project.dal.mysql.SecurityOperationMemberMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -18,15 +17,16 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.shuhe.system.module.project.enums.ErrorCodeConstants.*;
 
 /**
  * 安全运营合同 Service 实现类
+ * 
+ * 注意：人员管理已迁移到 ProjectSiteService 和 ProjectSiteMemberService，
+ * 此 Service 只管理费用相关信息
  */
 @Service
 @Validated
@@ -37,7 +37,7 @@ public class SecurityOperationContractServiceImpl implements SecurityOperationCo
     private SecurityOperationContractMapper securityOperationContractMapper;
 
     @Resource
-    private SecurityOperationMemberMapper securityOperationMemberMapper;
+    private ProjectSiteMemberMapper projectSiteMemberMapper;
 
     @Resource
     private ServiceItemMapper serviceItemMapper;
@@ -58,48 +58,8 @@ public class SecurityOperationContractServiceImpl implements SecurityOperationCo
         contract.setStatus(0); // 待启动
         securityOperationContractMapper.insert(contract);
 
-        // 3. 创建管理人员
-        if (CollUtil.isNotEmpty(createReqVO.getManagementMembers())) {
-            for (SecurityOperationMemberSaveReqVO memberVO : createReqVO.getManagementMembers()) {
-                // 校验用户ID必填
-                if (memberVO.getUserId() == null) {
-                    log.warn("[createSecurityOperationContract] 管理人员 userId 为空，跳过: {}", memberVO);
-                    continue;
-                }
-                SecurityOperationMemberDO member = BeanUtils.toBean(memberVO, SecurityOperationMemberDO.class);
-                member.setSoContractId(contract.getId());
-                member.setMemberType(SecurityOperationMemberDO.MEMBER_TYPE_MANAGEMENT);
-                if (member.getStatus() == null) {
-                    member.setStatus(SecurityOperationMemberDO.STATUS_ACTIVE);
-                }
-                log.info("[createSecurityOperationContract] 创建管理人员: contractId={}, userId={}, userName={}", 
-                        contract.getId(), member.getUserId(), member.getUserName());
-                securityOperationMemberMapper.insert(member);
-            }
-        }
-
-        // 4. 创建驻场人员
-        if (CollUtil.isNotEmpty(createReqVO.getOnsiteMembers())) {
-            for (SecurityOperationMemberSaveReqVO memberVO : createReqVO.getOnsiteMembers()) {
-                // 校验用户ID必填
-                if (memberVO.getUserId() == null) {
-                    log.warn("[createSecurityOperationContract] 驻场人员 userId 为空，跳过: {}", memberVO);
-                    continue;
-                }
-                SecurityOperationMemberDO member = BeanUtils.toBean(memberVO, SecurityOperationMemberDO.class);
-                member.setSoContractId(contract.getId());
-                member.setMemberType(SecurityOperationMemberDO.MEMBER_TYPE_ONSITE);
-                if (member.getStatus() == null) {
-                    member.setStatus(SecurityOperationMemberDO.STATUS_ACTIVE);
-                }
-                log.info("[createSecurityOperationContract] 创建驻场人员: contractId={}, userId={}, userName={}", 
-                        contract.getId(), member.getUserId(), member.getUserName());
-                securityOperationMemberMapper.insert(member);
-            }
-        }
-
-        // 5. 更新人员统计
-        updateMemberCount(contract.getId());
+        log.info("[createSecurityOperationContract] 创建安全运营合同成功，id={}, contractId={}", 
+                contract.getId(), contract.getContractId());
 
         return contract.getId();
     }
@@ -108,64 +68,13 @@ public class SecurityOperationContractServiceImpl implements SecurityOperationCo
     @Transactional(rollbackFor = Exception.class)
     public void updateSecurityOperationContract(SecurityOperationContractSaveReqVO updateReqVO) {
         // 1. 校验存在
-        SecurityOperationContractDO existContract = validateSecurityOperationContractExists(updateReqVO.getId());
+        validateSecurityOperationContractExists(updateReqVO.getId());
 
         // 2. 更新安全运营合同基本信息
         SecurityOperationContractDO updateObj = BeanUtils.toBean(updateReqVO, SecurityOperationContractDO.class);
         securityOperationContractMapper.updateById(updateObj);
 
-        // 3. 更新管理人员（先删后增）
-        log.info("[updateSecurityOperationContract] 开始更新管理人员, contractId={}", updateReqVO.getId());
-        securityOperationMemberMapper.delete(new cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX<SecurityOperationMemberDO>()
-                .eq(SecurityOperationMemberDO::getSoContractId, updateReqVO.getId())
-                .eq(SecurityOperationMemberDO::getMemberType, SecurityOperationMemberDO.MEMBER_TYPE_MANAGEMENT));
-        if (CollUtil.isNotEmpty(updateReqVO.getManagementMembers())) {
-            for (SecurityOperationMemberSaveReqVO memberVO : updateReqVO.getManagementMembers()) {
-                // 校验用户ID必填
-                if (memberVO.getUserId() == null) {
-                    log.warn("[updateSecurityOperationContract] 管理人员 userId 为空，跳过: {}", memberVO);
-                    continue;
-                }
-                SecurityOperationMemberDO member = BeanUtils.toBean(memberVO, SecurityOperationMemberDO.class);
-                member.setId(null); // 新建
-                member.setSoContractId(updateReqVO.getId());
-                member.setMemberType(SecurityOperationMemberDO.MEMBER_TYPE_MANAGEMENT);
-                if (member.getStatus() == null) {
-                    member.setStatus(SecurityOperationMemberDO.STATUS_ACTIVE);
-                }
-                log.info("[updateSecurityOperationContract] 新增管理人员: contractId={}, userId={}, userName={}", 
-                        updateReqVO.getId(), member.getUserId(), member.getUserName());
-                securityOperationMemberMapper.insert(member);
-            }
-        }
-
-        // 4. 更新驻场人员（先删后增）
-        log.info("[updateSecurityOperationContract] 开始更新驻场人员, contractId={}", updateReqVO.getId());
-        securityOperationMemberMapper.delete(new cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX<SecurityOperationMemberDO>()
-                .eq(SecurityOperationMemberDO::getSoContractId, updateReqVO.getId())
-                .eq(SecurityOperationMemberDO::getMemberType, SecurityOperationMemberDO.MEMBER_TYPE_ONSITE));
-        if (CollUtil.isNotEmpty(updateReqVO.getOnsiteMembers())) {
-            for (SecurityOperationMemberSaveReqVO memberVO : updateReqVO.getOnsiteMembers()) {
-                // 校验用户ID必填
-                if (memberVO.getUserId() == null) {
-                    log.warn("[updateSecurityOperationContract] 驻场人员 userId 为空，跳过: {}", memberVO);
-                    continue;
-                }
-                SecurityOperationMemberDO member = BeanUtils.toBean(memberVO, SecurityOperationMemberDO.class);
-                member.setId(null); // 新建
-                member.setSoContractId(updateReqVO.getId());
-                member.setMemberType(SecurityOperationMemberDO.MEMBER_TYPE_ONSITE);
-                if (member.getStatus() == null) {
-                    member.setStatus(SecurityOperationMemberDO.STATUS_ACTIVE);
-                }
-                log.info("[updateSecurityOperationContract] 新增驻场人员: contractId={}, userId={}, userName={}", 
-                        updateReqVO.getId(), member.getUserId(), member.getUserName());
-                securityOperationMemberMapper.insert(member);
-            }
-        }
-
-        // 5. 更新人员统计
-        updateMemberCount(updateReqVO.getId());
+        log.info("[updateSecurityOperationContract] 更新安全运营合同成功，id={}", updateReqVO.getId());
     }
 
     @Override
@@ -174,14 +83,10 @@ public class SecurityOperationContractServiceImpl implements SecurityOperationCo
         // 1. 校验存在
         validateSecurityOperationContractExists(id);
 
-        // 2. 删除人员
-        securityOperationMemberMapper.deleteBySoContractId(id);
-
-        // 3. 解除服务项关联
-        // TODO: 需要将关联服务项的 soContractId 置空
-
-        // 4. 删除安全运营合同
+        // 2. 删除安全运营合同
         securityOperationContractMapper.deleteById(id);
+
+        log.info("[deleteSecurityOperationContract] 删除安全运营合同成功，id={}", id);
     }
 
     @Override
@@ -200,17 +105,7 @@ public class SecurityOperationContractServiceImpl implements SecurityOperationCo
         BigDecimal onsiteFee = contract.getOnsiteFee() != null ? contract.getOnsiteFee() : BigDecimal.ZERO;
         respVO.setTotalFee(managementFee.add(onsiteFee));
 
-        // 3. 获取管理人员
-        List<SecurityOperationMemberDO> managementMembers = securityOperationMemberMapper
-                .selectListBySoContractIdAndType(id, SecurityOperationMemberDO.MEMBER_TYPE_MANAGEMENT);
-        respVO.setManagementMembers(convertMemberList(managementMembers));
-
-        // 4. 获取驻场人员
-        List<SecurityOperationMemberDO> onsiteMembers = securityOperationMemberMapper
-                .selectListBySoContractIdAndType(id, SecurityOperationMemberDO.MEMBER_TYPE_ONSITE);
-        respVO.setOnsiteMembers(convertMemberList(onsiteMembers));
-
-        // 5. 获取服务项
+        // 3. 获取服务项
         List<ServiceItemDO> serviceItems = serviceItemMapper.selectListBySoContractId(id);
         respVO.setServiceItemCount(serviceItems.size());
         respVO.setServiceItems(BeanUtils.toBean(serviceItems, ServiceItemRespVO.class));
@@ -246,14 +141,10 @@ public class SecurityOperationContractServiceImpl implements SecurityOperationCo
 
     @Override
     public void updateMemberCount(Long id) {
-        Long managementCount = securityOperationMemberMapper.countManagementBySoContractId(id);
-        Long onsiteCount = securityOperationMemberMapper.countOnsiteBySoContractId(id);
-
-        SecurityOperationContractDO updateObj = new SecurityOperationContractDO();
-        updateObj.setId(id);
-        updateObj.setManagementCount(managementCount.intValue());
-        updateObj.setOnsiteCount(onsiteCount.intValue());
-        securityOperationContractMapper.updateById(updateObj);
+        // 注意：人员统计现在从 project_site_member 表获取
+        // 但由于关联关系变化，这个方法暂时保留空实现
+        // 后续可以根据项目ID统计驻场人员
+        log.debug("[updateMemberCount] 人员统计已迁移到 ProjectSite，此方法暂不执行，id={}", id);
     }
 
     /**
@@ -265,35 +156,6 @@ public class SecurityOperationContractServiceImpl implements SecurityOperationCo
             throw exception(SECURITY_OPERATION_CONTRACT_NOT_EXISTS);
         }
         return contract;
-    }
-
-    /**
-     * 转换人员列表
-     */
-    private List<SecurityOperationMemberRespVO> convertMemberList(List<SecurityOperationMemberDO> members) {
-        if (CollUtil.isEmpty(members)) {
-            return new ArrayList<>();
-        }
-        return members.stream().map(member -> {
-            SecurityOperationMemberRespVO vo = BeanUtils.toBean(member, SecurityOperationMemberRespVO.class);
-            // 设置类型名称
-            vo.setMemberTypeName(member.getMemberType() == SecurityOperationMemberDO.MEMBER_TYPE_MANAGEMENT ? "管理人员" : "驻场人员");
-            // 设置状态名称
-            switch (member.getStatus()) {
-                case 0:
-                    vo.setStatusName("待入场");
-                    break;
-                case 1:
-                    vo.setStatusName("在岗");
-                    break;
-                case 2:
-                    vo.setStatusName("已离开");
-                    break;
-                default:
-                    vo.setStatusName("未知");
-            }
-            return vo;
-        }).collect(Collectors.toList());
     }
 
 }

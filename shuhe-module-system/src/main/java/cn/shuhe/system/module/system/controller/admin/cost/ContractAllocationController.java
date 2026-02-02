@@ -15,8 +15,10 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
 
@@ -111,6 +113,71 @@ public class ContractAllocationController {
     @PreAuthorize("@ss.hasPermission('system:contract-allocation:query')")
     public CommonResult<List<ContractDeptAllocationRespVO>> getContractDeptAllocationsByDeptId(@RequestParam Long deptId) {
         return success(contractAllocationService.getContractDeptAllocationsByDeptId(deptId));
+    }
+
+    // ========== 分层分配接口 ==========
+
+    @GetMapping("/tree")
+    @Operation(summary = "获取合同分配树形结构")
+    @Parameter(name = "contractId", description = "合同ID", required = true)
+    @PreAuthorize("@ss.hasPermission('system:contract-allocation:query')")
+    public CommonResult<List<ContractDeptAllocationRespVO>> getContractAllocationTree(@RequestParam Long contractId) {
+        return success(contractAllocationService.getContractAllocationTree(contractId));
+    }
+
+    @PostMapping("/first-level/create")
+    @Operation(summary = "第一级分配：将合同金额分配给一级部门")
+    @PreAuthorize("@ss.hasPermission('system:contract-allocation:create')")
+    public CommonResult<Long> createFirstLevelAllocation(@Valid @RequestBody ContractAllocationFirstLevelReqVO reqVO) {
+        return success(contractAllocationService.createFirstLevelAllocation(reqVO));
+    }
+
+    @PostMapping("/distribute")
+    @Operation(summary = "分配给下级部门")
+    @PreAuthorize("@ss.hasPermission('system:contract-allocation:create')")
+    public CommonResult<Long> distributeToChildDept(@Valid @RequestBody ContractAllocationDistributeReqVO reqVO) {
+        return success(contractAllocationService.distributeToChildDept(reqVO));
+    }
+
+    @PutMapping("/amount/update")
+    @Operation(summary = "更新分配金额")
+    @PreAuthorize("@ss.hasPermission('system:contract-allocation:update')")
+    public CommonResult<Boolean> updateAllocationAmount(
+            @RequestParam Long allocationId,
+            @RequestParam BigDecimal newAmount) {
+        contractAllocationService.updateAllocationAmount(allocationId, newAmount);
+        return success(true);
+    }
+
+    @GetMapping("/first-level-depts")
+    @Operation(summary = "获取可分配的一级部门列表")
+    @PreAuthorize("@ss.hasPermission('system:contract-allocation:query')")
+    public CommonResult<List<Map<String, Object>>> getFirstLevelDepts() {
+        return success(contractAllocationService.getFirstLevelDepts().stream()
+                .map(dept -> {
+                    Map<String, Object> map = new java.util.HashMap<>();
+                    map.put("id", dept.getId());
+                    map.put("name", dept.getName());
+                    map.put("deptType", dept.getDeptType());
+                    return map;
+                })
+                .collect(Collectors.toList()));
+    }
+
+    @GetMapping("/child-depts")
+    @Operation(summary = "获取指定部门的直接子部门列表")
+    @Parameter(name = "parentDeptId", description = "父部门ID", required = true)
+    @PreAuthorize("@ss.hasPermission('system:contract-allocation:query')")
+    public CommonResult<List<Map<String, Object>>> getChildDepts(@RequestParam Long parentDeptId) {
+        return success(contractAllocationService.getChildDepts(parentDeptId).stream()
+                .map(dept -> {
+                    Map<String, Object> map = new java.util.HashMap<>();
+                    map.put("id", dept.getId());
+                    map.put("name", dept.getName());
+                    map.put("deptType", dept.getDeptType());
+                    return map;
+                })
+                .collect(Collectors.toList()));
     }
 
     // ========== 服务项分配接口 ==========

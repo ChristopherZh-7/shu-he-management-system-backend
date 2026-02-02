@@ -39,6 +39,13 @@ public class ProjectSiteDO extends BaseDO {
      */
     private Long projectId;
 
+    /**
+     * 部门类型：1-安全服务 2-安全运营 3-数据安全
+     * 
+     * 同一个项目可能有多个部门同时驻场，每个部门独立管理自己的驻场点
+     */
+    private Integer deptType;
+
     // ========== 驻场点基本信息 ==========
 
     /**

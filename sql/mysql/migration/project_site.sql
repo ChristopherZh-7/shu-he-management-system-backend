@@ -4,6 +4,8 @@
 -- 功能：创建通用的项目驻场点和驻场人员表
 -- 支持：安全服务、安全运营、数据安全等所有部门类型的项目
 -- 
+-- 重要：每个部门独立管理自己的驻场点，通过 dept_type 区分
+-- 
 -- 执行顺序：
 -- 1. 创建新表 project_site、project_site_member
 -- 2. 从旧表 security_operation_site、security_operation_member 迁移数据
@@ -17,6 +19,7 @@ DROP TABLE IF EXISTS `project_site`;
 CREATE TABLE `project_site` (
     `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     `project_id` BIGINT NOT NULL COMMENT '项目ID',
+    `dept_type` TINYINT NOT NULL DEFAULT 2 COMMENT '部门类型：1-安全服务 2-安全运营 3-数据安全',
     `name` VARCHAR(100) DEFAULT NULL COMMENT '驻场点名称（如：客户总部、分公司A）',
     `address` VARCHAR(500) DEFAULT NULL COMMENT '详细地址',
     `contact_name` VARCHAR(50) DEFAULT NULL COMMENT '联系人姓名',
@@ -36,6 +39,8 @@ CREATE TABLE `project_site` (
     `tenant_id` BIGINT NOT NULL DEFAULT 0 COMMENT '租户编号',
     PRIMARY KEY (`id`),
     KEY `idx_project_id` (`project_id`),
+    KEY `idx_project_dept` (`project_id`, `dept_type`),
+    KEY `idx_dept_type` (`dept_type`),
     KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='项目驻场点表';
 
@@ -47,6 +52,7 @@ CREATE TABLE `project_site_member` (
     `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     `site_id` BIGINT NOT NULL COMMENT '驻场点ID',
     `project_id` BIGINT NOT NULL COMMENT '项目ID（冗余，便于查询）',
+    `dept_type` TINYINT NOT NULL DEFAULT 2 COMMENT '部门类型：1-安全服务 2-安全运营 3-数据安全（冗余）',
     `user_id` BIGINT NOT NULL COMMENT '用户ID',
     `user_name` VARCHAR(50) DEFAULT NULL COMMENT '用户姓名（冗余）',
     `member_type` TINYINT DEFAULT 2 COMMENT '人员类型：1-管理人员 2-驻场人员',
@@ -66,21 +72,23 @@ CREATE TABLE `project_site_member` (
     PRIMARY KEY (`id`),
     KEY `idx_site_id` (`site_id`),
     KEY `idx_project_id` (`project_id`),
+    KEY `idx_project_dept` (`project_id`, `dept_type`),
     KEY `idx_user_id` (`user_id`),
     KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='项目驻场人员表';
 
 -- --------------------------------------------------
 -- 3. 数据迁移：从 security_operation_site 迁移到 project_site
+-- 注意：旧数据都是安全运营的，所以 dept_type = 2
 -- --------------------------------------------------
 INSERT INTO `project_site` (
-    `id`, `project_id`, `name`, `address`, `contact_name`, `contact_phone`,
+    `id`, `project_id`, `dept_type`, `name`, `address`, `contact_name`, `contact_phone`,
     `service_requirement`, `staff_count`, `start_date`, `end_date`,
     `status`, `remark`, `sort`,
     `creator`, `create_time`, `updater`, `update_time`, `deleted`, `tenant_id`
 )
 SELECT 
-    `id`, `project_id`, `name`, `address`, `contact_name`, `contact_phone`,
+    `id`, `project_id`, 2 AS `dept_type`, `name`, `address`, `contact_name`, `contact_phone`,
     `service_requirement`, `staff_count`, `start_date`, `end_date`,
     `status`, `remark`, `sort`,
     `creator`, `create_time`, `updater`, `update_time`, `deleted`, `tenant_id`
@@ -91,7 +99,7 @@ WHERE `deleted` = 0;
 -- 4. 数据迁移：从 security_operation_member 迁移到 project_site_member
 -- --------------------------------------------------
 INSERT INTO `project_site_member` (
-    `id`, `site_id`, `project_id`, `user_id`, `user_name`,
+    `id`, `site_id`, `project_id`, `dept_type`, `user_id`, `user_name`,
     `member_type`, `is_leader`, `position_code`, `position_name`,
     `start_date`, `end_date`, `status`, `remark`,
     `creator`, `create_time`, `updater`, `update_time`, `deleted`, `tenant_id`
@@ -100,6 +108,7 @@ SELECT
     som.`id`, 
     som.`site_id`,
     sos.`project_id`,  -- 从驻场点获取 project_id
+    2 AS `dept_type`,  -- 旧数据都是安全运营
     som.`user_id`, 
     som.`user_name`,
     som.`member_type`, 

@@ -29,6 +29,9 @@ public class ServiceItemPageReqVO extends PageParam {
     @Schema(description = "部门类型：1安全服务 2安全运营 3数据安全", example = "1")
     private Integer deptType;
 
+    @Schema(description = "服务模式：1驻场 2二线", example = "2")
+    private Integer serviceMode;
+
     @Schema(description = "服务类型", example = "penetration_test")
     private String serviceType;
 

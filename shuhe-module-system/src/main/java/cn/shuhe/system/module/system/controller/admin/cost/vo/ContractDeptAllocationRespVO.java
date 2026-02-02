@@ -35,7 +35,19 @@ public class ContractDeptAllocationRespVO {
     @Schema(description = "部门类型：1-安全服务 2-安全运营 3-数据安全", example = "1")
     private Integer deptType;
 
-    @Schema(description = "分配金额", requiredMode = Schema.RequiredMode.REQUIRED, example = "240000.00")
+    @Schema(description = "上级分配ID（NULL表示从合同直接分配的第一级）", example = "1")
+    private Long parentAllocationId;
+
+    @Schema(description = "分配层级（1=一级部门, 2=二级, 以此类推）", example = "1")
+    private Integer allocationLevel;
+
+    @Schema(description = "从上级获得的金额", example = "300000.00")
+    private BigDecimal receivedAmount;
+
+    @Schema(description = "已分配给下级的金额", example = "240000.00")
+    private BigDecimal distributedAmount;
+
+    @Schema(description = "分配金额（等于receivedAmount）", requiredMode = Schema.RequiredMode.REQUIRED, example = "240000.00")
     private BigDecimal allocatedAmount;
 
     @Schema(description = "已分配给服务项的金额", example = "200000.00")
@@ -49,6 +61,12 @@ public class ContractDeptAllocationRespVO {
 
     @Schema(description = "服务项分配列表")
     private List<ServiceItemAllocationRespVO> serviceItemAllocations;
+
+    @Schema(description = "子部门分配列表（树形结构）")
+    private List<ContractDeptAllocationRespVO> children;
+
+    @Schema(description = "是否可以分配给下级（当前用户是否有权限且有剩余金额）")
+    private Boolean canDistribute;
 
     // ========== 跨部门费用相关 ==========
 

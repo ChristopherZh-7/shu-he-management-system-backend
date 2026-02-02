@@ -19,6 +19,7 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
         return selectPage(reqVO, new LambdaQueryWrapperX<ServiceItemDO>()
                 .eqIfPresent(ServiceItemDO::getProjectId, reqVO.getProjectId())
                 .eqIfPresent(ServiceItemDO::getDeptType, reqVO.getDeptType())
+                .eqIfPresent(ServiceItemDO::getServiceMode, reqVO.getServiceMode())
                 .eqIfPresent(ServiceItemDO::getDeptId, reqVO.getDeptId())
                 .eqIfPresent(ServiceItemDO::getServiceType, reqVO.getServiceType())
                 .eqIfPresent(ServiceItemDO::getStatus, reqVO.getStatus())
@@ -38,6 +39,34 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
         return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
                 .eq(ServiceItemDO::getProjectId, projectId)
                 .eq(ServiceItemDO::getVisible, 1)  // 只返回可见的服务项
+                .orderByDesc(ServiceItemDO::getId));
+    }
+
+    /**
+     * 根据项目ID和服务模式查询服务项列表
+     *
+     * @param projectId   项目ID
+     * @param serviceMode 服务模式：1-驻场 2-二线
+     */
+    default List<ServiceItemDO> selectListByProjectIdAndServiceMode(Long projectId, Integer serviceMode) {
+        return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getProjectId, projectId)
+                .eq(ServiceItemDO::getServiceMode, serviceMode)
+                .eq(ServiceItemDO::getVisible, 1)
+                .orderByDesc(ServiceItemDO::getId));
+    }
+
+    /**
+     * 根据项目ID和部门类型查询服务项列表
+     *
+     * @param projectId 项目ID
+     * @param deptType  部门类型：1-安全服务 2-安全运营 3-数据安全
+     */
+    default List<ServiceItemDO> selectListByProjectIdAndDeptType(Long projectId, Integer deptType) {
+        return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getProjectId, projectId)
+                .eq(ServiceItemDO::getDeptType, deptType)
+                .eq(ServiceItemDO::getVisible, 1)
                 .orderByDesc(ServiceItemDO::getId));
     }
 

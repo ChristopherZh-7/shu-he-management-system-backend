@@ -126,13 +126,18 @@ public class ProjectSiteServiceImpl implements ProjectSiteService {
     }
 
     @Override
+    public List<ProjectSiteDO> getListByProjectIdAndDeptType(Long projectId, Integer deptType) {
+        return siteMapper.selectListByProjectIdAndDeptType(projectId, deptType);
+    }
+
+    @Override
     public List<ProjectSiteDO> getListByProjectId(Long projectId) {
         return siteMapper.selectListByProjectId(projectId);
     }
 
     @Override
-    public List<ProjectSiteRespVO> getSiteDetailListByProjectId(Long projectId) {
-        List<ProjectSiteDO> sites = siteMapper.selectEnabledListByProjectId(projectId);
+    public List<ProjectSiteRespVO> getSiteDetailListByProjectIdAndDeptType(Long projectId, Integer deptType) {
+        List<ProjectSiteDO> sites = siteMapper.selectListByProjectIdAndDeptType(projectId, deptType);
         if (CollUtil.isEmpty(sites)) {
             return Collections.emptyList();
         }
@@ -157,8 +162,8 @@ public class ProjectSiteServiceImpl implements ProjectSiteService {
     }
 
     @Override
-    public boolean hasSite(Long projectId) {
-        Long count = siteMapper.selectCountByProjectId(projectId);
+    public boolean hasSite(Long projectId, Integer deptType) {
+        Long count = siteMapper.selectCountByProjectIdAndDeptType(projectId, deptType);
         return count != null && count > 0;
     }
 

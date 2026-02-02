@@ -49,8 +49,9 @@ public class ProjectSiteMemberServiceImpl implements ProjectSiteMemberService {
         }
 
         ProjectSiteMemberDO member = BeanUtils.toBean(createReqVO, ProjectSiteMemberDO.class);
-        // 自动填充项目ID（冗余字段）
+        // 自动填充项目ID和部门类型（冗余字段）
         member.setProjectId(site.getProjectId());
+        member.setDeptType(site.getDeptType());
         // 默认状态：在岗
         if (member.getStatus() == null) {
             member.setStatus(ProjectSiteMemberDO.STATUS_ACTIVE);

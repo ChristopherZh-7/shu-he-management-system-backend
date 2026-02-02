@@ -171,6 +171,16 @@ public class ServiceItemServiceImpl implements ServiceItemService {
     }
 
     @Override
+    public List<ServiceItemDO> getServiceItemListByProjectIdAndServiceMode(Long projectId, Integer serviceMode) {
+        return serviceItemMapper.selectListByProjectIdAndServiceMode(projectId, serviceMode);
+    }
+
+    @Override
+    public List<ServiceItemDO> getServiceItemListByProjectIdAndDeptType(Long projectId, Integer deptType) {
+        return serviceItemMapper.selectListByProjectIdAndDeptType(projectId, deptType);
+    }
+
+    @Override
     public void updateServiceItemStatus(Long id, Integer status) {
         // 1. 校验存在
         ServiceItemDO serviceItem = validateServiceItemExists(id);

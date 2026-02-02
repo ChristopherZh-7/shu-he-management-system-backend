@@ -171,6 +171,12 @@ public interface ErrorCodeConstants {
     ErrorCode SERVICE_ITEM_ALLOCATION_NOT_EXISTS = new ErrorCode(1_002_030_011, "服务项分配记录不存在");
     ErrorCode SERVICE_ITEM_ALLOCATION_EXISTS = new ErrorCode(1_002_030_012, "该服务项已分配金额，请勿重复分配");
     ErrorCode SERVICE_ITEM_ALLOCATION_AMOUNT_EXCEED = new ErrorCode(1_002_030_013, "分配金额超过部门剩余可分配金额");
+    
+    // 分层分配相关
+    ErrorCode DEPT_NOT_FIRST_LEVEL = new ErrorCode(1_002_030_020, "只能分配给一级业务部门");
+    ErrorCode CHILD_DEPT_NOT_VALID = new ErrorCode(1_002_030_021, "目标部门不是当前部门的直接下级");
+    ErrorCode ALLOCATION_AMOUNT_EXCEED_PARENT = new ErrorCode(1_002_030_022, "分配金额超过上级剩余可分配金额");
+    ErrorCode ALLOCATION_AMOUNT_LESS_THAN_DISTRIBUTED = new ErrorCode(1_002_030_023, "分配金额不能小于已分配给下级的金额");
 
     // ========== 外出费用 1-002-031-000 ==========
     ErrorCode OUTSIDE_COST_RECORD_NOT_EXISTS = new ErrorCode(1_002_031_000, "外出费用记录不存在");

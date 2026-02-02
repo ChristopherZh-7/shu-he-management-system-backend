@@ -61,6 +61,15 @@ public class ServiceItemDO extends BaseDO {
     private Integer deptType;
 
     /**
+     * 服务模式
+     * 1-驻场 2-二线
+     * 
+     * - 安全运营默认为驻场（1）
+     * - 安全服务可选驻场（1）或二线（2）
+     */
+    private Integer serviceMode;
+
+    /**
      * 服务类型（字典值）
      */
     private String serviceType;
@@ -188,5 +197,17 @@ public class ServiceItemDO extends BaseDO {
      * 安全运营的服务项通过此字段关联到安全运营合同
      */
     private Long soContractId;
+
+    // ========== 服务模式常量 ==========
+
+    /**
+     * 驻场服务
+     */
+    public static final int SERVICE_MODE_ONSITE = 1;
+
+    /**
+     * 二线服务
+     */
+    public static final int SERVICE_MODE_REMOTE = 2;
 
 }

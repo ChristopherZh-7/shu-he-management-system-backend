@@ -53,7 +53,16 @@ public interface ProjectSiteService {
     ProjectSiteRespVO getSiteDetail(Long id);
 
     /**
-     * 根据项目ID获取驻场点列表
+     * 根据项目ID和部门类型获取驻场点列表
+     *
+     * @param projectId 项目ID
+     * @param deptType  部门类型
+     * @return 驻场点列表
+     */
+    List<ProjectSiteDO> getListByProjectIdAndDeptType(Long projectId, Integer deptType);
+
+    /**
+     * 根据项目ID获取驻场点列表（所有部门）
      *
      * @param projectId 项目ID
      * @return 驻场点列表
@@ -61,12 +70,13 @@ public interface ProjectSiteService {
     List<ProjectSiteDO> getListByProjectId(Long projectId);
 
     /**
-     * 根据项目ID获取驻场点详情列表（包含人员）
+     * 根据项目ID和部门类型获取驻场点详情列表（包含人员）
      *
      * @param projectId 项目ID
+     * @param deptType  部门类型
      * @return 驻场点详情列表
      */
-    List<ProjectSiteRespVO> getSiteDetailListByProjectId(Long projectId);
+    List<ProjectSiteRespVO> getSiteDetailListByProjectIdAndDeptType(Long projectId, Integer deptType);
 
     /**
      * 更新驻场点状态
@@ -80,8 +90,9 @@ public interface ProjectSiteService {
      * 判断项目是否有驻场点
      *
      * @param projectId 项目ID
+     * @param deptType  部门类型
      * @return 是否有驻场点
      */
-    boolean hasSite(Long projectId);
+    boolean hasSite(Long projectId, Integer deptType);
 
 }

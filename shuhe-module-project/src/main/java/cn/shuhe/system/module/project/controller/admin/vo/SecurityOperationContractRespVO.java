@@ -8,6 +8,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * 安全运营合同 Response VO
+ * 
+ * 注意：人员管理已迁移到 ProjectSite 和 ProjectSiteMember，
+ * 此 VO 只返回费用相关信息，人员信息请通过 ProjectSiteApi 获取
+ */
 @Schema(description = "管理后台 - 安全运营合同 Response VO")
 @Data
 public class SecurityOperationContractRespVO {
@@ -62,7 +68,7 @@ public class SecurityOperationContractRespVO {
     @Schema(description = "总费用（元）")
     private BigDecimal totalFee;
 
-    // ========== 人员统计 ==========
+    // ========== 人员统计（从 project_site_member 统计） ==========
 
     @Schema(description = "管理人员数量")
     private Integer managementCount;
@@ -89,12 +95,6 @@ public class SecurityOperationContractRespVO {
     private LocalDateTime updateTime;
 
     // ========== 关联数据 ==========
-
-    @Schema(description = "管理人员列表")
-    private List<SecurityOperationMemberRespVO> managementMembers;
-
-    @Schema(description = "驻场人员列表")
-    private List<SecurityOperationMemberRespVO> onsiteMembers;
 
     @Schema(description = "服务项列表")
     private List<ServiceItemRespVO> serviceItems;

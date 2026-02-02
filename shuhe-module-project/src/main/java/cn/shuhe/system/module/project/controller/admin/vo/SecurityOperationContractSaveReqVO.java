@@ -6,8 +6,13 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.List;
 
+/**
+ * 安全运营合同新增/修改 Request VO
+ * 
+ * 注意：人员管理已迁移到 ProjectSite 和 ProjectSiteMember，
+ * 此 VO 只管理费用相关信息
+ */
 @Schema(description = "管理后台 - 安全运营合同新增/修改 Request VO")
 @Data
 public class SecurityOperationContractSaveReqVO {
@@ -48,11 +53,5 @@ public class SecurityOperationContractSaveReqVO {
 
     @Schema(description = "驻场费（元）")
     private BigDecimal onsiteFee;
-
-    @Schema(description = "管理人员列表")
-    private List<SecurityOperationMemberSaveReqVO> managementMembers;
-
-    @Schema(description = "驻场人员列表")
-    private List<SecurityOperationMemberSaveReqVO> onsiteMembers;
 
 }

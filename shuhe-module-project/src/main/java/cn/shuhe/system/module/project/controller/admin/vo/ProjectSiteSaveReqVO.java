@@ -21,6 +21,10 @@ public class ProjectSiteSaveReqVO {
     @NotNull(message = "项目ID不能为空")
     private Long projectId;
 
+    @Schema(description = "部门类型：1-安全服务 2-安全运营 3-数据安全", requiredMode = Schema.RequiredMode.REQUIRED, example = "2")
+    @NotNull(message = "部门类型不能为空")
+    private Integer deptType;
+
     @Schema(description = "驻场点名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "客户总部")
     @NotBlank(message = "驻场点名称不能为空")
     private String name;

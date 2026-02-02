@@ -64,12 +64,12 @@ public class ProjectSiteController {
     }
 
     @GetMapping("/list-by-project")
-    @Operation(summary = "根据项目ID获取驻场点列表")
-    @Parameter(name = "projectId", description = "项目ID", required = true, example = "1")
+    @Operation(summary = "根据项目ID和部门类型获取驻场点列表")
     @PreAuthorize("@ss.hasPermission('project:site:query')")
     public CommonResult<List<ProjectSiteRespVO>> getListByProjectId(
-            @RequestParam("projectId") Long projectId) {
-        return success(siteService.getSiteDetailListByProjectId(projectId));
+            @RequestParam("projectId") Long projectId,
+            @RequestParam("deptType") Integer deptType) {
+        return success(siteService.getSiteDetailListByProjectIdAndDeptType(projectId, deptType));
     }
 
     @PutMapping("/update-status")
@@ -83,10 +83,10 @@ public class ProjectSiteController {
 
     @GetMapping("/has-site")
     @Operation(summary = "判断项目是否有驻场点")
-    @Parameter(name = "projectId", description = "项目ID", required = true, example = "1")
     @PreAuthorize("@ss.hasPermission('project:site:query')")
-    public CommonResult<Boolean> hasSite(@RequestParam("projectId") Long projectId) {
-        return success(siteService.hasSite(projectId));
+    public CommonResult<Boolean> hasSite(@RequestParam("projectId") Long projectId,
+                                          @RequestParam("deptType") Integer deptType) {
+        return success(siteService.hasSite(projectId, deptType));
     }
 
 }

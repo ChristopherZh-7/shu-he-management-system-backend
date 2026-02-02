@@ -64,4 +64,44 @@ public interface ContractDeptAllocationMapper extends BaseMapperX<ContractDeptAl
                 .eq(ContractDeptAllocationDO::getContractId, contractId));
     }
 
+    /**
+     * 根据上级分配ID查询子部门分配列表
+     */
+    default List<ContractDeptAllocationDO> selectByParentAllocationId(Long parentAllocationId) {
+        return selectList(new LambdaQueryWrapperX<ContractDeptAllocationDO>()
+                .eq(ContractDeptAllocationDO::getParentAllocationId, parentAllocationId)
+                .orderByAsc(ContractDeptAllocationDO::getId));
+    }
+
+    /**
+     * 查询合同的第一级分配（parentAllocationId为NULL的记录）
+     */
+    default List<ContractDeptAllocationDO> selectFirstLevelByContractId(Long contractId) {
+        return selectList(new LambdaQueryWrapperX<ContractDeptAllocationDO>()
+                .eq(ContractDeptAllocationDO::getContractId, contractId)
+                .isNull(ContractDeptAllocationDO::getParentAllocationId)
+                .orderByAsc(ContractDeptAllocationDO::getId));
+    }
+
+    /**
+     * 根据合同ID和层级查询分配列表
+     */
+    default List<ContractDeptAllocationDO> selectByContractIdAndLevel(Long contractId, Integer level) {
+        return selectList(new LambdaQueryWrapperX<ContractDeptAllocationDO>()
+                .eq(ContractDeptAllocationDO::getContractId, contractId)
+                .eq(ContractDeptAllocationDO::getAllocationLevel, level)
+                .orderByAsc(ContractDeptAllocationDO::getId));
+    }
+
+    /**
+     * 根据合同ID和多个部门ID查询分配列表
+     */
+    default List<ContractDeptAllocationDO> selectByContractIdAndDeptIds(Long contractId, List<Long> deptIds) {
+        return selectList(new LambdaQueryWrapperX<ContractDeptAllocationDO>()
+                .eq(ContractDeptAllocationDO::getContractId, contractId)
+                .in(ContractDeptAllocationDO::getDeptId, deptIds)
+                .orderByAsc(ContractDeptAllocationDO::getAllocationLevel)
+                .orderByAsc(ContractDeptAllocationDO::getId));
+    }
+
 }

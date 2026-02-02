@@ -11,6 +11,7 @@ import cn.shuhe.system.module.system.controller.admin.cost.vo.UserCostRespVO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.DeptDO;
 import cn.shuhe.system.module.system.dal.dataobject.user.AdminUserDO;
 import cn.shuhe.system.module.system.dal.mysql.cost.OutsideCostRecordMapper;
+import cn.shuhe.system.module.system.dal.mysql.cost.ProjectSiteMemberInfoMapper;
 import cn.shuhe.system.module.system.dal.mysql.cost.SecurityOperationContractInfoMapper;
 import cn.shuhe.system.module.system.dal.mysql.cost.ServiceItemInfoMapper;
 import cn.shuhe.system.module.system.dal.mysql.dept.DeptMapper;
@@ -106,6 +107,9 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
 
     @Resource
     private SecurityOperationContractInfoMapper securityOperationContractInfoMapper;
+
+    @Resource
+    private ProjectSiteMemberInfoMapper projectSiteMemberInfoMapper;
 
     @Resource
     private ServiceItemInfoMapper serviceItemInfoMapper;
@@ -220,9 +224,9 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
             employeeCostCache.put(employee.getId(), cost);
         }
         
-        // 8. 批量计算收入（按部门类型分开）
-        Map<Long, BigDecimal> operationIncomeCache = new ConcurrentHashMap<>();
-        Map<Long, BigDecimal> serviceIncomeCache = new ConcurrentHashMap<>();
+        // 8. 批量计算收入（驻场收入 + 轮次收入）
+        Map<Long, BigDecimal> operationIncomeCache = new ConcurrentHashMap<>();  // 驻场收入缓存
+        Map<Long, BigDecimal> serviceIncomeCache = new ConcurrentHashMap<>();    // 轮次收入缓存
         
         LocalDate yearStart = LocalDate.of(year, 1, 1);
         LocalDateTime cutoffDateTime = LocalDateTime.of(cutoffDate, LocalTime.MAX);
@@ -233,12 +237,14 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
             Integer deptType = deptId != null ? deptTypeCache.get(deptId) : null;
             
             if (deptType != null) {
-                if (deptType == DEPT_TYPE_SECURITY_OPERATION) {
-                    BigDecimal income = calculateSecurityOperationIncome(userId, year, cutoffDate);
-                    operationIncomeCache.put(userId, income);
-                } else {
-                    BigDecimal income = calculateServiceRoundIncome(userId, year, cutoffDate);
-                    serviceIncomeCache.put(userId, income);
+                // 所有部门类型都可能有驻场收入（从 project_site_member 表）
+                BigDecimal onsiteIncome = calculateOnsiteIncome(userId, deptType, year, cutoffDate);
+                operationIncomeCache.put(userId, onsiteIncome);
+                
+                // 安全服务和数据安全还可能有轮次收入
+                if (deptType == DEPT_TYPE_SECURITY_SERVICE || deptType == DEPT_TYPE_DATA_SECURITY) {
+                    BigDecimal roundIncome = calculateServiceRoundIncome(userId, year, cutoffDate);
+                    serviceIncomeCache.put(userId, roundIncome);
                 }
             }
         }
@@ -595,13 +601,18 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
         BigDecimal employeeCost = ctx.getEmployeeCostCache().getOrDefault(user.getId(), BigDecimal.ZERO);
 
         // 从缓存获取员工收入
+        // operationIncomeCache 现在存储驻场收入，serviceIncomeCache 存储轮次收入
         Integer deptType = user.getDeptId() != null ? ctx.getDeptTypeCache().get(user.getDeptId()) : null;
         BigDecimal contractIncome = BigDecimal.ZERO;
         if (deptType != null) {
-            if (deptType == DEPT_TYPE_SECURITY_OPERATION) {
-                contractIncome = ctx.getOperationIncomeCache().getOrDefault(user.getId(), BigDecimal.ZERO);
-            } else {
-                contractIncome = ctx.getServiceIncomeCache().getOrDefault(user.getId(), BigDecimal.ZERO);
+            // 驻场收入（所有部门类型都可能有）
+            BigDecimal onsiteIncome = ctx.getOperationIncomeCache().getOrDefault(user.getId(), BigDecimal.ZERO);
+            contractIncome = contractIncome.add(onsiteIncome);
+            
+            // 轮次收入（仅安全服务和数据安全）
+            if (deptType == DEPT_TYPE_SECURITY_SERVICE || deptType == DEPT_TYPE_DATA_SECURITY) {
+                BigDecimal roundIncome = ctx.getServiceIncomeCache().getOrDefault(user.getId(), BigDecimal.ZERO);
+                contractIncome = contractIncome.add(roundIncome);
             }
         }
 
@@ -971,6 +982,15 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
 
     /**
      * 计算员工合同收入
+     * 
+     * 收入来源：
+     * 1. 驻场收入：从 project_site_member 表，按工作日分摊驻场费
+     *    - 安全运营驻场 (dept_type=2)
+     *    - 安全服务驻场 (dept_type=1)
+     *    - 数据安全驻场 (dept_type=3)
+     * 2. 二线服务收入：从 project_round 表，按轮次执行分摊
+     *    - 安全服务二线
+     *    - 数据安全（非驻场）
      */
     private BigDecimal calculateEmployeeContractIncome(AdminUserDO user, int year, LocalDate cutoffDate) {
         BigDecimal totalIncome = BigDecimal.ZERO;
@@ -990,15 +1010,122 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
             return totalIncome;
         }
 
-        if (deptType == DEPT_TYPE_SECURITY_OPERATION) {
-            // 安全运营：从 security_operation_member 计算
-            totalIncome = calculateSecurityOperationIncome(user.getId(), year, cutoffDate);
-        } else {
-            // 安全服务/数据安全：从 project_round 的执行人计算
-            totalIncome = calculateServiceRoundIncome(user.getId(), year, cutoffDate);
+        // 1. 计算驻场收入（从新的 project_site_member 表）
+        BigDecimal onsiteIncome = calculateOnsiteIncome(user.getId(), deptType, year, cutoffDate);
+        totalIncome = totalIncome.add(onsiteIncome);
+
+        // 2. 安全服务和数据安全还可能有二线服务收入（从轮次执行）
+        if (deptType == DEPT_TYPE_SECURITY_SERVICE || deptType == DEPT_TYPE_DATA_SECURITY) {
+            BigDecimal roundIncome = calculateServiceRoundIncome(user.getId(), year, cutoffDate);
+            totalIncome = totalIncome.add(roundIncome);
         }
 
         return totalIncome;
+    }
+
+    /**
+     * 计算驻场收入（通用方法，支持所有部门类型）
+     * 
+     * 从 project_site_member 表查询驻场参与记录，按工作日分摊驻场费
+     */
+    private BigDecimal calculateOnsiteIncome(Long userId, Integer deptType, int year, LocalDate cutoffDate) {
+        // 查询该用户在该部门类型下的所有驻场记录
+        List<Map<String, Object>> participations = projectSiteMemberInfoMapper.selectMemberParticipation(userId, deptType);
+        if (CollUtil.isEmpty(participations)) {
+            log.debug("[驻场收入] 用户 {} (deptType={}) 未参与任何驻场", userId, deptType);
+            return BigDecimal.ZERO;
+        }
+
+        log.debug("[驻场收入] 用户 {} (deptType={}) 参与 {} 个驻场", userId, deptType, participations.size());
+        
+        BigDecimal totalIncome = BigDecimal.ZERO;
+        LocalDate yearStart = LocalDate.of(year, 1, 1);
+
+        for (Map<String, Object> participation : participations) {
+            BigDecimal income = calculateSingleOnsiteParticipationIncome(participation, yearStart, cutoffDate);
+            if (income.compareTo(BigDecimal.ZERO) > 0) {
+                log.debug("[驻场收入] 用户 {} 项目 {} 驻场点 {} 收入: {}", 
+                        userId, participation.get("projectName"), participation.get("siteName"), income);
+            }
+            totalIncome = totalIncome.add(income);
+        }
+
+        log.debug("[驻场收入] 用户 {} 总驻场收入: {}", userId, totalIncome);
+        return totalIncome;
+    }
+
+    /**
+     * 计算单个驻场参与的收入（通用方法）
+     */
+    private BigDecimal calculateSingleOnsiteParticipationIncome(Map<String, Object> participation,
+                                                                 LocalDate yearStart, LocalDate cutoffDate) {
+        // 获取成员类型：1-管理人员 2-驻场人员
+        Integer memberType = getIntValue(participation.get("memberType"));
+        Integer deptType = getIntValue(participation.get("deptType"));
+        LocalDate memberStartDate = getLocalDate(participation.get("memberStartDate"));
+        LocalDate memberEndDate = getLocalDate(participation.get("memberEndDate"));
+        LocalDate contractStartDate = getLocalDateFromDateTime(participation.get("contractStartDate"));
+        LocalDate contractEndDate = getLocalDateFromDateTime(participation.get("contractEndDate"));
+        BigDecimal managementFee = getBigDecimal(participation.get("managementFee"));
+        BigDecimal onsiteFee = getBigDecimal(participation.get("onsiteFee"));
+        Integer sameMemberTypeCount = getIntValue(participation.get("sameMemberTypeCount"));
+
+        String projectName = (String) participation.get("projectName");
+        String siteName = (String) participation.get("siteName");
+        String memberTypeName = memberType != null && memberType == 1 ? "管理" : "驻场";
+        
+        log.debug("[驻场收入计算] 项目={}, 驻场点={}, deptType={}, 成员类型={}, 管理费={}, 驻场费={}, 同类型成员数={}", 
+                projectName, siteName, deptType, memberTypeName, managementFee, onsiteFee, sameMemberTypeCount);
+
+        if (contractStartDate == null || contractEndDate == null) {
+            log.debug("[驻场收入计算] 项目={} 合同开始或结束日期为空，跳过", projectName);
+            return BigDecimal.ZERO;
+        }
+
+        // 根据成员类型选择对应的费用
+        BigDecimal feePool;
+        if (memberType != null && memberType == 1) {
+            feePool = managementFee;
+        } else {
+            feePool = onsiteFee;
+        }
+        
+        if (feePool.compareTo(BigDecimal.ZERO) <= 0) {
+            log.debug("[驻场收入计算] 项目={} 费用池为空或<=0", projectName);
+            return BigDecimal.ZERO;
+        }
+
+        // 计算合同总工作日
+        int totalContractDays = calculateWorkingDaysBetween(contractStartDate, contractEndDate);
+        if (totalContractDays <= 0) {
+            log.debug("[驻场收入计算] 项目={} 总工作日<=0", projectName);
+            return BigDecimal.ZERO;
+        }
+
+        // 计算该员工的有效工作日
+        LocalDate effectiveStart = maxDate(memberStartDate != null ? memberStartDate : contractStartDate, 
+                                           contractStartDate, yearStart);
+        LocalDate effectiveEnd = minDate(memberEndDate != null ? memberEndDate : contractEndDate,
+                                         contractEndDate, cutoffDate);
+
+        if (effectiveStart == null || effectiveEnd == null || effectiveStart.isAfter(effectiveEnd)) {
+            log.debug("[驻场收入计算] 项目={} 有效日期范围无效", projectName);
+            return BigDecimal.ZERO;
+        }
+
+        int employeeDays = calculateWorkingDaysBetween(effectiveStart, effectiveEnd);
+
+        // 按同类型成员人数平均分
+        int memberCount = sameMemberTypeCount != null && sameMemberTypeCount > 0 ? sameMemberTypeCount : 1;
+        
+        BigDecimal income = feePool.multiply(new BigDecimal(employeeDays))
+                .divide(new BigDecimal(totalContractDays), 4, RoundingMode.HALF_UP)
+                .divide(new BigDecimal(memberCount), 2, RoundingMode.HALF_UP);
+        
+        log.debug("[驻场收入计算] 项目={}, 收入: {} × ({}/{}) / {} = {}", 
+                projectName, feePool, employeeDays, totalContractDays, memberCount, income);
+        
+        return income;
     }
 
     /**
@@ -1264,6 +1391,10 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
     /**
      * 获取员工参与明细
      * 根据员工所属部门类型，查询其参与的项目/合同明细
+     * 
+     * 参与明细包括：
+     * 1. 驻场参与（从 project_site_member 表）
+     * 2. 轮次执行（从 project_round 表，仅安全服务和数据安全）
      */
     private List<ProjectParticipation> getEmployeeParticipation(AdminUserDO user, int year, LocalDate cutoffDate) {
         List<ProjectParticipation> result = new ArrayList<>();
@@ -1283,15 +1414,79 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
             return result;
         }
         
-        if (deptType == DEPT_TYPE_SECURITY_OPERATION) {
-            // 安全运营：查询参与的合同
-            result.addAll(getSecurityOperationParticipation(user.getId(), year, cutoffDate));
-        } else {
-            // 安全服务/数据安全：查询执行的轮次
+        // 1. 查询驻场参与（所有部门类型都可能有）
+        result.addAll(getOnsiteParticipation(user.getId(), deptType, year, cutoffDate));
+        
+        // 2. 安全服务和数据安全还可能有轮次执行
+        if (deptType == DEPT_TYPE_SECURITY_SERVICE || deptType == DEPT_TYPE_DATA_SECURITY) {
             result.addAll(getServiceRoundParticipation(user.getId(), year, cutoffDate));
         }
         
         log.debug("[参与明细] 用户 {} 共 {} 条记录", user.getId(), result.size());
+        return result;
+    }
+
+    /**
+     * 获取驻场参与明细（通用方法）
+     * 从 project_site_member 表查询
+     */
+    private List<ProjectParticipation> getOnsiteParticipation(Long userId, Integer deptType, int year, LocalDate cutoffDate) {
+        List<ProjectParticipation> result = new ArrayList<>();
+        
+        List<Map<String, Object>> participations = projectSiteMemberInfoMapper.selectMemberParticipation(userId, deptType);
+        if (CollUtil.isEmpty(participations)) {
+            return result;
+        }
+        
+        LocalDate yearStart = LocalDate.of(year, 1, 1);
+        
+        for (Map<String, Object> p : participations) {
+            LocalDate contractStartDate = getLocalDateFromDateTime(p.get("contractStartDate"));
+            LocalDate contractEndDate = getLocalDateFromDateTime(p.get("contractEndDate"));
+            LocalDate memberStartDate = getLocalDate(p.get("memberStartDate"));
+            LocalDate memberEndDate = getLocalDate(p.get("memberEndDate"));
+            
+            // 计算有效时间段
+            LocalDate effectiveStart = maxDate(memberStartDate != null ? memberStartDate : contractStartDate,
+                    contractStartDate, yearStart);
+            LocalDate effectiveEnd = minDate(memberEndDate != null ? memberEndDate : contractEndDate,
+                    contractEndDate, cutoffDate);
+            
+            if (effectiveStart == null || effectiveEnd == null || effectiveStart.isAfter(effectiveEnd)) {
+                continue;
+            }
+            
+            // 计算收入
+            BigDecimal income = calculateSingleOnsiteParticipationIncome(p, yearStart, cutoffDate);
+            
+            // 计算工作日
+            int workDays = calculateWorkingDaysBetween(effectiveStart, effectiveEnd);
+            
+            // 确定参与类型
+            Integer memberType = getIntValue(p.get("memberType"));
+            String participationType;
+            String participationTypeName;
+            if (memberType != null && memberType == 1) {
+                participationType = "management";
+                participationTypeName = "管理";
+            } else {
+                participationType = "onsite";
+                participationTypeName = "驻场";
+            }
+            
+            result.add(ProjectParticipation.builder()
+                    .projectId(getLongValue(p.get("projectId")))
+                    .projectName((String) p.get("projectName"))
+                    .customerName((String) p.get("customerName"))
+                    .participationType(participationType)
+                    .participationTypeName(participationTypeName)
+                    .startDate(effectiveStart)
+                    .endDate(effectiveEnd)
+                    .workDays(workDays)
+                    .income(income)
+                    .build());
+        }
+        
         return result;
     }
     
