@@ -214,15 +214,14 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
                 .map(DeptDO::getLeaderUserId)
                 .collect(Collectors.toSet());
         
-        // 7. 批量计算所有员工成本
-        Map<Long, BigDecimal> employeeCostCache = new ConcurrentHashMap<>();
+        // 7. 【性能优化】批量计算所有员工成本（使用批量查询替代循环调用）
         int month = cutoffDate.getMonthValue();
-        for (AdminUserDO employee : allEmployees) {
-            UserCostRespVO costVO = costCalculationService.getUserCost(employee.getId(), year, month);
-            BigDecimal cost = (costVO != null && costVO.getYearToDateCost() != null) 
-                    ? costVO.getYearToDateCost() : BigDecimal.ZERO;
-            employeeCostCache.put(employee.getId(), cost);
-        }
+        Set<Long> allUserIds = allEmployees.stream()
+                .map(AdminUserDO::getId)
+                .collect(Collectors.toSet());
+        Map<Long, BigDecimal> employeeCostCache = new ConcurrentHashMap<>(
+                costCalculationService.batchGetUserYearToDateCost(allUserIds, year, month)
+        );
         
         // 8. 批量计算收入（驻场收入 + 轮次收入）
         Map<Long, BigDecimal> operationIncomeCache = new ConcurrentHashMap<>();  // 驻场收入缓存
@@ -1742,15 +1741,8 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
     }
 
     private int calculateWorkingDaysBetween(LocalDate startDate, LocalDate endDate) {
-        int workingDays = 0;
-        LocalDate current = startDate;
-        while (!current.isAfter(endDate)) {
-            if (holidayService.isWorkday(current)) {
-                workingDays++;
-            }
-            current = current.plusDays(1);
-        }
-        return workingDays;
+        // 使用批量查询方法，避免 N+1 查询问题
+        return holidayService.countWorkdaysBetween(startDate, endDate);
     }
 
     private LocalDate maxDate(LocalDate... dates) {
@@ -1826,19 +1818,31 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
     /**
      * 计算部门的跨部门收入（包括子部门）
      * 跨部门收入 = 作为目标方（target_dept_id）的费用总和
+     * 
+     * 【性能优化】使用批量查询替代循环查询
      */
     private BigDecimal calculateDeptOutsideIncome(Long deptId, int year, LocalDateTime cutoffDateTime) {
-        BigDecimal total = BigDecimal.ZERO;
-        
         // 获取本部门及所有子部门的ID
         List<Long> allDeptIds = getAllDescendantDeptIds(deptId);
         allDeptIds.add(deptId);
         
-        // 批量查询这些部门的跨部门收入
-        for (Long id : allDeptIds) {
-            BigDecimal income = outsideCostRecordMapper.sumIncomeByDeptIdAndYear(id, year, cutoffDateTime);
-            if (income != null) {
-                total = total.add(income);
+        if (allDeptIds.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        
+        // 【优化】使用批量查询替代循环查询
+        List<Map<String, Object>> results = outsideCostRecordMapper.batchSumIncomeByDeptIds(allDeptIds, year, cutoffDateTime);
+        
+        BigDecimal total = BigDecimal.ZERO;
+        if (results != null) {
+            for (Map<String, Object> result : results) {
+                Object amountObj = result.get("amount");
+                if (amountObj != null) {
+                    BigDecimal amount = amountObj instanceof BigDecimal 
+                            ? (BigDecimal) amountObj 
+                            : new BigDecimal(amountObj.toString());
+                    total = total.add(amount);
+                }
             }
         }
         
@@ -1848,19 +1852,31 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
     /**
      * 计算部门的跨部门支出（包括子部门）
      * 跨部门支出 = 作为发起方（request_dept_id）的费用总和
+     * 
+     * 【性能优化】使用批量查询替代循环查询
      */
     private BigDecimal calculateDeptOutsideExpense(Long deptId, int year, LocalDateTime cutoffDateTime) {
-        BigDecimal total = BigDecimal.ZERO;
-        
         // 获取本部门及所有子部门的ID
         List<Long> allDeptIds = getAllDescendantDeptIds(deptId);
         allDeptIds.add(deptId);
         
-        // 批量查询这些部门的跨部门支出
-        for (Long id : allDeptIds) {
-            BigDecimal expense = outsideCostRecordMapper.sumExpenseByDeptIdAndYear(id, year, cutoffDateTime);
-            if (expense != null) {
-                total = total.add(expense);
+        if (allDeptIds.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        
+        // 【优化】使用批量查询替代循环查询
+        List<Map<String, Object>> results = outsideCostRecordMapper.batchSumExpenseByDeptIds(allDeptIds, year, cutoffDateTime);
+        
+        BigDecimal total = BigDecimal.ZERO;
+        if (results != null) {
+            for (Map<String, Object> result : results) {
+                Object amountObj = result.get("amount");
+                if (amountObj != null) {
+                    BigDecimal amount = amountObj instanceof BigDecimal 
+                            ? (BigDecimal) amountObj 
+                            : new BigDecimal(amountObj.toString());
+                    total = total.add(amount);
+                }
             }
         }
         

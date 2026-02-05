@@ -10,7 +10,11 @@ import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import cn.shuhe.system.module.system.controller.admin.dashboard.vo.DashboardStatisticsRespVO;
 import cn.shuhe.system.module.system.controller.admin.dashboard.vo.DashboardStatisticsRespVO.*;
+import cn.shuhe.system.module.system.controller.admin.cost.vo.BusinessAnalysisReqVO;
+import cn.shuhe.system.module.system.controller.admin.cost.vo.BusinessAnalysisRespVO;
 import cn.shuhe.system.module.system.dal.dataobject.logger.OperateLogDO;
+import cn.shuhe.system.module.system.service.cost.BusinessAnalysisCacheService;
+import cn.shuhe.system.module.system.service.cost.BusinessAnalysisService;
 import cn.shuhe.system.module.system.service.logger.OperateLogService;
 import cn.shuhe.system.module.system.service.permission.PermissionService;
 import cn.shuhe.system.module.system.service.user.AdminUserService;
@@ -71,6 +75,12 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
 
     @Resource
     private AdminUserApi adminUserApi;
+
+    @Autowired(required = false)
+    private BusinessAnalysisService businessAnalysisService;
+
+    @Autowired(required = false)
+    private BusinessAnalysisCacheService businessAnalysisCacheService;
 
     /**
      * 管理员角色标识
@@ -229,12 +239,90 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
 
     @Override
     public RevenueStats getRevenueStats(Long userId) {
+        // 【性能优化】优先从缓存服务获取收入统计
+        if (businessAnalysisCacheService != null) {
+            try {
+                RevenueStats cachedStats = businessAnalysisCacheService.getRevenueStats(userId);
+                if (cachedStats != null) {
+                    return cachedStats;
+                }
+            } catch (Exception e) {
+                log.warn("从缓存服务获取收入统计失败，尝试直接计算", e);
+            }
+        }
+        
+        // 降级：直接从经营分析服务获取（无缓存）
+        if (businessAnalysisService != null) {
+            try {
+                LocalDate now = LocalDate.now();
+                int currentYear = now.getYear();
+                
+                // 获取年度累计数据（截至当前）
+                BusinessAnalysisReqVO yearReqVO = new BusinessAnalysisReqVO();
+                yearReqVO.setYear(currentYear);
+                yearReqVO.setCutoffDate(now);
+                yearReqVO.setLevel(1); // 部门汇总级别
+                yearReqVO.setIncludeEmployees(false); // 不包含员工详情，加快查询
+                BusinessAnalysisRespVO yearData = businessAnalysisService.getBusinessAnalysis(yearReqVO, userId);
+                
+                if (yearData != null && yearData.getTotal() != null) {
+                    BusinessAnalysisRespVO.TotalAnalysis total = yearData.getTotal();
+                    BigDecimal yearlyRevenue = total.getTotalIncome() != null ? total.getTotalIncome() : BigDecimal.ZERO;
+                    BigDecimal yearlyCost = total.getTotalExpense() != null ? total.getTotalExpense() : BigDecimal.ZERO;
+                    BigDecimal yearlyProfit = total.getNetProfit() != null ? total.getNetProfit() : BigDecimal.ZERO;
+                    
+                    // 简化：本月数据直接使用年度累计数据除以已过月份
+                    int monthsPassed = Math.max(now.getMonthValue(), 1);
+                    BigDecimal monthlyRevenue = yearlyRevenue.divide(new BigDecimal(monthsPassed), 2, java.math.RoundingMode.HALF_UP);
+                    BigDecimal monthlyCost = yearlyCost.divide(new BigDecimal(monthsPassed), 2, java.math.RoundingMode.HALF_UP);
+                    BigDecimal monthlyProfit = yearlyProfit.divide(new BigDecimal(monthsPassed), 2, java.math.RoundingMode.HALF_UP);
+                    
+                    // 计算同比增长率（与去年同期比较）
+                    BigDecimal growthRate = BigDecimal.ZERO;
+                    try {
+                        BusinessAnalysisReqVO lastYearReqVO = new BusinessAnalysisReqVO();
+                        lastYearReqVO.setYear(currentYear - 1);
+                        lastYearReqVO.setCutoffDate(now.minusYears(1));
+                        lastYearReqVO.setLevel(1);
+                        lastYearReqVO.setIncludeEmployees(false);
+                        BusinessAnalysisRespVO lastYearData = businessAnalysisService.getBusinessAnalysis(lastYearReqVO, userId);
+                        
+                        if (lastYearData != null && lastYearData.getTotal() != null) {
+                            BigDecimal lastYearProfit = lastYearData.getTotal().getNetProfit();
+                            if (lastYearProfit != null && lastYearProfit.compareTo(BigDecimal.ZERO) > 0) {
+                                growthRate = yearlyProfit.subtract(lastYearProfit)
+                                        .multiply(new BigDecimal("100"))
+                                        .divide(lastYearProfit, 1, java.math.RoundingMode.HALF_UP);
+                            } else if (yearlyProfit.compareTo(BigDecimal.ZERO) > 0) {
+                                growthRate = new BigDecimal("100");
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.warn("计算同比增长率失败", e);
+                    }
+                    
+                    return RevenueStats.builder()
+                            .monthlyRevenue(monthlyRevenue)
+                            .monthlyCost(monthlyCost)
+                            .monthlyProfit(monthlyProfit)
+                            .growthRate(growthRate)
+                            .yearlyRevenue(yearlyRevenue)
+                            .build();
+                }
+            } catch (Exception e) {
+                log.warn("从经营分析服务获取利润数据失败，使用降级方案", e);
+            }
+        }
+        
+        // 降级：尝试从 CRM 回款获取数据
         if (dashboardCrmApi != null) {
             RevenueStats real = dashboardCrmApi.getRevenueStats(userId);
             if (real != null) {
                 return real;
             }
         }
+        
+        // 最后降级：返回模拟数据
         boolean admin = isAdmin(userId);
         if (admin) {
             BigDecimal revenue = new BigDecimal("1256000");
@@ -260,24 +348,159 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
         }
     }
 
+    @Override
+    public ReceivableStats getReceivableStats(Long userId) {
+        if (dashboardCrmApi != null) {
+            ReceivableStats real = dashboardCrmApi.getReceivableStats(userId);
+            if (real != null) {
+                return real;
+            }
+        }
+        // 降级：返回模拟数据
+        boolean admin = isAdmin(userId);
+        if (admin) {
+            return ReceivableStats.builder()
+                    .pendingCount(15)
+                    .pendingAmount(new BigDecimal("2350000"))
+                    .overdueCount(3)
+                    .monthlyReceivedAmount(new BigDecimal("580000"))
+                    .build();
+        } else {
+            return ReceivableStats.builder()
+                    .pendingCount(5)
+                    .pendingAmount(new BigDecimal("350000"))
+                    .overdueCount(1)
+                    .monthlyReceivedAmount(new BigDecimal("120000"))
+                    .build();
+        }
+    }
+
     /**
      * 获取经营趋势数据（最近12个月）
+     * 优先从经营分析服务获取，保持与部门利润排行数据源一致
      * 
      * @param userId 用户ID
      * @param isAdmin 是否管理员
      */
     private List<TrendData> getTrendData(Long userId, boolean isAdmin) {
+        List<TrendData> list = new ArrayList<>();
+        LocalDate now = LocalDate.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy年M月");
+        
+        // 优先从经营分析服务获取真实数据（与部门利润排行数据源一致）
+        if (businessAnalysisService != null) {
+            try {
+                // 存储每个月末的累计数据，用于计算月度增量
+                BigDecimal[] cumulativeRevenues = new BigDecimal[13]; // 0为上月末基准
+                BigDecimal[] cumulativeCosts = new BigDecimal[13];
+                BigDecimal[] cumulativeProfits = new BigDecimal[13];
+                
+                // 获取12个月前的月末累计作为基准
+                LocalDate baseMonth = now.minusMonths(12);
+                LocalDate baseMonthEnd = baseMonth.withDayOfMonth(baseMonth.lengthOfMonth());
+                BusinessAnalysisReqVO baseReq = new BusinessAnalysisReqVO();
+                baseReq.setYear(baseMonthEnd.getYear());
+                baseReq.setCutoffDate(baseMonthEnd);
+                baseReq.setLevel(1);
+                baseReq.setIncludeEmployees(false);
+                
+                BusinessAnalysisRespVO baseData = businessAnalysisService.getBusinessAnalysis(baseReq, userId);
+                if (baseData != null && baseData.getTotal() != null) {
+                    cumulativeRevenues[0] = baseData.getTotal().getTotalIncome() != null ? baseData.getTotal().getTotalIncome() : BigDecimal.ZERO;
+                    cumulativeCosts[0] = baseData.getTotal().getTotalExpense() != null ? baseData.getTotal().getTotalExpense() : BigDecimal.ZERO;
+                    cumulativeProfits[0] = baseData.getTotal().getNetProfit() != null ? baseData.getTotal().getNetProfit() : BigDecimal.ZERO;
+                } else {
+                    cumulativeRevenues[0] = BigDecimal.ZERO;
+                    cumulativeCosts[0] = BigDecimal.ZERO;
+                    cumulativeProfits[0] = BigDecimal.ZERO;
+                }
+                
+                // 获取最近12个月每个月末的累计数据
+                for (int i = 11; i >= 0; i--) {
+                    LocalDate month = now.minusMonths(i);
+                    LocalDate monthEnd = (i == 0) ? now : month.withDayOfMonth(month.lengthOfMonth());
+                    int idx = 12 - i; // 1~12
+                    
+                    BusinessAnalysisReqVO reqVO = new BusinessAnalysisReqVO();
+                    reqVO.setYear(monthEnd.getYear());
+                    reqVO.setCutoffDate(monthEnd);
+                    reqVO.setLevel(1);
+                    reqVO.setIncludeEmployees(false);
+                    
+                    BusinessAnalysisRespVO data = businessAnalysisService.getBusinessAnalysis(reqVO, userId);
+                    if (data != null && data.getTotal() != null) {
+                        cumulativeRevenues[idx] = data.getTotal().getTotalIncome() != null ? data.getTotal().getTotalIncome() : BigDecimal.ZERO;
+                        cumulativeCosts[idx] = data.getTotal().getTotalExpense() != null ? data.getTotal().getTotalExpense() : BigDecimal.ZERO;
+                        cumulativeProfits[idx] = data.getTotal().getNetProfit() != null ? data.getTotal().getNetProfit() : BigDecimal.ZERO;
+                    } else {
+                        cumulativeRevenues[idx] = cumulativeRevenues[idx - 1];
+                        cumulativeCosts[idx] = cumulativeCosts[idx - 1];
+                        cumulativeProfits[idx] = cumulativeProfits[idx - 1];
+                    }
+                }
+                
+                // 计算每月增量（本月累计 - 上月累计）
+                boolean hasValidData = false;
+                for (int i = 11; i >= 0; i--) {
+                    LocalDate month = now.minusMonths(i);
+                    int idx = 12 - i;
+                    
+                    // 跨年时需要特殊处理：不同年份的累计数据不能直接相减
+                    // 简化处理：如果是1月份，本月增量就是本月累计（因为是新年第一个月）
+                    BigDecimal monthRevenue, monthCost, monthProfit;
+                    if (month.getMonthValue() == 1) {
+                        // 1月份：本年累计就是1月数据
+                        monthRevenue = cumulativeRevenues[idx];
+                        monthCost = cumulativeCosts[idx];
+                        monthProfit = cumulativeProfits[idx];
+                    } else {
+                        // 非1月份：本月 = 本月累计 - 上月累计
+                        monthRevenue = cumulativeRevenues[idx].subtract(cumulativeRevenues[idx - 1]);
+                        monthCost = cumulativeCosts[idx].subtract(cumulativeCosts[idx - 1]);
+                        monthProfit = cumulativeProfits[idx].subtract(cumulativeProfits[idx - 1]);
+                    }
+                    
+                    // 转换为万元显示（与图表单位一致）
+                    BigDecimal revenueWan = monthRevenue.divide(new BigDecimal("10000"), 2, java.math.RoundingMode.HALF_UP);
+                    BigDecimal costWan = monthCost.divide(new BigDecimal("10000"), 2, java.math.RoundingMode.HALF_UP);
+                    BigDecimal profitWan = monthProfit.divide(new BigDecimal("10000"), 2, java.math.RoundingMode.HALF_UP);
+                    
+                    if (revenueWan.compareTo(BigDecimal.ZERO) != 0 || costWan.compareTo(BigDecimal.ZERO) != 0) {
+                        hasValidData = true;
+                    }
+                    
+                    list.add(TrendData.builder()
+                            .month(month.format(formatter))
+                            .revenue(revenueWan)
+                            .cost(costWan)
+                            .profit(profitWan)
+                            .build());
+                }
+                
+                if (hasValidData) {
+                    return list;
+                }
+            } catch (Exception e) {
+                log.warn("从经营分析服务获取趋势数据失败，使用降级方案", e);
+                list.clear();
+            }
+        }
+        
+        // 降级：尝试从 CRM 获取
         if (dashboardCrmApi != null) {
             List<TrendData> real = dashboardCrmApi.getTrendData(userId, isAdmin);
             if (real != null && !real.isEmpty()) {
-                return real;
+                boolean hasValidData = real.stream().anyMatch(t -> 
+                    (t.getRevenue() != null && t.getRevenue().compareTo(BigDecimal.ZERO) > 0) ||
+                    (t.getProfit() != null && t.getProfit().compareTo(BigDecimal.ZERO) != 0));
+                if (hasValidData) {
+                    return real;
+                }
             }
         }
-        List<TrendData> list = new ArrayList<>();
-        LocalDate now = LocalDate.now();
-        // 使用「年+月」避免跨年时出现重复「2月」等导致 X 轴与 tooltip 错位
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy年M月");
-        // 管理员看全公司，普通用户看个人/部门相关
+        
+        // 最后降级：使用模拟数据
+        list.clear();
         int[] revenues;
         int[] costs;
         
@@ -285,7 +508,6 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
             revenues = new int[]{120, 132, 101, 134, 90, 230, 210, 182, 191, 234, 290, 330};
             costs = new int[]{80, 92, 71, 94, 60, 150, 130, 112, 121, 154, 180, 200};
         } else {
-            // 普通用户看个人业绩相关
             revenues = new int[]{15, 18, 12, 20, 8, 25, 22, 19, 21, 28, 32, 35};
             costs = new int[]{8, 10, 7, 12, 5, 14, 12, 10, 11, 15, 18, 20};
         }
@@ -293,8 +515,8 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
         for (int i = 11; i >= 0; i--) {
             LocalDate month = now.minusMonths(i);
             int idx = 11 - i;
-            BigDecimal revenue = BigDecimal.valueOf(revenues[idx] * 10000L);
-            BigDecimal cost = BigDecimal.valueOf(costs[idx] * 10000L);
+            BigDecimal revenue = BigDecimal.valueOf(revenues[idx]);
+            BigDecimal cost = BigDecimal.valueOf(costs[idx]);
             list.add(TrendData.builder()
                     .month(month.format(formatter))
                     .revenue(revenue)
@@ -312,8 +534,16 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
      * @param isAdmin 是否管理员
      */
     private List<PieChartData> getProjectDistribution(Long userId, boolean isAdmin) {
+        // 优先从项目模块获取真实数据
+        if (dashboardProjectApi != null) {
+            List<PieChartData> real = dashboardProjectApi.getProjectDistribution(userId, isAdmin);
+            if (real != null && !real.isEmpty()) {
+                return real;
+            }
+        }
+        
+        // 降级：使用模拟数据
         List<PieChartData> list = new ArrayList<>();
-        // TODO: 从 project 模块获取真实数据
         if (isAdmin) {
             list.add(PieChartData.builder().name("进行中").value(12).color("#5470c6").build());
             list.add(PieChartData.builder().name("已完成").value(68).color("#91cc75").build());
@@ -360,27 +590,85 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
 
     /**
      * 获取部门排行（只有管理员可见）
+     * 从经营分析服务获取各部门的利润数据
+     * 【性能优化】优先从缓存服务获取
      * 
      * @param userId 用户ID
      * @param isAdmin 是否管理员
      */
     private List<RankData> getDeptRanking(Long userId, boolean isAdmin) {
+        if (!isAdmin) {
+            return List.of();
+        }
+        
+        // 【性能优化】优先从缓存服务获取部门排行
+        if (businessAnalysisCacheService != null) {
+            try {
+                List<RankData> cachedRanking = businessAnalysisCacheService.getDeptRanking(userId);
+                if (cachedRanking != null && !cachedRanking.isEmpty()) {
+                    return cachedRanking;
+                }
+            } catch (Exception e) {
+                log.warn("从缓存服务获取部门排行失败，尝试直接计算", e);
+            }
+        }
+        
+        // 降级：直接从经营分析服务获取（无缓存）
+        if (businessAnalysisService != null) {
+            try {
+                LocalDate now = LocalDate.now();
+                BusinessAnalysisReqVO reqVO = new BusinessAnalysisReqVO();
+                reqVO.setYear(now.getYear());
+                reqVO.setCutoffDate(now);
+                reqVO.setLevel(1); // 部门汇总级别
+                reqVO.setIncludeEmployees(false); // 不包含员工详情，加快查询
+                BusinessAnalysisRespVO analysisData = businessAnalysisService.getBusinessAnalysis(reqVO, userId);
+                
+                if (analysisData != null && analysisData.getDeptAnalysisList() != null && !analysisData.getDeptAnalysisList().isEmpty()) {
+                    List<RankData> list = new ArrayList<>();
+                    List<BusinessAnalysisRespVO.DeptAnalysis> deptList = new ArrayList<>(analysisData.getDeptAnalysisList());
+                    
+                    // 按利润排序
+                    deptList.sort((a, b) -> {
+                        BigDecimal profitA = a.getNetProfit() != null ? a.getNetProfit() : BigDecimal.ZERO;
+                        BigDecimal profitB = b.getNetProfit() != null ? b.getNetProfit() : BigDecimal.ZERO;
+                        return profitB.compareTo(profitA);
+                    });
+                    
+                    for (int i = 0; i < deptList.size(); i++) {
+                        BusinessAnalysisRespVO.DeptAnalysis dept = deptList.get(i);
+                        BigDecimal profit = dept.getNetProfit() != null ? dept.getNetProfit() : BigDecimal.ZERO;
+                        BigDecimal profitRate = dept.getProfitRate() != null ? dept.getProfitRate() : BigDecimal.ZERO;
+                        
+                        list.add(RankData.builder()
+                                .rank(i + 1)
+                                .deptName(dept.getDeptName())
+                                .amount(profit)
+                                .completionRate(profitRate)
+                                .build());
+                    }
+                    return list;
+                }
+            } catch (Exception e) {
+                log.warn("从经营分析服务获取部门排行数据失败，使用降级方案", e);
+            }
+        }
+        
+        // 降级：尝试从 CRM 获取
         if (dashboardCrmApi != null) {
             List<RankData> real = dashboardCrmApi.getDeptRanking(userId, isAdmin);
             if (real != null && !real.isEmpty()) {
                 return real;
             }
         }
+        
+        // 最后降级：返回模拟数据
         List<RankData> list = new ArrayList<>();
-        if (isAdmin) {
-            list.add(RankData.builder().rank(1).deptName("渗透测试部").amount(new BigDecimal("3250000")).completionRate(new BigDecimal("125.5")).build());
-            list.add(RankData.builder().rank(2).deptName("安全运营部").amount(new BigDecimal("2860000")).completionRate(new BigDecimal("110.2")).build());
-            list.add(RankData.builder().rank(3).deptName("安全服务部").amount(new BigDecimal("2150000")).completionRate(new BigDecimal("95.8")).build());
-            list.add(RankData.builder().rank(4).deptName("安全集成部").amount(new BigDecimal("1680000")).completionRate(new BigDecimal("88.4")).build());
-            list.add(RankData.builder().rank(5).deptName("研发部").amount(new BigDecimal("920000")).completionRate(new BigDecimal("76.5")).build());
-        } else {
-            list.add(RankData.builder().rank(1).deptName("我的业绩").amount(new BigDecimal("350000")).completionRate(new BigDecimal("105.5")).build());
-        }
+        list.add(RankData.builder().rank(1).deptName("渗透测试部").amount(new BigDecimal("3250000")).completionRate(new BigDecimal("125.5")).build());
+        list.add(RankData.builder().rank(2).deptName("安全运营部").amount(new BigDecimal("2860000")).completionRate(new BigDecimal("110.2")).build());
+        list.add(RankData.builder().rank(3).deptName("安全服务部").amount(new BigDecimal("2150000")).completionRate(new BigDecimal("95.8")).build());
+        list.add(RankData.builder().rank(4).deptName("安全集成部").amount(new BigDecimal("1680000")).completionRate(new BigDecimal("88.4")).build());
+        list.add(RankData.builder().rank(5).deptName("研发部").amount(new BigDecimal("920000")).completionRate(new BigDecimal("76.5")).build());
         return list;
     }
 

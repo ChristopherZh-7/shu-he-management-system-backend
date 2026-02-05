@@ -173,6 +173,130 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     }
 
     @Override
+    public void setSecurityServiceManagers(Long id,
+                                            List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
+                                            List<Long> secondLineManagerIds, List<String> secondLineManagerNames) {
+        // 校验存在
+        ProjectDeptServiceDO deptService = validateDeptServiceExists(id);
+
+        // 校验是否为安全服务
+        if (deptService.getDeptType() != 1) {
+            throw exception(PROJECT_DEPT_SERVICE_NOT_SECURITY_SERVICE);
+        }
+
+        // 更新驻场和二线负责人
+        ProjectDeptServiceDO updateObj = new ProjectDeptServiceDO();
+        updateObj.setId(id);
+        updateObj.setOnsiteManagerIds(onsiteManagerIds);
+        updateObj.setOnsiteManagerNames(onsiteManagerNames);
+        updateObj.setSecondLineManagerIds(secondLineManagerIds);
+        updateObj.setSecondLineManagerNames(secondLineManagerNames);
+
+        // 同时更新 managerIds 和 managerNames（合并驻场和二线负责人）用于兼容
+        List<Long> allManagerIds = new ArrayList<>();
+        List<String> allManagerNames = new ArrayList<>();
+        if (onsiteManagerIds != null) {
+            allManagerIds.addAll(onsiteManagerIds);
+        }
+        if (secondLineManagerIds != null) {
+            allManagerIds.addAll(secondLineManagerIds);
+        }
+        if (onsiteManagerNames != null) {
+            allManagerNames.addAll(onsiteManagerNames);
+        }
+        if (secondLineManagerNames != null) {
+            allManagerNames.addAll(secondLineManagerNames);
+        }
+        updateObj.setManagerIds(allManagerIds.isEmpty() ? null : allManagerIds);
+        updateObj.setManagerNames(allManagerNames.isEmpty() ? null : allManagerNames);
+
+        // 根据第一个负责人的部门确定实际执行部门（优先使用驻场负责人）
+        List<Long> firstManagerList = onsiteManagerIds != null && !onsiteManagerIds.isEmpty() 
+                ? onsiteManagerIds : secondLineManagerIds;
+        if (firstManagerList != null && !firstManagerList.isEmpty()) {
+            Long firstManagerId = firstManagerList.get(0);
+            AdminUserRespDTO firstManager = adminUserApi.getUser(firstManagerId);
+            if (firstManager != null && firstManager.getDeptId() != null) {
+                Long actualDeptId = firstManager.getDeptId();
+                DeptRespDTO actualDept = deptApi.getDept(actualDeptId);
+                if (actualDept != null) {
+                    updateObj.setActualDeptId(actualDeptId);
+                    updateObj.setActualDeptName(actualDept.getName());
+                    log.info("【部门服务单】根据负责人{}确定实际执行部门: id={}, name={}",
+                            firstManagerId, actualDeptId, actualDept.getName());
+                }
+            }
+        }
+
+        deptServiceMapper.updateById(updateObj);
+
+        log.info("【部门服务单】设置安全服务负责人，id={}, onsiteManagerIds={}, secondLineManagerIds={}", 
+                id, onsiteManagerIds, secondLineManagerIds);
+    }
+
+    @Override
+    public void setDataSecurityManagers(Long id,
+                                         List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
+                                         List<Long> secondLineManagerIds, List<String> secondLineManagerNames) {
+        // 校验存在
+        ProjectDeptServiceDO deptService = validateDeptServiceExists(id);
+
+        // 校验是否为数据安全
+        if (deptService.getDeptType() != 3) {
+            throw exception(PROJECT_DEPT_SERVICE_NOT_DATA_SECURITY);
+        }
+
+        // 更新驻场和二线负责人（与安全服务逻辑一致）
+        ProjectDeptServiceDO updateObj = new ProjectDeptServiceDO();
+        updateObj.setId(id);
+        updateObj.setOnsiteManagerIds(onsiteManagerIds);
+        updateObj.setOnsiteManagerNames(onsiteManagerNames);
+        updateObj.setSecondLineManagerIds(secondLineManagerIds);
+        updateObj.setSecondLineManagerNames(secondLineManagerNames);
+
+        // 同时更新 managerIds 和 managerNames（合并驻场和二线负责人）用于兼容
+        List<Long> allManagerIds = new ArrayList<>();
+        List<String> allManagerNames = new ArrayList<>();
+        if (onsiteManagerIds != null) {
+            allManagerIds.addAll(onsiteManagerIds);
+        }
+        if (secondLineManagerIds != null) {
+            allManagerIds.addAll(secondLineManagerIds);
+        }
+        if (onsiteManagerNames != null) {
+            allManagerNames.addAll(onsiteManagerNames);
+        }
+        if (secondLineManagerNames != null) {
+            allManagerNames.addAll(secondLineManagerNames);
+        }
+        updateObj.setManagerIds(allManagerIds.isEmpty() ? null : allManagerIds);
+        updateObj.setManagerNames(allManagerNames.isEmpty() ? null : allManagerNames);
+
+        // 根据第一个负责人的部门确定实际执行部门（优先使用驻场负责人）
+        List<Long> firstManagerList = onsiteManagerIds != null && !onsiteManagerIds.isEmpty() 
+                ? onsiteManagerIds : secondLineManagerIds;
+        if (firstManagerList != null && !firstManagerList.isEmpty()) {
+            Long firstManagerId = firstManagerList.get(0);
+            AdminUserRespDTO firstManager = adminUserApi.getUser(firstManagerId);
+            if (firstManager != null && firstManager.getDeptId() != null) {
+                Long actualDeptId = firstManager.getDeptId();
+                DeptRespDTO actualDept = deptApi.getDept(actualDeptId);
+                if (actualDept != null) {
+                    updateObj.setActualDeptId(actualDeptId);
+                    updateObj.setActualDeptName(actualDept.getName());
+                    log.info("【部门服务单】根据负责人{}确定实际执行部门: id={}, name={}",
+                            firstManagerId, actualDeptId, actualDept.getName());
+                }
+            }
+        }
+
+        deptServiceMapper.updateById(updateObj);
+
+        log.info("【部门服务单】设置数据安全负责人，id={}, onsiteManagerIds={}, secondLineManagerIds={}", 
+                id, onsiteManagerIds, secondLineManagerIds);
+    }
+
+    @Override
     public void claimDeptService(Long id, Long deptId, String deptName, Long userId, String userName) {
         // 校验存在
         ProjectDeptServiceDO deptService = validateDeptServiceExists(id);

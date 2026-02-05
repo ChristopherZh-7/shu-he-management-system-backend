@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 管理后台 - 服务项金额分配 Response VO
@@ -19,7 +20,10 @@ public class ServiceItemAllocationRespVO {
     @Schema(description = "合同部门分配ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "100")
     private Long contractDeptAllocationId;
 
-    @Schema(description = "分配类型：service_item-服务项分配, so_management-安全运营管理费, so_onsite-安全运营驻场费", example = "service_item")
+    @Schema(description = "父级分配ID（服务项级别分配时指向费用类型分配记录）", example = "50")
+    private Long parentAllocationId;
+
+    @Schema(description = "分配类型：service_item-服务项分配, so_management-安全运营管理费, so_onsite-安全运营驻场费, ss_onsite-安全服务驻场费, ss_second_line-安全服务二线费", example = "service_item")
     private String allocationType;
 
     @Schema(description = "服务项ID（服务项分配时有值）", example = "200")
@@ -45,5 +49,19 @@ public class ServiceItemAllocationRespVO {
 
     @Schema(description = "更新时间")
     private LocalDateTime updateTime;
+
+    // ========== 层级分配相关字段 ==========
+
+    @Schema(description = "子分配列表（服务项级别分配）")
+    private List<ServiceItemAllocationRespVO> children;
+
+    @Schema(description = "已分配给子级的金额")
+    private BigDecimal childAllocatedAmount;
+
+    @Schema(description = "剩余可分配金额")
+    private BigDecimal remainingAmount;
+
+    @Schema(description = "是否可以继续分配（有剩余金额）")
+    private Boolean canAllocate;
 
 }

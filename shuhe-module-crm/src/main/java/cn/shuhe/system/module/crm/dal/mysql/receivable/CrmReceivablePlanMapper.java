@@ -86,4 +86,60 @@ public interface CrmReceivablePlanMapper extends BaseMapperX<CrmReceivablePlanDO
         return selectCount(query);
     }
 
+    /**
+     * 仪表板：待回款数量（未回款的计划数）
+     * sceneType 为 null 表示全部，OWNER 表示仅本人负责
+     */
+    default Long selectCountPendingForDashboard(Long userId, Integer sceneType) {
+        MPJLambdaWrapperX<CrmReceivablePlanDO> query = new MPJLambdaWrapperX<>();
+        if (sceneType != null) {
+            CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_RECEIVABLE_PLAN.getType(),
+                    CrmReceivablePlanDO::getId, userId, sceneType);
+        }
+        query.isNull(CrmReceivablePlanDO::getReceivableId); // 未回款
+        return selectCount(query);
+    }
+
+    /**
+     * 仪表板：已逾期回款数量
+     * sceneType 为 null 表示全部，OWNER 表示仅本人负责
+     */
+    default Long selectCountOverdueForDashboard(Long userId, Integer sceneType) {
+        MPJLambdaWrapperX<CrmReceivablePlanDO> query = new MPJLambdaWrapperX<>();
+        if (sceneType != null) {
+            CrmPermissionUtils.appendPermissionCondition(query, CrmBizTypeEnum.CRM_RECEIVABLE_PLAN.getType(),
+                    CrmReceivablePlanDO::getId, userId, sceneType);
+        }
+        LocalDateTime beginOfToday = LocalDateTimeUtil.beginOfDay(LocalDateTime.now());
+        query.isNull(CrmReceivablePlanDO::getReceivableId) // 未回款
+                .lt(CrmReceivablePlanDO::getReturnTime, beginOfToday); // 已逾期
+        return selectCount(query);
+    }
+
+    /**
+     * 仪表板：待回款总金额（未回款计划的金额合计，单位：元）
+     * sceneType 为 null 表示全部，OWNER 表示仅本人负责
+     */
+    default java.math.BigDecimal selectSumPendingAmountForDashboard(Long userId, Integer sceneType) {
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<CrmReceivablePlanDO> q = 
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+        q.select("COALESCE(SUM(price),0) as total")
+                .isNull("receivable_id"); // 未回款
+        if (sceneType != null && CrmSceneTypeEnum.OWNER.getType().equals(sceneType)) {
+            q.eq("owner_user_id", userId);
+        }
+        java.util.List<java.util.Map<String, Object>> list = selectMaps(q);
+        if (list == null || list.isEmpty()) {
+            return java.math.BigDecimal.ZERO;
+        }
+        Object total = list.get(0).get("total");
+        if (total == null) {
+            return java.math.BigDecimal.ZERO;
+        }
+        if (total instanceof java.math.BigDecimal) {
+            return (java.math.BigDecimal) total;
+        }
+        return new java.math.BigDecimal(total.toString());
+    }
+
 }

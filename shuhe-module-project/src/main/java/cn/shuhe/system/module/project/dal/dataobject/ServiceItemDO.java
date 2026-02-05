@@ -143,12 +143,6 @@ public class ServiceItemDO extends BaseDO {
      */
     private Integer progress;
 
-    /**
-     * 优先级
-     * 0-低 1-中 2-高
-     */
-    private Integer priority;
-
     // ========== 服务频次配置 ==========
 
     /**
@@ -197,6 +191,28 @@ public class ServiceItemDO extends BaseDO {
      * 安全运营的服务项通过此字段关联到安全运营合同
      */
     private Long soContractId;
+
+    /**
+     * 服务项归属人员类型（安全运营专用）
+     * 1-驻场人员负责的服务项
+     * 2-管理人员负责的服务项
+     * 
+     * 注意：此字段仅对安全运营(deptType=2)生效
+     * 安全服务(deptType=1)使用 serviceMode 区分驻场/二线
+     */
+    private Integer serviceMemberType;
+
+    // ========== 服务归属人员类型常量（安全运营专用） ==========
+
+    /**
+     * 驻场人员负责的服务项
+     */
+    public static final int SERVICE_MEMBER_TYPE_ONSITE = 1;
+
+    /**
+     * 管理人员负责的服务项
+     */
+    public static final int SERVICE_MEMBER_TYPE_MANAGEMENT = 2;
 
     // ========== 服务模式常量 ==========
 

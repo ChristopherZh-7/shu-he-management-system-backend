@@ -20,7 +20,10 @@ public class ServiceItemAllocationSaveReqVO {
     @NotNull(message = "合同部门分配ID不能为空")
     private Long contractDeptAllocationId;
 
-    @Schema(description = "分配类型：service_item-服务项分配, so_management-安全运营管理费, so_onsite-安全运营驻场费", example = "service_item")
+    @Schema(description = "父级分配ID（从费用类型分配到具体服务项时必填）", example = "50")
+    private Long parentAllocationId;
+
+    @Schema(description = "分配类型：service_item-服务项分配, so_management-安全运营管理费, so_onsite-安全运营驻场费, ss_onsite-安全服务驻场费, ss_second_line-安全服务二线费", example = "service_item")
     private String allocationType;
 
     @Schema(description = "服务项ID（服务项分配时必填）", example = "200")

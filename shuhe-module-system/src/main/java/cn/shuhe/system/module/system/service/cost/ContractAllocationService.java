@@ -173,4 +173,13 @@ public interface ContractAllocationService {
      */
     List<ServiceItemAllocationDO> getServiceItemAllocationsByServiceItemId(Long serviceItemId);
 
+    /**
+     * 根据父级分配ID获取子分配列表
+     * 用于获取从费用类型分配到具体服务项的分配记录
+     *
+     * @param parentAllocationId 父级分配ID
+     * @return 子分配列表
+     */
+    List<ServiceItemAllocationRespVO> getServiceItemAllocationsByParentId(Long parentAllocationId);
+
 }

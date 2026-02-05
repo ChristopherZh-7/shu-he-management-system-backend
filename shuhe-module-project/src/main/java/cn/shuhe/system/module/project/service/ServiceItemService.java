@@ -90,6 +90,17 @@ public interface ServiceItemService {
     List<ServiceItemDO> getServiceItemListByProjectIdAndDeptType(Long projectId, Integer deptType);
 
     /**
+     * 获得指定项目、部门类型和服务归属人员类型的服务项列表
+     * 用于安全运营按"驻场人员服务项"和"管理人员服务项"分类查询
+     *
+     * @param projectId         项目ID
+     * @param deptType          部门类型：1-安全服务 2-安全运营 3-数据安全
+     * @param serviceMemberType 服务归属人员类型：1-驻场人员 2-管理人员
+     * @return 服务项列表
+     */
+    List<ServiceItemDO> getServiceItemListByProjectIdAndDeptTypeAndMemberType(Long projectId, Integer deptType, Integer serviceMemberType);
+
+    /**
      * 更新服务项状态
      *
      * @param id     服务项编号

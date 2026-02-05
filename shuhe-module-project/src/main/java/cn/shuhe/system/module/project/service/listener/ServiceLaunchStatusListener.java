@@ -6,11 +6,13 @@ import cn.shuhe.system.framework.common.biz.system.dict.dto.DictDataRespDTO;
 import cn.shuhe.system.module.bpm.api.event.BpmProcessInstanceStatusEvent;
 import cn.shuhe.system.module.bpm.api.event.BpmProcessInstanceStatusEventListener;
 import cn.shuhe.system.module.bpm.enums.task.BpmTaskStatusEnum;
+import cn.shuhe.system.module.project.dal.dataobject.EmployeeScheduleDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceLaunchDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceLaunchMemberDO;
 import cn.shuhe.system.module.project.dal.mysql.ServiceLaunchMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceLaunchMemberMapper;
+import cn.shuhe.system.module.project.service.EmployeeScheduleService;
 import cn.shuhe.system.module.project.service.ProjectService;
 import cn.shuhe.system.module.project.service.ServiceItemService;
 import cn.shuhe.system.module.project.service.ServiceLaunchService;
@@ -76,6 +78,9 @@ public class ServiceLaunchStatusListener extends BpmProcessInstanceStatusEventLi
 
     @Resource
     private DictDataApi dictDataApi;
+
+    @Resource
+    private EmployeeScheduleService employeeScheduleService;
 
     @Override
     protected String getProcessDefinitionKey() {
@@ -184,6 +189,84 @@ public class ServiceLaunchStatusListener extends BpmProcessInstanceStatusEventLi
         } else if (CollUtil.isNotEmpty(executorUserIds)) {
             // 非外出服务，发送普通钉钉通知
             sendDingtalkNotifyToExecutors(launch, executorUserIds, processVariables);
+        }
+
+        // 为执行人创建员工排期记录（用于空置状态查询）
+        if (CollUtil.isNotEmpty(executorUserIds)) {
+            createEmployeeSchedules(launch, executorUserIds);
+        }
+    }
+
+    /**
+     * 为执行人创建员工排期记录
+     */
+    private void createEmployeeSchedules(ServiceLaunchDO launch, List<Long> executorUserIds) {
+        log.info("【服务发起监听】创建员工排期记录。launchId={}, executorCount={}",
+                launch.getId(), executorUserIds.size());
+
+        // 获取执行部门ID
+        Long executeDeptId = launch.getActualExecuteDeptId() != null 
+                ? launch.getActualExecuteDeptId() 
+                : launch.getExecuteDeptId();
+
+        // 获取服务项信息用于描述
+        String taskDescription = "服务执行";
+        if (launch.getServiceItemId() != null) {
+            ServiceItemDO serviceItem = serviceItemService.getServiceItem(launch.getServiceItemId());
+            if (serviceItem != null) {
+                taskDescription = serviceItem.getName() != null ? serviceItem.getName() : "服务执行";
+            }
+        }
+
+        // 任务类型
+        String taskType = Boolean.TRUE.equals(launch.getIsCrossDept()) 
+                ? EmployeeScheduleDO.TASK_TYPE_CROSS_DEPT 
+                : EmployeeScheduleDO.TASK_TYPE_LOCAL;
+
+        for (Long userId : executorUserIds) {
+            try {
+                // 获取用户信息
+                AdminUserRespDTO user = adminUserApi.getUser(userId);
+                if (user == null) {
+                    log.warn("【服务发起监听】创建排期失败，用户不存在。userId={}", userId);
+                    continue;
+                }
+
+                // 获取部门信息
+                String deptName = null;
+                Long userDeptId = user.getDeptId() != null ? user.getDeptId() : executeDeptId;
+                if (userDeptId != null) {
+                    DeptRespDTO dept = deptApi.getDept(userDeptId);
+                    if (dept != null) {
+                        deptName = dept.getName();
+                    }
+                }
+
+                // 创建排期记录
+                EmployeeScheduleDO schedule = EmployeeScheduleDO.builder()
+                        .userId(userId)
+                        .userName(user.getNickname())
+                        .deptId(userDeptId)
+                        .deptName(deptName)
+                        .launchId(launch.getId())
+                        .roundId(launch.getRoundId())
+                        .serviceItemId(launch.getServiceItemId())
+                        .projectId(launch.getProjectId())
+                        .status(EmployeeScheduleDO.STATUS_IN_PROGRESS) // 进行中
+                        .planStartTime(launch.getPlanStartTime())
+                        .planEndTime(launch.getPlanEndTime())
+                        .taskType(taskType)
+                        .taskDescription(taskDescription)
+                        .build();
+
+                employeeScheduleService.createSchedule(schedule);
+
+                log.info("【服务发起监听】创建员工排期成功。launchId={}, userId={}, scheduleId={}",
+                        launch.getId(), userId, schedule.getId());
+            } catch (Exception e) {
+                log.error("【服务发起监听】创建员工排期失败。launchId={}, userId={}, error={}",
+                        launch.getId(), userId, e.getMessage(), e);
+            }
         }
     }
 
@@ -531,6 +614,15 @@ public class ServiceLaunchStatusListener extends BpmProcessInstanceStatusEventLi
     private void handleCancelled(ServiceLaunchDO launch) {
         log.info("【服务发起监听】流程取消，更新状态。launchId={}", launch.getId());
         serviceLaunchService.handleCancelled(launch.getId());
+        
+        // 取消员工排期
+        try {
+            employeeScheduleService.cancelScheduleByLaunchId(launch.getId());
+            log.info("【服务发起监听】已取消员工排期。launchId={}", launch.getId());
+        } catch (Exception e) {
+            log.error("【服务发起监听】取消员工排期失败。launchId={}, error={}",
+                    launch.getId(), e.getMessage(), e);
+        }
     }
 
 }

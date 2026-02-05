@@ -54,6 +54,11 @@ public class ContractDeptAllocationDO extends BaseDO {
     private String deptName;
 
     /**
+     * 部门类型：1-安全服务 2-安全运营 3-数据安全
+     */
+    private Integer deptType;
+
+    /**
      * 上级分配ID（NULL表示从合同直接分配的第一级）
      */
     private Long parentAllocationId;

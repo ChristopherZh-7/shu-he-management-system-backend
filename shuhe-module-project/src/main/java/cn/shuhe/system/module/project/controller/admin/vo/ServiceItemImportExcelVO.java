@@ -30,9 +30,6 @@ public class ServiceItemImportExcelVO {
     @ExcelProperty("计划结束时间")
     private String planEndTime;
 
-    @ExcelProperty("优先级(0低/1中/2高)")
-    private Integer priority;
-
     @ExcelProperty("备注")
     private String remark;
 

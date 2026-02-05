@@ -20,10 +20,10 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
                 .eqIfPresent(ServiceItemDO::getProjectId, reqVO.getProjectId())
                 .eqIfPresent(ServiceItemDO::getDeptType, reqVO.getDeptType())
                 .eqIfPresent(ServiceItemDO::getServiceMode, reqVO.getServiceMode())
+                .eqIfPresent(ServiceItemDO::getServiceMemberType, reqVO.getServiceMemberType())
                 .eqIfPresent(ServiceItemDO::getDeptId, reqVO.getDeptId())
                 .eqIfPresent(ServiceItemDO::getServiceType, reqVO.getServiceType())
                 .eqIfPresent(ServiceItemDO::getStatus, reqVO.getStatus())
-                .eqIfPresent(ServiceItemDO::getPriority, reqVO.getPriority())
                 .likeIfPresent(ServiceItemDO::getName, reqVO.getName())
                 .likeIfPresent(ServiceItemDO::getCode, reqVO.getCode())
                 .likeIfPresent(ServiceItemDO::getCustomerName, reqVO.getCustomerName())
@@ -66,6 +66,23 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
         return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
                 .eq(ServiceItemDO::getProjectId, projectId)
                 .eq(ServiceItemDO::getDeptType, deptType)
+                .eq(ServiceItemDO::getVisible, 1)
+                .orderByDesc(ServiceItemDO::getId));
+    }
+
+    /**
+     * 根据项目ID、部门类型和服务归属人员类型查询服务项列表
+     * 用于安全运营按"驻场人员服务项"和"管理人员服务项"分类查询
+     *
+     * @param projectId         项目ID
+     * @param deptType          部门类型：1-安全服务 2-安全运营 3-数据安全
+     * @param serviceMemberType 服务归属人员类型：1-驻场人员 2-管理人员
+     */
+    default List<ServiceItemDO> selectListByProjectIdAndDeptTypeAndMemberType(Long projectId, Integer deptType, Integer serviceMemberType) {
+        return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getProjectId, projectId)
+                .eq(ServiceItemDO::getDeptType, deptType)
+                .eqIfPresent(ServiceItemDO::getServiceMemberType, serviceMemberType)
                 .eq(ServiceItemDO::getVisible, 1)
                 .orderByDesc(ServiceItemDO::getId));
     }

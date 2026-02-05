@@ -107,7 +107,40 @@ public class DashboardBpmApiImpl implements DashboardBpmApi {
 
     @Override
     public List<DashboardStatisticsRespVO.PieChartData> getTaskDistribution(Long userId, boolean isAdmin) {
-        return null;
+        List<DashboardStatisticsRespVO.PieChartData> list = new ArrayList<>();
+        
+        // 查询待办数量
+        long todoCount = taskService.createTaskQuery()
+                .taskAssignee(String.valueOf(userId))
+                .count();
+        
+        // 查询已完成数量
+        long completedCount = historyService.createHistoricTaskInstanceQuery()
+                .finished()
+                .taskAssignee(String.valueOf(userId))
+                .count();
+        
+        // 如果没有任何数据，返回空列表（降级到模拟数据）
+        if (todoCount == 0 && completedCount == 0) {
+            return null;
+        }
+        
+        if (todoCount > 0) {
+            list.add(DashboardStatisticsRespVO.PieChartData.builder()
+                    .name("待处理")
+                    .value((int) todoCount)
+                    .color("#5470c6")
+                    .build());
+        }
+        if (completedCount > 0) {
+            list.add(DashboardStatisticsRespVO.PieChartData.builder()
+                    .name("已完成")
+                    .value((int) completedCount)
+                    .color("#91cc75")
+                    .build());
+        }
+        
+        return list;
     }
 
     private static String formatRelativeTime(Date date) {

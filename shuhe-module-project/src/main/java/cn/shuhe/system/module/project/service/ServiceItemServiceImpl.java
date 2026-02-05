@@ -77,9 +77,6 @@ public class ServiceItemServiceImpl implements ServiceItemService {
         if (serviceItem.getStatus() == null) {
             serviceItem.setStatus(0); // 默认草稿状态
         }
-        if (serviceItem.getPriority() == null) {
-            serviceItem.setPriority(1); // 默认中优先级
-        }
         // 默认可见，除非明确指定为隐藏
         if (serviceItem.getVisible() == null) {
             serviceItem.setVisible(1);
@@ -178,6 +175,11 @@ public class ServiceItemServiceImpl implements ServiceItemService {
     @Override
     public List<ServiceItemDO> getServiceItemListByProjectIdAndDeptType(Long projectId, Integer deptType) {
         return serviceItemMapper.selectListByProjectIdAndDeptType(projectId, deptType);
+    }
+
+    @Override
+    public List<ServiceItemDO> getServiceItemListByProjectIdAndDeptTypeAndMemberType(Long projectId, Integer deptType, Integer serviceMemberType) {
+        return serviceItemMapper.selectListByProjectIdAndDeptTypeAndMemberType(projectId, deptType, serviceMemberType);
     }
 
     @Override
@@ -305,7 +307,6 @@ public class ServiceItemServiceImpl implements ServiceItemService {
                 saveReqVO.setName(excelVO.getName());
                 saveReqVO.setServiceType(excelVO.getServiceType());
                 saveReqVO.setCustomerName(excelVO.getCustomerName());
-                saveReqVO.setPriority(excelVO.getPriority());
                 saveReqVO.setRemark(excelVO.getRemark());
 
                 // 处理时间字段

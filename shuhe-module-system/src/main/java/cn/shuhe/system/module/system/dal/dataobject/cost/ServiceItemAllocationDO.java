@@ -41,6 +41,26 @@ public class ServiceItemAllocationDO extends BaseDO {
     public static final String ALLOCATION_TYPE_SO_ONSITE = "so_onsite";
 
     /**
+     * 分配类型：安全服务驻场费分配
+     */
+    public static final String ALLOCATION_TYPE_SS_ONSITE = "ss_onsite";
+
+    /**
+     * 分配类型：安全服务二线费分配
+     */
+    public static final String ALLOCATION_TYPE_SS_SECOND_LINE = "ss_second_line";
+
+    /**
+     * 分配类型：数据安全驻场费分配
+     */
+    public static final String ALLOCATION_TYPE_DS_ONSITE = "ds_onsite";
+
+    /**
+     * 分配类型：数据安全二线费分配
+     */
+    public static final String ALLOCATION_TYPE_DS_SECOND_LINE = "ds_second_line";
+
+    /**
      * 主键ID
      */
     @TableId
@@ -54,11 +74,24 @@ public class ServiceItemAllocationDO extends BaseDO {
     private Long contractDeptAllocationId;
 
     /**
+     * 父级分配ID（用于层级分配）
+     * 
+     * 当具体服务项从费用类型分配中再分配时，指向父级分配记录的ID
+     * 例如：从"二线服务费"分配到具体的二线服务项时，此字段指向"二线服务费"的分配记录
+     * 为 null 表示这是一级分配（费用类型分配）
+     */
+    private Long parentAllocationId;
+
+    /**
      * 分配类型
      * 
-     * service_item - 服务项分配（默认）
-     * so_management - 安全运营管理费分配
-     * so_onsite - 安全运营驻场费分配
+     * service_item - 服务项分配（从费用类型分配到具体服务项）
+     * so_management - 安全运营管理费分配（费用类型级别）
+     * so_onsite - 安全运营驻场费分配（费用类型级别）
+     * ss_onsite - 安全服务驻场费分配（费用类型级别）
+     * ss_second_line - 安全服务二线费分配（费用类型级别）
+     * ds_onsite - 数据安全驻场费分配（费用类型级别）
+     * ds_second_line - 数据安全二线费分配（费用类型级别）
      */
     private String allocationType;
 

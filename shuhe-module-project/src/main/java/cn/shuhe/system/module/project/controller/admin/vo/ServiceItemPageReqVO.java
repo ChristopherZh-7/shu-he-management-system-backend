@@ -38,9 +38,6 @@ public class ServiceItemPageReqVO extends PageParam {
     @Schema(description = "服务项状态：0草稿 1进行中 2已暂停 3已完成 4已取消", example = "1")
     private Integer status;
 
-    @Schema(description = "优先级：0低 1中 2高", example = "1")
-    private Integer priority;
-
     @Schema(description = "客户名称", example = "某银行")
     private String customerName;
 
@@ -50,5 +47,8 @@ public class ServiceItemPageReqVO extends PageParam {
 
     @Schema(description = "所属部门ID", example = "1")
     private Long deptId;
+
+    @Schema(description = "服务项归属人员类型（安全运营专用）：1-驻场人员 2-管理人员", example = "1")
+    private Integer serviceMemberType;
 
 }

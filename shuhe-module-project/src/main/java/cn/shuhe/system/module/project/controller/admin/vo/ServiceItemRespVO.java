@@ -78,9 +78,6 @@ public class ServiceItemRespVO {
     @Schema(description = "进度百分比 0-100", example = "50")
     private Integer progress;
 
-    @Schema(description = "优先级：0低 1中 2高", example = "1")
-    private Integer priority;
-
     // ========== 服务频次配置 ==========
 
     @Schema(description = "频次类型：0按需(不限) 1按月 2按季 3按年 4按周", example = "1")
@@ -107,5 +104,10 @@ public class ServiceItemRespVO {
 
     @Schema(description = "更新时间", requiredMode = Schema.RequiredMode.REQUIRED)
     private LocalDateTime updateTime;
+
+    // ========== 安全运营专用 ==========
+
+    @Schema(description = "服务项归属人员类型（安全运营专用）：1-驻场人员 2-管理人员", example = "1")
+    private Integer serviceMemberType;
 
 }

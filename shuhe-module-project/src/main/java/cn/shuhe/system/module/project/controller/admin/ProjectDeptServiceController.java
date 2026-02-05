@@ -132,6 +132,78 @@ public class ProjectDeptServiceController {
         return success(true);
     }
 
+    @PutMapping("/set-security-service-managers")
+    @Operation(summary = "设置安全服务的驻场和二线负责人")
+    @PreAuthorize("@ss.hasPermission('project:dept-service:update')")
+    public CommonResult<Boolean> setSecurityServiceManagers(
+            @RequestParam("id") Long id,
+            @RequestParam(value = "onsiteManagerIds", required = false) List<Long> onsiteManagerIds,
+            @RequestParam(value = "secondLineManagerIds", required = false) List<Long> secondLineManagerIds) {
+        
+        // 获取驻场负责人姓名
+        List<String> onsiteManagerNames = new ArrayList<>();
+        if (onsiteManagerIds != null) {
+            for (Long managerId : onsiteManagerIds) {
+                AdminUserRespDTO user = adminUserApi.getUser(managerId);
+                if (user != null) {
+                    onsiteManagerNames.add(user.getNickname());
+                }
+            }
+        }
+        
+        // 获取二线负责人姓名
+        List<String> secondLineManagerNames = new ArrayList<>();
+        if (secondLineManagerIds != null) {
+            for (Long managerId : secondLineManagerIds) {
+                AdminUserRespDTO user = adminUserApi.getUser(managerId);
+                if (user != null) {
+                    secondLineManagerNames.add(user.getNickname());
+                }
+            }
+        }
+        
+        deptServiceService.setSecurityServiceManagers(id, 
+                onsiteManagerIds, onsiteManagerNames,
+                secondLineManagerIds, secondLineManagerNames);
+        return success(true);
+    }
+
+    @PutMapping("/set-data-security-managers")
+    @Operation(summary = "设置数据安全的驻场和二线负责人")
+    @PreAuthorize("@ss.hasPermission('project:dept-service:update')")
+    public CommonResult<Boolean> setDataSecurityManagers(
+            @RequestParam("id") Long id,
+            @RequestParam(value = "onsiteManagerIds", required = false) List<Long> onsiteManagerIds,
+            @RequestParam(value = "secondLineManagerIds", required = false) List<Long> secondLineManagerIds) {
+        
+        // 获取驻场负责人姓名
+        List<String> onsiteManagerNames = new ArrayList<>();
+        if (onsiteManagerIds != null) {
+            for (Long managerId : onsiteManagerIds) {
+                AdminUserRespDTO user = adminUserApi.getUser(managerId);
+                if (user != null) {
+                    onsiteManagerNames.add(user.getNickname());
+                }
+            }
+        }
+        
+        // 获取二线负责人姓名
+        List<String> secondLineManagerNames = new ArrayList<>();
+        if (secondLineManagerIds != null) {
+            for (Long managerId : secondLineManagerIds) {
+                AdminUserRespDTO user = adminUserApi.getUser(managerId);
+                if (user != null) {
+                    secondLineManagerNames.add(user.getNickname());
+                }
+            }
+        }
+        
+        deptServiceService.setDataSecurityManagers(id, 
+                onsiteManagerIds, onsiteManagerNames,
+                secondLineManagerIds, secondLineManagerNames);
+        return success(true);
+    }
+
     /**
      * 转换为响应 VO，填充项目信息
      */

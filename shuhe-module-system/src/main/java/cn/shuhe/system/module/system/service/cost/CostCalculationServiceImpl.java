@@ -574,18 +574,8 @@ public class CostCalculationServiceImpl implements CostCalculationService {
      * 计算两个日期之间的工作日数
      */
     private int calculateWorkingDaysBetween(LocalDate startDate, LocalDate endDate) {
-        int workingDays = 0;
-        LocalDate current = startDate;
-        
-        while (!current.isAfter(endDate)) {
-            // 检查是否是工作日
-            if (holidayService.isWorkday(current)) {
-                workingDays++;
-            }
-            current = current.plusDays(1);
-        }
-        
-        return workingDays;
+        // 使用批量查询方法，避免 N+1 查询问题
+        return holidayService.countWorkdaysBetween(startDate, endDate);
     }
 
     /**
@@ -687,6 +677,57 @@ public class CostCalculationServiceImpl implements CostCalculationService {
         Set<Long> deptIds = convertSet(deptService.getChildDeptList(deptId), DeptDO::getId);
         deptIds.add(deptId); // 包括自身
         return deptIds;
+    }
+
+    // ========== 批量查询方法（性能优化） ==========
+
+    @Override
+    public Map<Long, BigDecimal> batchGetUserYearToDateCost(Collection<Long> userIds, int year, int month) {
+        if (CollUtil.isEmpty(userIds)) {
+            return Collections.emptyMap();
+        }
+
+        log.info("[批量成本计算] 开始计算 {} 个用户的年度累计成本，year={}, month={}", userIds.size(), year, month);
+        long startTime = System.currentTimeMillis();
+
+        // 1. 批量查询用户信息
+        List<AdminUserDO> users = adminUserMapper.selectBatchIds(userIds);
+        if (CollUtil.isEmpty(users)) {
+            return Collections.emptyMap();
+        }
+
+        // 2. 批量查询部门信息
+        Set<Long> deptIds = users.stream()
+                .map(AdminUserDO::getDeptId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, DeptDO> deptMap = new HashMap<>();
+        if (CollUtil.isNotEmpty(deptIds)) {
+            List<DeptDO> depts = deptService.getDeptList(
+                    new cn.shuhe.system.module.system.controller.admin.dept.vo.dept.DeptListReqVO());
+            for (DeptDO dept : depts) {
+                if (deptIds.contains(dept.getId())) {
+                    deptMap.put(dept.getId(), dept);
+                }
+            }
+        }
+
+        // 3. 批量计算成本
+        Map<Long, BigDecimal> result = new HashMap<>();
+        for (AdminUserDO user : users) {
+            try {
+                UserCostRespVO costVO = convertToUserCostVO(user, deptMap, year);
+                BigDecimal cost = costVO != null && costVO.getYearToDateCost() != null 
+                        ? costVO.getYearToDateCost() : BigDecimal.ZERO;
+                result.put(user.getId(), cost);
+            } catch (Exception e) {
+                log.warn("[批量成本计算] 用户 {} 成本计算失败: {}", user.getId(), e.getMessage());
+                result.put(user.getId(), BigDecimal.ZERO);
+            }
+        }
+
+        log.info("[批量成本计算] 完成，耗时={}ms", System.currentTimeMillis() - startTime);
+        return result;
     }
 
 }

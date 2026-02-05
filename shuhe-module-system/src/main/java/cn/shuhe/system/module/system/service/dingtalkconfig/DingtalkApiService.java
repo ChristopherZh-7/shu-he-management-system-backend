@@ -1,14 +1,20 @@
 package cn.shuhe.system.module.system.service.dingtalkconfig;
 
+import cn.hutool.core.codec.Base64;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import cn.shuhe.system.module.system.dal.dataobject.dingtalkconfig.DingtalkConfigDO;
+import cn.shuhe.system.module.system.dal.dataobject.dingtalkrobot.DingtalkRobotDO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -1341,5 +1347,338 @@ public class DingtalkApiService {
             log.error("发起钉钉OA审批异常", e);
             return null;
         }
+    }
+
+    // ==================== 群机器人消息 ====================
+
+    /**
+     * 群机器人消息发送结果
+     */
+    @lombok.Data
+    @lombok.Builder
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class RobotSendResult {
+        /** 是否成功 */
+        private boolean success;
+        /** 错误码 */
+        private Integer errcode;
+        /** 错误信息 */
+        private String errmsg;
+        /** 原始响应 */
+        private String response;
+    }
+
+    /**
+     * 生成加签的Webhook URL
+     * 
+     * @param webhookUrl 原始Webhook URL
+     * @param secret 加签密钥
+     * @return 带签名的Webhook URL
+     */
+    private String generateSignedWebhookUrl(String webhookUrl, String secret) {
+        if (StrUtil.isEmpty(secret)) {
+            return webhookUrl;
+        }
+        
+        try {
+            long timestamp = System.currentTimeMillis();
+            String stringToSign = timestamp + "\n" + secret;
+            
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] signData = mac.doFinal(stringToSign.getBytes(StandardCharsets.UTF_8));
+            String sign = URLEncoder.encode(Base64.encode(signData), StandardCharsets.UTF_8.name());
+            
+            String separator = webhookUrl.contains("?") ? "&" : "?";
+            return webhookUrl + separator + "timestamp=" + timestamp + "&sign=" + sign;
+        } catch (Exception e) {
+            log.error("生成钉钉机器人签名失败", e);
+            return webhookUrl;
+        }
+    }
+
+    /**
+     * 发送群机器人消息（通用方法）
+     *
+     * @param robot 机器人配置
+     * @param msgBody 消息体JSON
+     * @return 发送结果
+     */
+    public RobotSendResult sendRobotMessage(DingtalkRobotDO robot, JSONObject msgBody) {
+        String webhookUrl = robot.getWebhookUrl();
+        
+        // 如果是加签模式，生成签名URL
+        if (robot.getSecurityType() != null && robot.getSecurityType() == 2) {
+            webhookUrl = generateSignedWebhookUrl(webhookUrl, robot.getSecret());
+        }
+        
+        try {
+            String result = HttpUtil.post(webhookUrl, msgBody.toString());
+            log.debug("钉钉群机器人消息发送返回: {}", result);
+            
+            JSONObject json = JSONUtil.parseObj(result);
+            int errcode = json.getInt("errcode", -1);
+            String errmsg = json.getStr("errmsg", "未知错误");
+            
+            if (errcode == 0) {
+                log.info("钉钉群机器人消息发送成功, robotId={}", robot.getId());
+                return RobotSendResult.builder()
+                        .success(true)
+                        .errcode(errcode)
+                        .errmsg(errmsg)
+                        .response(result)
+                        .build();
+            } else {
+                log.error("钉钉群机器人消息发送失败: errcode={}, errmsg={}", errcode, errmsg);
+                return RobotSendResult.builder()
+                        .success(false)
+                        .errcode(errcode)
+                        .errmsg(errmsg)
+                        .response(result)
+                        .build();
+            }
+        } catch (Exception e) {
+            log.error("钉钉群机器人消息发送异常", e);
+            return RobotSendResult.builder()
+                    .success(false)
+                    .errcode(-1)
+                    .errmsg(e.getMessage())
+                    .build();
+        }
+    }
+
+    /**
+     * 发送文本消息到群
+     *
+     * @param robot 机器人配置
+     * @param content 文本内容
+     * @param atMobiles @的手机号列表（可为null）
+     * @param atUserIds @的用户ID列表（可为null）
+     * @param isAtAll 是否@所有人
+     * @return 发送结果
+     */
+    public RobotSendResult sendRobotTextMessage(DingtalkRobotDO robot, String content,
+                                                 List<String> atMobiles, List<String> atUserIds,
+                                                 boolean isAtAll) {
+        JSONObject msgBody = new JSONObject();
+        msgBody.put("msgtype", "text");
+        
+        JSONObject text = new JSONObject();
+        text.put("content", content);
+        msgBody.put("text", text);
+        
+        // 构建@信息
+        JSONObject at = new JSONObject();
+        if (atMobiles != null && !atMobiles.isEmpty()) {
+            at.put("atMobiles", atMobiles);
+        }
+        if (atUserIds != null && !atUserIds.isEmpty()) {
+            at.put("atUserIds", atUserIds);
+        }
+        at.put("isAtAll", isAtAll);
+        msgBody.put("at", at);
+        
+        return sendRobotMessage(robot, msgBody);
+    }
+
+    /**
+     * 发送Markdown消息到群
+     *
+     * @param robot 机器人配置
+     * @param title 标题（会话列表显示）
+     * @param text Markdown格式内容
+     * @param atMobiles @的手机号列表（可为null）
+     * @param atUserIds @的用户ID列表（可为null）
+     * @param isAtAll 是否@所有人
+     * @return 发送结果
+     */
+    public RobotSendResult sendRobotMarkdownMessage(DingtalkRobotDO robot, String title, String text,
+                                                     List<String> atMobiles, List<String> atUserIds,
+                                                     boolean isAtAll) {
+        JSONObject msgBody = new JSONObject();
+        msgBody.put("msgtype", "markdown");
+        
+        JSONObject markdown = new JSONObject();
+        markdown.put("title", title);
+        
+        // 如果要@人，需要在text中包含@手机号
+        StringBuilder textBuilder = new StringBuilder(text);
+        if (atMobiles != null && !atMobiles.isEmpty()) {
+            textBuilder.append("\n");
+            for (String mobile : atMobiles) {
+                textBuilder.append("@").append(mobile).append(" ");
+            }
+        }
+        markdown.put("text", textBuilder.toString());
+        msgBody.put("markdown", markdown);
+        
+        // 构建@信息
+        JSONObject at = new JSONObject();
+        if (atMobiles != null && !atMobiles.isEmpty()) {
+            at.put("atMobiles", atMobiles);
+        }
+        if (atUserIds != null && !atUserIds.isEmpty()) {
+            at.put("atUserIds", atUserIds);
+        }
+        at.put("isAtAll", isAtAll);
+        msgBody.put("at", at);
+        
+        return sendRobotMessage(robot, msgBody);
+    }
+
+    /**
+     * 发送链接消息到群
+     *
+     * @param robot 机器人配置
+     * @param title 标题
+     * @param text 描述内容
+     * @param messageUrl 点击消息跳转的URL
+     * @param picUrl 图片URL（可为null）
+     * @return 发送结果
+     */
+    public RobotSendResult sendRobotLinkMessage(DingtalkRobotDO robot, String title, String text,
+                                                 String messageUrl, String picUrl) {
+        JSONObject msgBody = new JSONObject();
+        msgBody.put("msgtype", "link");
+        
+        JSONObject link = new JSONObject();
+        link.put("title", title);
+        link.put("text", text);
+        link.put("messageUrl", messageUrl);
+        if (StrUtil.isNotEmpty(picUrl)) {
+            link.put("picUrl", picUrl);
+        }
+        msgBody.put("link", link);
+        
+        return sendRobotMessage(robot, msgBody);
+    }
+
+    /**
+     * 发送ActionCard整体跳转消息到群
+     *
+     * @param robot 机器人配置
+     * @param title 标题
+     * @param text Markdown格式内容
+     * @param singleTitle 按钮文字
+     * @param singleURL 按钮跳转URL
+     * @return 发送结果
+     */
+    public RobotSendResult sendRobotActionCardMessage(DingtalkRobotDO robot, String title, String text,
+                                                       String singleTitle, String singleURL) {
+        JSONObject msgBody = new JSONObject();
+        msgBody.put("msgtype", "actionCard");
+        
+        JSONObject actionCard = new JSONObject();
+        actionCard.put("title", title);
+        actionCard.put("text", text);
+        actionCard.put("singleTitle", singleTitle);
+        actionCard.put("singleURL", singleURL);
+        msgBody.put("actionCard", actionCard);
+        
+        return sendRobotMessage(robot, msgBody);
+    }
+
+    /**
+     * 发送ActionCard多按钮消息到群
+     *
+     * @param robot 机器人配置
+     * @param title 标题
+     * @param text Markdown格式内容
+     * @param buttons 按钮列表 [{title, actionURL}]
+     * @param btnOrientation 按钮排列方式（0-按钮竖直排列，1-按钮横向排列）
+     * @return 发送结果
+     */
+    public RobotSendResult sendRobotActionCardMessageWithButtons(DingtalkRobotDO robot, String title, String text,
+                                                                  List<Map<String, String>> buttons, String btnOrientation) {
+        JSONObject msgBody = new JSONObject();
+        msgBody.put("msgtype", "actionCard");
+        
+        JSONObject actionCard = new JSONObject();
+        actionCard.put("title", title);
+        actionCard.put("text", text);
+        actionCard.put("btnOrientation", btnOrientation != null ? btnOrientation : "0");
+        
+        JSONArray btns = new JSONArray();
+        for (Map<String, String> btn : buttons) {
+            JSONObject btnJson = new JSONObject();
+            btnJson.put("title", btn.get("title"));
+            btnJson.put("actionURL", btn.get("actionURL"));
+            btns.add(btnJson);
+        }
+        actionCard.put("btns", btns);
+        msgBody.put("actionCard", actionCard);
+        
+        return sendRobotMessage(robot, msgBody);
+    }
+
+    /**
+     * 发送FeedCard消息到群（多条图文信息）
+     *
+     * @param robot 机器人配置
+     * @param links 链接列表 [{title, messageURL, picURL}]
+     * @return 发送结果
+     */
+    public RobotSendResult sendRobotFeedCardMessage(DingtalkRobotDO robot, List<Map<String, String>> links) {
+        JSONObject msgBody = new JSONObject();
+        msgBody.put("msgtype", "feedCard");
+        
+        JSONObject feedCard = new JSONObject();
+        JSONArray linkArray = new JSONArray();
+        for (Map<String, String> link : links) {
+            JSONObject linkJson = new JSONObject();
+            linkJson.put("title", link.get("title"));
+            linkJson.put("messageURL", link.get("messageURL"));
+            linkJson.put("picURL", link.get("picURL"));
+            linkArray.add(linkJson);
+        }
+        feedCard.put("links", linkArray);
+        msgBody.put("feedCard", feedCard);
+        
+        return sendRobotMessage(robot, msgBody);
+    }
+
+    // ==================== 便捷方法 ====================
+
+    /**
+     * 发送简单文本消息（不@人）
+     */
+    public RobotSendResult sendRobotText(DingtalkRobotDO robot, String content) {
+        return sendRobotTextMessage(robot, content, null, null, false);
+    }
+
+    /**
+     * 发送文本消息并@指定人员（通过手机号）
+     */
+    public RobotSendResult sendRobotTextWithAt(DingtalkRobotDO robot, String content, List<String> atMobiles) {
+        return sendRobotTextMessage(robot, content, atMobiles, null, false);
+    }
+
+    /**
+     * 发送文本消息并@所有人
+     */
+    public RobotSendResult sendRobotTextAtAll(DingtalkRobotDO robot, String content) {
+        return sendRobotTextMessage(robot, content, null, null, true);
+    }
+
+    /**
+     * 发送简单Markdown消息（不@人）
+     */
+    public RobotSendResult sendRobotMarkdown(DingtalkRobotDO robot, String title, String text) {
+        return sendRobotMarkdownMessage(robot, title, text, null, null, false);
+    }
+
+    /**
+     * 发送Markdown消息并@指定人员（通过手机号）
+     */
+    public RobotSendResult sendRobotMarkdownWithAt(DingtalkRobotDO robot, String title, String text, List<String> atMobiles) {
+        return sendRobotMarkdownMessage(robot, title, text, atMobiles, null, false);
+    }
+
+    /**
+     * 发送Markdown消息并@所有人
+     */
+    public RobotSendResult sendRobotMarkdownAtAll(DingtalkRobotDO robot, String title, String text) {
+        return sendRobotMarkdownMessage(robot, title, text, null, null, true);
     }
 }

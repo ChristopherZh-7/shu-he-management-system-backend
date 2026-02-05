@@ -35,6 +35,18 @@ public class ServiceLaunchSaveReqVO {
     @Schema(description = "是否跨部门")
     private Boolean isCrossDept;
 
+    @Schema(description = "是否排队")
+    private Boolean isQueued;
+
+    @Schema(description = "期望执行人ID")
+    private Long expectedExecutorId;
+
+    @Schema(description = "期望执行人姓名")
+    private String expectedExecutorName;
+
+    @Schema(description = "期望开始时间（排队时填写）")
+    private LocalDateTime expectedStartTime;
+
     @Schema(description = "是否代发起")
     private Boolean isDelegation;
 

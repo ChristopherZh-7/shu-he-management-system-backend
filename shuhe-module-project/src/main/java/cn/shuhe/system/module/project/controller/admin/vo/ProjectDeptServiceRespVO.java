@@ -69,6 +69,20 @@ public class ProjectDeptServiceRespVO {
     @Schema(description = "负责人姓名列表", example = "[\"张三\", \"李四\"]")
     private List<String> managerNames;
 
+    // ========== 安全服务专用：驻场和二线负责人 ==========
+
+    @Schema(description = "驻场负责人ID列表（仅安全服务）", example = "[1, 2]")
+    private List<Long> onsiteManagerIds;
+
+    @Schema(description = "驻场负责人姓名列表（仅安全服务）", example = "[\"张三\", \"李四\"]")
+    private List<String> onsiteManagerNames;
+
+    @Schema(description = "二线负责人ID列表（仅安全服务）", example = "[3, 4]")
+    private List<Long> secondLineManagerIds;
+
+    @Schema(description = "二线负责人姓名列表（仅安全服务）", example = "[\"王五\", \"赵六\"]")
+    private List<String> secondLineManagerNames;
+
     // ========== 状态和进度 ==========
 
     @Schema(description = "状态：0待领取 1待开始 2进行中 3已暂停 4已完成 5已取消", example = "1")

@@ -76,6 +76,13 @@ public class DashboardStatisticsController {
         return success(dashboardStatisticsService.getRevenueStats(userId));
     }
 
+    @GetMapping("/receivable")
+    @Operation(summary = "获取待回款统计")
+    public CommonResult<DashboardStatisticsRespVO.ReceivableStats> getReceivableStats() {
+        Long userId = getLoginUserId();
+        return success(dashboardStatisticsService.getReceivableStats(userId));
+    }
+
     @GetMapping("/is-admin")
     @Operation(summary = "判断当前用户是否是管理员")
     public CommonResult<Boolean> isAdmin() {

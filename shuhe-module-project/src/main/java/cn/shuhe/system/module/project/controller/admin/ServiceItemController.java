@@ -121,7 +121,6 @@ public class ServiceItemController {
                         .customerName("某银行")
                         .planStartTime("2026-01-20 09:00:00")
                         .planEndTime("2026-01-25 18:00:00")
-                        .priority(1)
                         .remark("示例服务项1").build(),
                 ServiceItemImportExcelVO.builder()
                         .name("某企业安全评估")
@@ -129,7 +128,6 @@ public class ServiceItemController {
                         .customerName("某企业")
                         .planStartTime("2026-02-01 09:00:00")
                         .planEndTime("2026-02-10 18:00:00")
-                        .priority(2)
                         .remark("示例服务项2").build());
         // 输出
         ExcelUtils.write(response, "服务项导入模板.xls", "服务项列表", ServiceItemImportExcelVO.class, list);
@@ -277,15 +275,20 @@ public class ServiceItemController {
     @Parameter(name = "projectId", description = "项目ID", required = true)
     @Parameter(name = "deptType", description = "部门类型：1-安全服务 2-安全运营 3-数据安全", required = false)
     @Parameter(name = "serviceMode", description = "服务模式：1-驻场 2-二线", required = false)
+    @Parameter(name = "serviceMemberType", description = "服务归属人员类型（安全运营专用）：1-驻场人员 2-管理人员", required = false)
     @PreAuthorize("@ss.hasPermission('project:service-item:query')")
     public CommonResult<List<ServiceItemRespVO>> getServiceItemList(
             @RequestParam("projectId") Long projectId,
             @RequestParam(value = "deptType", required = false) Integer deptType,
-            @RequestParam(value = "serviceMode", required = false) Integer serviceMode) {
+            @RequestParam(value = "serviceMode", required = false) Integer serviceMode,
+            @RequestParam(value = "serviceMemberType", required = false) Integer serviceMemberType) {
         List<ServiceItemDO> list;
 
         // 根据传入的参数组合进行过滤
-        if (serviceMode != null && deptType != null) {
+        if (serviceMemberType != null && deptType != null) {
+            // 安全运营按服务归属人员类型过滤（驻场人员服务项 / 管理人员服务项）
+            list = serviceItemService.getServiceItemListByProjectIdAndDeptTypeAndMemberType(projectId, deptType, serviceMemberType);
+        } else if (serviceMode != null && deptType != null) {
             // 同时按部门类型和服务模式过滤（安全服务驻场详情页会用到）
             list = serviceItemService.getServiceItemListByProjectIdAndServiceMode(projectId, serviceMode);
             // 再按 deptType 过滤

@@ -7,6 +7,7 @@ import cn.shuhe.system.module.crm.dal.dataobject.customer.CrmCustomerDO;
 import cn.shuhe.system.module.crm.dal.mysql.contract.CrmContractMapper;
 import cn.shuhe.system.module.crm.dal.mysql.customer.CrmCustomerMapper;
 import cn.shuhe.system.module.crm.dal.mysql.receivable.CrmReceivableMapper;
+import cn.shuhe.system.module.crm.dal.mysql.receivable.CrmReceivablePlanMapper;
 import cn.shuhe.system.module.crm.enums.common.CrmSceneTypeEnum;
 import cn.shuhe.system.module.crm.controller.admin.statistics.vo.rank.CrmStatisticsRankReqVO;
 import cn.shuhe.system.module.crm.controller.admin.statistics.vo.rank.CrmStatisticsRankRespVO;
@@ -60,6 +61,8 @@ public class DashboardCrmApiImpl implements DashboardCrmApi {
     @Resource
     private CrmReceivableMapper receivableMapper;
     @Resource
+    private CrmReceivablePlanMapper receivablePlanMapper;
+    @Resource
     private CrmStatisticsRankService rankService;
     @Resource
     private DeptApi deptApi;
@@ -79,12 +82,20 @@ public class DashboardCrmApiImpl implements DashboardCrmApi {
         // 合同金额存储为分，转为元
         BigDecimal totalAmount = totalPriceFen == null ? BigDecimal.ZERO : totalPriceFen.divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
+        // 计算本月合同金额
+        LocalDate now = LocalDate.now();
+        LocalDateTime startOfMonth = now.withDayOfMonth(1).atStartOfDay();
+        LocalDateTime endOfMonth = now.withDayOfMonth(now.lengthOfMonth()).atTime(23, 59, 59);
+        BigDecimal monthlyPriceFen = contractMapper.selectSumTotalPriceForDashboard(userId, sceneType, startOfMonth, endOfMonth);
+        BigDecimal monthlyAmount = monthlyPriceFen == null ? BigDecimal.ZERO : monthlyPriceFen.divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
         return DashboardStatisticsRespVO.ContractStats.builder()
                 .totalCount((int) totalCount)
                 .activeCount((int) activeCount)
                 .pendingAuditCount((int) pendingAuditCount)
                 .expiringCount((int) expiringCount)
                 .totalAmount(totalAmount)
+                .monthlyAmount(monthlyAmount)
                 .build();
     }
 
@@ -117,11 +128,33 @@ public class DashboardCrmApiImpl implements DashboardCrmApi {
         BigDecimal monthlyRevenue = receivableMapper.selectSumPriceForDashboard(userId, sceneType, startOfMonth, endOfMonth);
         BigDecimal yearlyRevenue = receivableMapper.selectSumPriceForDashboard(userId, sceneType, startOfYear, endOfYear);
 
+        // 计算同比增长率：与去年同期比较
+        LocalDate lastYearMonth = now.minusYears(1);
+        LocalDateTime lastYearStartOfMonth = lastYearMonth.withDayOfMonth(1).atStartOfDay();
+        LocalDateTime lastYearEndOfMonth = lastYearMonth.withDayOfMonth(lastYearMonth.lengthOfMonth()).atTime(23, 59, 59);
+        BigDecimal lastYearMonthlyRevenue = receivableMapper.selectSumPriceForDashboard(userId, sceneType, lastYearStartOfMonth, lastYearEndOfMonth);
+
+        BigDecimal growthRate = null;
+        if (lastYearMonthlyRevenue != null && lastYearMonthlyRevenue.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal currentRevenue = monthlyRevenue != null ? monthlyRevenue : BigDecimal.ZERO;
+            // 同比增长率 = (本期 - 同期) / 同期 * 100
+            growthRate = currentRevenue.subtract(lastYearMonthlyRevenue)
+                    .divide(lastYearMonthlyRevenue, 4, RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.valueOf(100))
+                    .setScale(1, RoundingMode.HALF_UP);
+        } else if (monthlyRevenue != null && monthlyRevenue.compareTo(BigDecimal.ZERO) > 0) {
+            // 去年同期无数据，本月有数据，增长率为 100%
+            growthRate = BigDecimal.valueOf(100);
+        } else {
+            // 两期都无数据，增长率为 0
+            growthRate = BigDecimal.ZERO;
+        }
+
         return DashboardStatisticsRespVO.RevenueStats.builder()
                 .monthlyRevenue(monthlyRevenue != null ? monthlyRevenue : BigDecimal.ZERO)
                 .monthlyCost(BigDecimal.ZERO)
                 .monthlyProfit(monthlyRevenue != null ? monthlyRevenue : BigDecimal.ZERO)
-                .growthRate(null)
+                .growthRate(growthRate)
                 .yearlyRevenue(yearlyRevenue != null ? yearlyRevenue : BigDecimal.ZERO)
                 .build();
     }
@@ -249,6 +282,31 @@ public class DashboardCrmApiImpl implements DashboardCrmApi {
                     .build());
         }
         return result;
+    }
+
+    @Override
+    public DashboardStatisticsRespVO.ReceivableStats getReceivableStats(Long userId) {
+        Integer sceneType = resolveSceneType(userId);
+        
+        // 待回款数量
+        long pendingCount = receivablePlanMapper.selectCountPendingForDashboard(userId, sceneType);
+        // 待回款总金额
+        BigDecimal pendingAmount = receivablePlanMapper.selectSumPendingAmountForDashboard(userId, sceneType);
+        // 已逾期数量
+        long overdueCount = receivablePlanMapper.selectCountOverdueForDashboard(userId, sceneType);
+        
+        // 本月已回款金额
+        LocalDate now = LocalDate.now();
+        LocalDateTime startOfMonth = now.withDayOfMonth(1).atStartOfDay();
+        LocalDateTime endOfMonth = now.withDayOfMonth(now.lengthOfMonth()).atTime(23, 59, 59);
+        BigDecimal monthlyReceivedAmount = receivableMapper.selectSumPriceForDashboard(userId, sceneType, startOfMonth, endOfMonth);
+        
+        return DashboardStatisticsRespVO.ReceivableStats.builder()
+                .pendingCount((int) pendingCount)
+                .pendingAmount(pendingAmount != null ? pendingAmount : BigDecimal.ZERO)
+                .overdueCount((int) overdueCount)
+                .monthlyReceivedAmount(monthlyReceivedAmount != null ? monthlyReceivedAmount : BigDecimal.ZERO)
+                .build();
     }
 
     private Integer resolveSceneType(Long userId) {

@@ -66,9 +66,6 @@ public class ServiceItemSaveReqVO {
     @Schema(description = "服务项状态：0草稿 1进行中 2已暂停 3已完成 4已取消", example = "0")
     private Integer status;
 
-    @Schema(description = "优先级：0低 1中 2高", example = "1")
-    private Integer priority;
-
     // ========== 服务频次配置 ==========
 
     @Schema(description = "频次类型：0按需(不限) 1按月 2按季 3按年 4按周", example = "1")
@@ -87,5 +84,10 @@ public class ServiceItemSaveReqVO {
 
     @Schema(description = "是否可见：0隐藏 1可见（默认）", example = "1")
     private Integer visible;
+
+    // ========== 安全运营专用 ==========
+
+    @Schema(description = "服务项归属人员类型（安全运营专用）：1-驻场人员 2-管理人员", example = "1")
+    private Integer serviceMemberType;
 
 }

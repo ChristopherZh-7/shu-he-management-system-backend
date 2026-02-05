@@ -232,4 +232,49 @@ public class ContractAllocationController {
         return success(contractAllocationService.getServiceItemAllocationsByDeptAllocationId(contractDeptAllocationId));
     }
 
+    @GetMapping("/service-item/list-by-allocation-type")
+    @Operation(summary = "根据费用类型获取可分配的服务项列表")
+    @PreAuthorize("@ss.hasPermission('system:contract-allocation:query')")
+    public CommonResult<List<Map<String, Object>>> getServiceItemsByAllocationType(
+            @RequestParam Long contractId,
+            @RequestParam String allocationType) {
+        // 根据费用类型解析查询参数
+        Integer deptType = null;
+        Integer serviceMode = null;
+        Integer serviceMemberType = null;
+        
+        switch (allocationType) {
+            case "ss_onsite": // 安全服务驻场费
+                deptType = 1;
+                serviceMode = 1;
+                break;
+            case "ss_second_line": // 安全服务二线费
+                deptType = 1;
+                serviceMode = 2;
+                break;
+            case "so_onsite": // 安全运营驻场费
+                deptType = 2;
+                serviceMemberType = 1;
+                break;
+            case "so_management": // 安全运营管理费
+                deptType = 2;
+                serviceMemberType = 2;
+                break;
+            default:
+                return success(List.of());
+        }
+        
+        return success(serviceItemInfoMapper.selectServiceItemsByContractAndType(
+                contractId, deptType, serviceMode, serviceMemberType));
+    }
+
+    @GetMapping("/service-item/list-by-parent")
+    @Operation(summary = "获取父级分配下的子分配列表")
+    @Parameter(name = "parentAllocationId", description = "父级分配ID", required = true)
+    @PreAuthorize("@ss.hasPermission('system:contract-allocation:query')")
+    public CommonResult<List<ServiceItemAllocationRespVO>> getServiceItemAllocationsByParent(
+            @RequestParam Long parentAllocationId) {
+        return success(contractAllocationService.getServiceItemAllocationsByParentId(parentAllocationId));
+    }
+
 }

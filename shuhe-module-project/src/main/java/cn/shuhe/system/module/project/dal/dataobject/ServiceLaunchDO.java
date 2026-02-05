@@ -76,6 +76,32 @@ public class ServiceLaunchDO extends BaseDO {
     private Boolean isCrossDept;
 
     /**
+     * 是否排队：0否 1是
+     * 当目标部门无空闲员工时，可选择排队等待
+     */
+    private Boolean isQueued;
+
+    /**
+     * 期望执行人ID（申请时可选择）
+     */
+    private Long expectedExecutorId;
+
+    /**
+     * 期望执行人姓名
+     */
+    private String expectedExecutorName;
+
+    /**
+     * 期望开始时间（排队时填写）
+     */
+    private LocalDateTime expectedStartTime;
+
+    /**
+     * 排队顺序（排队中时有效）
+     */
+    private Integer queueOrder;
+
+    /**
      * 是否代发起：0否 1是
      * 代发起场景：当前用户帮其他部门发起该部门的服务项
      */

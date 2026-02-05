@@ -131,25 +131,6 @@ public class HolidayServiceImpl implements HolidayService {
     }
 
     @Override
-    public boolean isWorkday(LocalDate date) {
-        HolidayDO holiday = holidayMapper.selectByDate(date);
-        if (holiday != null) {
-            return holiday.getIsWorkday() != null && holiday.getIsWorkday() == 1;
-        }
-
-        // 如果没有数据，同步后再查
-        syncHolidayData(date.getYear());
-        holiday = holidayMapper.selectByDate(date);
-        if (holiday != null) {
-            return holiday.getIsWorkday() != null && holiday.getIsWorkday() == 1;
-        }
-
-        // 默认按周末判断
-        DayOfWeek dayOfWeek = date.getDayOfWeek();
-        return dayOfWeek != DayOfWeek.SATURDAY && dayOfWeek != DayOfWeek.SUNDAY;
-    }
-
-    @Override
     public List<HolidayDO> getHolidaysByYear(int year) {
         List<HolidayDO> holidays = holidayMapper.selectByYear(year);
         if (CollUtil.isEmpty(holidays)) {

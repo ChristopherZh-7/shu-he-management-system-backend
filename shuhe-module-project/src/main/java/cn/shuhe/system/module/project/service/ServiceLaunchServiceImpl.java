@@ -267,10 +267,39 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
 
         // 获取项目下所有服务项（包含所有可见服务项）
         List<ServiceItemDO> serviceItems = serviceItemMapper.selectListByProjectId(project.getId());
+        
+        // 调试日志：打印服务项数据
+        log.info("【服务发起-服务项列表】合同ID={}, 项目ID={}, 服务项总数={}", contractId, project.getId(), serviceItems.size());
+        for (ServiceItemDO item : serviceItems) {
+            log.info("  服务项: id={}, name={}, deptType={}, serviceMode={}, serviceMemberType={}, status={}", 
+                    item.getId(), item.getName(), item.getDeptType(), item.getServiceMode(), item.getServiceMemberType(), item.getStatus());
+        }
 
         return serviceItems.stream()
                 .filter(item -> item.getStatus() != null && item.getStatus() == 1) // 进行中
                 .filter(item -> !"outside".equals(item.getServiceType())) // 排除纯外出类型（因为已合并）
+                // 【重要】服务发起只能发起非驻场服务项
+                // 安全服务(deptType=1)：排除驻场服务项(serviceMode=1)，null或二线(2)可以发起
+                // 安全运营(deptType=2)：排除驻场服务项(serviceMemberType=1)，null或管理服务项(2)可以发起
+                // 数据安全(deptType=3)：排除驻场服务项(serviceMode=1)，null或二线(2)可以发起（与安全服务一致）
+                .filter(item -> {
+                    Integer deptType = item.getDeptType();
+                    if (deptType == null) return true;
+                    
+                    if (deptType == 1 || deptType == 3) {
+                        // 安全服务/数据安全：排除驻场服务项（serviceMode=1）
+                        // serviceMode 为 null 或 2（二线服务项）都可以发起
+                        Integer serviceMode = item.getServiceMode();
+                        return serviceMode == null || serviceMode != 1;
+                    } else if (deptType == 2) {
+                        // 安全运营：排除驻场服务项（serviceMemberType=1）
+                        // serviceMemberType 为 null 或 2（管理服务项）都可以发起
+                        Integer memberType = item.getServiceMemberType();
+                        return memberType == null || memberType != ServiceItemDO.SERVICE_MEMBER_TYPE_ONSITE;
+                    }
+                    // 其他：不限制
+                    return true;
+                })
                 .map(item -> {
                     Map<String, Object> map = new HashMap<>();
                     map.put("id", item.getId());

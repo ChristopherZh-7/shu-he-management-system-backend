@@ -91,8 +91,10 @@ public class DashboardStatisticsRespVO {
         private Integer pendingAuditCount;
         @Schema(description = "即将到期数")
         private Integer expiringCount;
-        @Schema(description = "合同总金额")
+        @Schema(description = "合同总金额（元）")
         private BigDecimal totalAmount;
+        @Schema(description = "本月合同金额（元）")
+        private BigDecimal monthlyAmount;
     }
 
     @Data
@@ -140,6 +142,21 @@ public class DashboardStatisticsRespVO {
         private BigDecimal growthRate;
         @Schema(description = "年度累计收入")
         private BigDecimal yearlyRevenue;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ReceivableStats {
+        @Schema(description = "待回款数量")
+        private Integer pendingCount;
+        @Schema(description = "待回款总金额（元）")
+        private BigDecimal pendingAmount;
+        @Schema(description = "已逾期数量")
+        private Integer overdueCount;
+        @Schema(description = "本月已回款金额（元）")
+        private BigDecimal monthlyReceivedAmount;
     }
 
     @Data

@@ -6,6 +6,7 @@ import cn.shuhe.system.module.system.controller.admin.cost.vo.UserCostRespVO;
 import cn.shuhe.system.module.system.controller.admin.cost.vo.WorkingDaysRespVO;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.Map;
 
 /**
@@ -84,5 +85,16 @@ public interface CostCalculationService {
      * @return 工资规则 Map，key为"部门类型-职级"，value为工资
      */
     Map<String, BigDecimal> getSalaryRules();
+
+    /**
+     * 批量获取用户年度累计成本
+     * 【性能优化】避免循环调用 getUserCost 产生的 N+1 查询问题
+     *
+     * @param userIds 用户ID集合
+     * @param year    年份
+     * @param month   截止月份
+     * @return 用户ID -> 年度累计成本 的映射
+     */
+    Map<Long, BigDecimal> batchGetUserYearToDateCost(Collection<Long> userIds, int year, int month);
 
 }

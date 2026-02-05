@@ -52,6 +52,13 @@ public interface DashboardStatisticsService {
     DashboardStatisticsRespVO.RevenueStats getRevenueStats(Long userId);
 
     /**
+     * 获取待回款统计
+     *
+     * @param userId 当前用户ID
+     */
+    DashboardStatisticsRespVO.ReceivableStats getReceivableStats(Long userId);
+
+    /**
      * 判断用户是否是管理员（拥有全局数据查看权限）
      *
      * @param userId 用户ID

@@ -65,6 +65,8 @@ public interface ProjectSiteMemberInfoMapper {
             "    AND cda.dept_type = psm.dept_type " +
             "    AND sia.allocation_type = CASE " +
             "      WHEN psm.dept_type = 2 THEN 'so_onsite' " +
+            "      WHEN psm.dept_type = 1 THEN 'ss_onsite' " +
+            "      WHEN psm.dept_type = 3 THEN 'ds_onsite' " +
             "      ELSE 'service_onsite' " +
             "    END " +
             "    AND sia.deleted = 0" +

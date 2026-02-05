@@ -108,15 +108,47 @@ public class ProjectDeptServiceDO extends BaseDO {
 
     /**
      * 负责人ID列表（JSON数组）
+     * 注：对于安全服务(deptType=1)，此字段不再使用，改用 onsiteManagerIds 和 secondLineManagerIds
      */
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<Long> managerIds;
 
     /**
      * 负责人姓名列表（JSON数组）
+     * 注：对于安全服务(deptType=1)，此字段不再使用，改用 onsiteManagerNames 和 secondLineManagerNames
      */
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<String> managerNames;
+
+    // ========== 安全服务/数据安全专用：驻场和二线负责人 ==========
+
+    /**
+     * 驻场负责人ID列表（JSON数组）
+     * 安全服务(deptType=1)和数据安全(deptType=3)使用
+     */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private List<Long> onsiteManagerIds;
+
+    /**
+     * 驻场负责人姓名列表（JSON数组）
+     * 安全服务(deptType=1)和数据安全(deptType=3)使用
+     */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private List<String> onsiteManagerNames;
+
+    /**
+     * 二线负责人ID列表（JSON数组）
+     * 安全服务(deptType=1)和数据安全(deptType=3)使用
+     */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private List<Long> secondLineManagerIds;
+
+    /**
+     * 二线负责人姓名列表（JSON数组）
+     * 安全服务(deptType=1)和数据安全(deptType=3)使用
+     */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private List<String> secondLineManagerNames;
 
     // ========== 状态和进度（每个部门独立） ==========
 

@@ -74,6 +74,9 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
     private AdminUserApi adminUserApi;
 
     @Resource
+    private EmployeeScheduleService employeeScheduleService;
+
+    @Resource
     private DictDataService dictDataService;
 
     /**
@@ -293,6 +296,17 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
         if (status == 1 && (oldStatus == null || oldStatus == 0)) {
             log.info("【轮次状态】轮次 {} 开始执行", id);
             sendRoundStartNotification(round);
+        }
+        
+        // 当状态变为"已完成"(2)时，完成关联的排期记录
+        if (status == 2 && oldStatus != null && oldStatus != 2) {
+            log.info("【轮次状态】轮次 {} 已完成，更新关联排期", id);
+            try {
+                employeeScheduleService.completeScheduleByRoundId(id);
+            } catch (Exception e) {
+                // 排期更新失败不影响主流程
+                log.warn("【轮次状态】完成排期失败，roundId={}, error={}", id, e.getMessage());
+            }
         }
     }
 

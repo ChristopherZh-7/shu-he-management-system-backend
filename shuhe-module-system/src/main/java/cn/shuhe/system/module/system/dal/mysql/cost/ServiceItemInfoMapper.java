@@ -118,6 +118,50 @@ public interface ServiceItemInfoMapper {
     List<Map<String, Object>> selectServiceItemsByContractAndDept(@Param("contractId") Long contractId, @Param("deptId") Long deptId);
 
     /**
+     * 根据合同ID和费用类型查询可分配的服务项列表
+     * 
+     * 费用类型与服务项类型对应关系：
+     * - ss_onsite（安全服务驻场费）→ deptType=1 AND serviceMode=1
+     * - ss_second_line（安全服务二线费）→ deptType=1 AND (serviceMode=2 OR serviceMode IS NULL)
+     * - so_onsite（安全运营驻场费）→ deptType=2 AND serviceMemberType=1
+     * - so_management（安全运营管理费）→ deptType=2 AND (serviceMemberType=2 OR serviceMemberType IS NULL)
+     * 
+     * @param contractId 合同ID
+     * @param deptType 部门类型（1-安全服务，2-安全运营）
+     * @param serviceMode 服务模式（安全服务专用：1-驻场，2-二线）
+     * @param serviceMemberType 服务归属人员类型（安全运营专用：1-驻场人员，2-管理人员）
+     */
+    @Select("<script>" +
+            "SELECT id, code, name, dept_type as deptType, service_type as serviceType, " +
+            "  service_mode as serviceMode, service_member_type as serviceMemberType, " +
+            "  customer_id as customerId, customer_name as customerName, " +
+            "  contract_id as contractId, contract_no as contractNo, " +
+            "  dept_id as deptId, frequency_type as frequencyType, " +
+            "  max_count as maxCount, used_count as usedCount, status " +
+            "FROM project_info " +
+            "WHERE contract_id = #{contractId} AND deleted = 0 " +
+            "  AND dept_type = #{deptType} " +
+            "<if test='serviceMode != null and serviceMode == 1'>" +
+            "  AND service_mode = 1 " +
+            "</if>" +
+            "<if test='serviceMode != null and serviceMode == 2'>" +
+            "  AND (service_mode = 2 OR service_mode IS NULL) " +
+            "</if>" +
+            "<if test='serviceMemberType != null and serviceMemberType == 1'>" +
+            "  AND service_member_type = 1 " +
+            "</if>" +
+            "<if test='serviceMemberType != null and serviceMemberType == 2'>" +
+            "  AND (service_member_type = 2 OR service_member_type IS NULL) " +
+            "</if>" +
+            "ORDER BY id ASC" +
+            "</script>")
+    List<Map<String, Object>> selectServiceItemsByContractAndType(
+            @Param("contractId") Long contractId, 
+            @Param("deptType") Integer deptType,
+            @Param("serviceMode") Integer serviceMode,
+            @Param("serviceMemberType") Integer serviceMemberType);
+
+    /**
      * 查询用户作为执行人完成的轮次（带服务项分配金额）
      * 用于计算安全服务/数据安全员工的收入
      * 注意：executor_ids 可能是 JSON 数组或逗号分隔的字符串

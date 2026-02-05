@@ -60,4 +60,12 @@ public interface DashboardCrmApi {
      * @return 部门排行，若未实现可返回 null
      */
     List<DashboardStatisticsRespVO.RankData> getDeptRanking(Long userId, boolean isAdmin);
+
+    /**
+     * 获取待回款统计
+     *
+     * @param userId 用户ID
+     * @return 待回款统计，若未实现可返回 null
+     */
+    DashboardStatisticsRespVO.ReceivableStats getReceivableStats(Long userId);
 }

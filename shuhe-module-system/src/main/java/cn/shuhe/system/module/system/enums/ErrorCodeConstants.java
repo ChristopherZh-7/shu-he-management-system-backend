@@ -160,6 +160,10 @@ public interface ErrorCodeConstants {
 // ========== 钉钉数据映射 TODO 补充编号 ==========
     ErrorCode DINGTALK_MAPPING_NOT_EXISTS = new ErrorCode(1_002_029_000, "钉钉数据映射不存在");
     ErrorCode DINGTALK_CONFIG_NOT_EXISTS = new ErrorCode(1_002_029_001, "钉钉配置不存在");
+    // ========== 钉钉群机器人 1-002-029-010 ==========
+    ErrorCode DINGTALK_ROBOT_NOT_EXISTS = new ErrorCode(1_002_029_010, "钉钉群机器人不存在");
+    ErrorCode DINGTALK_ROBOT_WEBHOOK_INVALID = new ErrorCode(1_002_029_011, "Webhook地址格式不正确");
+    ErrorCode DINGTALK_ROBOT_DISABLED = new ErrorCode(1_002_029_012, "钉钉群机器人已停用");
 
     // ========== 合同收入分配 1-002-030-000 ==========
     ErrorCode CONTRACT_NOT_EXISTS = new ErrorCode(1_002_030_000, "合同不存在");

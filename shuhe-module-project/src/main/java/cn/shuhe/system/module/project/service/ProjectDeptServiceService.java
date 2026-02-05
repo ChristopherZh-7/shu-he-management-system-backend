@@ -105,6 +105,33 @@ public interface ProjectDeptServiceService {
     void setDeptServiceManagers(Long id, List<Long> managerIds, List<String> managerNames);
 
     /**
+     * 设置安全服务的驻场和二线负责人（仅安全服务 deptType=1 使用）
+     *
+     * @param id                    部门服务单ID
+     * @param onsiteManagerIds      驻场负责人ID列表
+     * @param onsiteManagerNames    驻场负责人姓名列表
+     * @param secondLineManagerIds  二线负责人ID列表
+     * @param secondLineManagerNames 二线负责人姓名列表
+     */
+    void setSecurityServiceManagers(Long id, 
+                                     List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
+                                     List<Long> secondLineManagerIds, List<String> secondLineManagerNames);
+
+    /**
+     * 设置数据安全的驻场和二线负责人（仅数据安全 deptType=3 使用）
+     * 逻辑与安全服务一致，同样区分驻场和二线负责人
+     *
+     * @param id                    部门服务单ID
+     * @param onsiteManagerIds      驻场负责人ID列表
+     * @param onsiteManagerNames    驻场负责人姓名列表
+     * @param secondLineManagerIds  二线负责人ID列表
+     * @param secondLineManagerNames 二线负责人姓名列表
+     */
+    void setDataSecurityManagers(Long id,
+                                  List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
+                                  List<Long> secondLineManagerIds, List<String> secondLineManagerNames);
+
+    /**
      * 领取部门服务单
      *
      * @param id       部门服务单ID

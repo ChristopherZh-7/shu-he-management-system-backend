@@ -29,14 +29,6 @@ public interface HolidayService {
     List<HolidayDO> getHolidaysByMonth(int year, int month);
 
     /**
-     * 判断指定日期是否为工作日
-     *
-     * @param date 日期
-     * @return true=工作日，false=非工作日
-     */
-    boolean isWorkday(LocalDate date);
-
-    /**
      * 获取指定年份的节假日数据
      *
      * @param year 年份

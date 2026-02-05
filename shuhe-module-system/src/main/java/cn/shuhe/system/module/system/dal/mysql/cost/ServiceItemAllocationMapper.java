@@ -67,4 +67,14 @@ public interface ServiceItemAllocationMapper extends BaseMapperX<ServiceItemAllo
                 .eq(ServiceItemAllocationDO::getContractDeptAllocationId, contractDeptAllocationId));
     }
 
+    /**
+     * 根据父级分配ID查询子分配列表
+     * 用于获取从费用类型分配到具体服务项的分配记录
+     */
+    default List<ServiceItemAllocationDO> selectByParentAllocationId(Long parentAllocationId) {
+        return selectList(new LambdaQueryWrapperX<ServiceItemAllocationDO>()
+                .eq(ServiceItemAllocationDO::getParentAllocationId, parentAllocationId)
+                .orderByAsc(ServiceItemAllocationDO::getId));
+    }
+
 }

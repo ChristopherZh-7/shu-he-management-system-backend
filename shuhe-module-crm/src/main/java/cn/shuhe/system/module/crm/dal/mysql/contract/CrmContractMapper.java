@@ -176,6 +176,32 @@ public interface CrmContractMapper extends BaseMapperX<CrmContractDO> {
         return new BigDecimal(total.toString());
     }
 
+    /**
+     * 仪表板：指定时间范围内合同金额合计（单位：分）
+     * 基于合同创建时间（create_time）进行过滤
+     */
+    default BigDecimal selectSumTotalPriceForDashboard(Long userId, @Nullable Integer sceneType,
+                                                        LocalDateTime start, LocalDateTime end) {
+        QueryWrapper<CrmContractDO> q = new QueryWrapper<>();
+        q.select("COALESCE(SUM(total_price),0) as total");
+        q.between("create_time", start, end);
+        if (sceneType != null && CrmSceneTypeEnum.OWNER.getType().equals(sceneType)) {
+            q.eq("owner_user_id", userId);
+        }
+        List<Map<String, Object>> list = selectMaps(q);
+        if (list == null || list.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        Object total = list.get(0).get("total");
+        if (total == null) {
+            return BigDecimal.ZERO;
+        }
+        if (total instanceof BigDecimal) {
+            return (BigDecimal) total;
+        }
+        return new BigDecimal(total.toString());
+    }
+
     default List<CrmContractDO> selectListByCustomerIdOwnerUserId(Long customerId, Long ownerUserId) {
         return selectList(new LambdaQueryWrapperX<CrmContractDO>()
                 .eq(CrmContractDO::getCustomerId, customerId)

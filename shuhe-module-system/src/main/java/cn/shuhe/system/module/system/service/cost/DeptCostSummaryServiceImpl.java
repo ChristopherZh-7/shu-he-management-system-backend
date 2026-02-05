@@ -548,17 +548,8 @@ public class DeptCostSummaryServiceImpl implements DeptCostSummaryService {
      * 计算两个日期之间的工作日数
      */
     private int calculateWorkingDaysBetween(LocalDate startDate, LocalDate endDate) {
-        int workingDays = 0;
-        LocalDate current = startDate;
-
-        while (!current.isAfter(endDate)) {
-            if (holidayService.isWorkday(current)) {
-                workingDays++;
-            }
-            current = current.plusDays(1);
-        }
-
-        return workingDays;
+        // 使用批量查询方法，避免 N+1 查询问题
+        return holidayService.countWorkdaysBetween(startDate, endDate);
     }
 
     /**

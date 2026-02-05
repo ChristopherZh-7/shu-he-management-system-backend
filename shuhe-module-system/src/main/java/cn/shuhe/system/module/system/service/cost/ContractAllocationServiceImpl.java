@@ -88,6 +88,7 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
         allocation.setCustomerName((String) contractInfo.get("customerName"));
         allocation.setDeptId(reqVO.getDeptId());
         allocation.setDeptName(dept.getName());
+        allocation.setDeptType(dept.getDeptType()); // 保存部门类型
         allocation.setAllocatedAmount(reqVO.getAllocatedAmount());
         allocation.setRemark(reqVO.getRemark());
 
@@ -190,20 +191,15 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
         Map<Long, ContractDeptAllocationDO> allocationMap = existingAllocations.stream()
                 .collect(Collectors.toMap(ContractDeptAllocationDO::getDeptId, a -> a, (a1, a2) -> a1));
 
-        // 4. 为已领取但未创建分配记录的部门自动创建记录（金额为0）
+        // 4. 为已领取但未创建分配记录的部门自动创建层级分配记录（金额为0）
+        String contractNo = (String) contractInfo.get("contractNo");
+        String customerName = (String) contractInfo.get("customerName");
+        
         for (Map<String, Object> deptInfo : claimedDepts) {
             Long deptId = getLongValue(deptInfo.get("deptId"));
-            String deptName = (String) deptInfo.get("deptName");
             if (deptId != null && !allocationMap.containsKey(deptId)) {
-                ContractDeptAllocationDO newAllocation = new ContractDeptAllocationDO();
-                newAllocation.setContractId(contractId);
-                newAllocation.setContractNo((String) contractInfo.get("contractNo"));
-                newAllocation.setCustomerName((String) contractInfo.get("customerName"));
-                newAllocation.setDeptId(deptId);
-                newAllocation.setDeptName(deptName);
-                newAllocation.setAllocatedAmount(BigDecimal.ZERO);
-                contractDeptAllocationMapper.insert(newAllocation);
-                allocationMap.put(deptId, newAllocation);
+                // 创建该部门及其所有父部门的分配记录（层级结构）
+                createAllocationHierarchy(contractId, contractNo, customerName, deptId, allocationMap);
             }
         }
 
@@ -212,20 +208,10 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
         List<Long> outsideCostDeptIds = outsideCostRecordMapper.selectDeptIdsByContractIdFromOutsideCost(contractId);
         for (Long deptId : outsideCostDeptIds) {
             if (deptId != null && !allocationMap.containsKey(deptId)) {
-                DeptDO dept = deptService.getDept(deptId);
-                if (dept != null) {
-                    ContractDeptAllocationDO newAllocation = new ContractDeptAllocationDO();
-                    newAllocation.setContractId(contractId);
-                    newAllocation.setContractNo((String) contractInfo.get("contractNo"));
-                    newAllocation.setCustomerName((String) contractInfo.get("customerName"));
-                    newAllocation.setDeptId(deptId);
-                    newAllocation.setDeptName(dept.getName());
-                    newAllocation.setAllocatedAmount(BigDecimal.ZERO);
-                    contractDeptAllocationMapper.insert(newAllocation);
-                    allocationMap.put(deptId, newAllocation);
-                    log.info("【合同分配】为跨部门费用涉及的部门创建分配记录，contractId={}, deptId={}, deptName={}",
-                            contractId, deptId, dept.getName());
-                }
+                // 创建该部门及其所有父部门的分配记录（层级结构）
+                createAllocationHierarchy(contractId, contractNo, customerName, deptId, allocationMap);
+                log.info("【合同分配】为跨部门费用涉及的部门创建层级分配记录，contractId={}, deptId={}",
+                        contractId, deptId);
             }
         }
 
@@ -254,6 +240,100 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
         resp.setDeptAllocations(deptAllocations);
 
         return resp;
+    }
+
+    /**
+     * 为指定部门及其所有父部门创建分配记录（层级结构）
+     * 
+     * 例如：部门层级为 安服部 -> 安服部1营 -> 安服部1营1排 -> 安服部1营1排2班
+     * 如果传入 "安服部1营1排2班"，则会创建整个层级的分配记录：
+     * 1. 安服部（level=1, parentAllocationId=null）
+     * 2. 安服部1营（level=2, parentAllocationId=安服部的分配ID）
+     * 3. 安服部1营1排（level=3, parentAllocationId=安服部1营的分配ID）
+     * 4. 安服部1营1排2班（level=4, parentAllocationId=安服部1营1排的分配ID）
+     * 
+     * 如果某个层级的分配记录已存在，则直接使用现有记录
+     *
+     * @param contractId   合同ID
+     * @param contractNo   合同编号
+     * @param customerName 客户名称
+     * @param deptId       目标部门ID
+     * @param allocationMap 现有分配记录Map（deptId -> allocation），会在方法中更新
+     */
+    private void createAllocationHierarchy(Long contractId, String contractNo, String customerName,
+                                           Long deptId, Map<Long, ContractDeptAllocationDO> allocationMap) {
+        // 1. 获取部门的完整层级路径（从当前部门到顶级部门）
+        List<DeptDO> deptHierarchy = getDeptHierarchy(deptId);
+        if (deptHierarchy.isEmpty()) {
+            log.warn("【合同分配】无法获取部门层级，deptId={}", deptId);
+            return;
+        }
+
+        // 2. 反转列表，从顶级部门开始创建（确保父部门先创建）
+        Collections.reverse(deptHierarchy);
+
+        // 3. 逐级创建分配记录
+        Long parentAllocationId = null;
+        int level = 1;
+        
+        for (DeptDO dept : deptHierarchy) {
+            // 检查是否已存在分配记录
+            if (allocationMap.containsKey(dept.getId())) {
+                // 已存在，获取其ID作为下一级的父ID
+                ContractDeptAllocationDO existingAllocation = allocationMap.get(dept.getId());
+                parentAllocationId = existingAllocation.getId();
+                level = (existingAllocation.getAllocationLevel() != null ? existingAllocation.getAllocationLevel() : level) + 1;
+                log.debug("【合同分配】部门已有分配记录，跳过创建，deptId={}, deptName={}, allocationId={}",
+                        dept.getId(), dept.getName(), existingAllocation.getId());
+            } else {
+                // 不存在，创建新的分配记录
+                ContractDeptAllocationDO newAllocation = new ContractDeptAllocationDO();
+                newAllocation.setContractId(contractId);
+                newAllocation.setContractNo(contractNo);
+                newAllocation.setCustomerName(customerName);
+                newAllocation.setDeptId(dept.getId());
+                newAllocation.setDeptName(dept.getName());
+                newAllocation.setDeptType(dept.getDeptType());
+                newAllocation.setParentAllocationId(parentAllocationId);
+                newAllocation.setAllocationLevel(level);
+                newAllocation.setAllocatedAmount(BigDecimal.ZERO);
+                newAllocation.setReceivedAmount(BigDecimal.ZERO);
+                newAllocation.setDistributedAmount(BigDecimal.ZERO);
+                
+                contractDeptAllocationMapper.insert(newAllocation);
+                allocationMap.put(dept.getId(), newAllocation);
+                
+                log.info("【合同分配】创建层级分配记录，contractId={}, deptId={}, deptName={}, level={}, parentAllocationId={}",
+                        contractId, dept.getId(), dept.getName(), level, parentAllocationId);
+                
+                parentAllocationId = newAllocation.getId();
+                level++;
+            }
+        }
+    }
+
+    /**
+     * 获取部门的完整层级路径（从当前部门到顶级部门）
+     * 
+     * @param deptId 部门ID
+     * @return 部门层级列表，从当前部门到顶级部门（不包括根部门ID=0）
+     */
+    private List<DeptDO> getDeptHierarchy(Long deptId) {
+        List<DeptDO> hierarchy = new ArrayList<>();
+        
+        Long currentDeptId = deptId;
+        int maxDepth = 10; // 防止无限循环
+        
+        while (currentDeptId != null && currentDeptId != 0 && maxDepth-- > 0) {
+            DeptDO dept = deptService.getDept(currentDeptId);
+            if (dept == null) {
+                break;
+            }
+            hierarchy.add(dept);
+            currentDeptId = dept.getParentId();
+        }
+        
+        return hierarchy;
     }
     
     /**
@@ -301,9 +381,30 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
                 ? ServiceItemAllocationDO.ALLOCATION_TYPE_SERVICE_ITEM 
                 : reqVO.getAllocationType();
 
-        // 判断是否是安全运营分配
+        // 判断是否是安全运营分配（费用类型级别）
         boolean isSecurityOperationAllocation = ServiceItemAllocationDO.ALLOCATION_TYPE_SO_MANAGEMENT.equals(allocationType)
                 || ServiceItemAllocationDO.ALLOCATION_TYPE_SO_ONSITE.equals(allocationType);
+        
+        // 判断是否是安全服务分配（费用类型级别）
+        boolean isSecurityServiceAllocation = ServiceItemAllocationDO.ALLOCATION_TYPE_SS_ONSITE.equals(allocationType)
+                || ServiceItemAllocationDO.ALLOCATION_TYPE_SS_SECOND_LINE.equals(allocationType);
+        
+        // 判断是否是数据安全分配（费用类型级别）
+        boolean isDataSecurityAllocation = ServiceItemAllocationDO.ALLOCATION_TYPE_DS_ONSITE.equals(allocationType)
+                || ServiceItemAllocationDO.ALLOCATION_TYPE_DS_SECOND_LINE.equals(allocationType);
+        
+        // 判断是否是服务项级别分配（从费用类型分配到具体服务项）
+        boolean isServiceItemLevelAllocation = ServiceItemAllocationDO.ALLOCATION_TYPE_SERVICE_ITEM.equals(allocationType)
+                && reqVO.getParentAllocationId() != null;
+        
+        // 校验父级分配（如果有）
+        ServiceItemAllocationDO parentAllocation = null;
+        if (reqVO.getParentAllocationId() != null) {
+            parentAllocation = serviceItemAllocationMapper.selectById(reqVO.getParentAllocationId());
+            if (parentAllocation == null) {
+                throw exception(SERVICE_ITEM_ALLOCATION_NOT_EXISTS);
+            }
+        }
 
         String serviceItemName;
         if (isSecurityOperationAllocation) {
@@ -316,6 +417,26 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
             // 设置名称
             serviceItemName = ServiceItemAllocationDO.ALLOCATION_TYPE_SO_MANAGEMENT.equals(allocationType) 
                     ? "管理费" : "驻场费";
+        } else if (isSecurityServiceAllocation) {
+            // 安全服务分配：校验是否已存在相同类型的分配
+            ServiceItemAllocationDO existing = serviceItemAllocationMapper.selectByAllocationIdAndType(
+                    reqVO.getContractDeptAllocationId(), allocationType);
+            if (existing != null) {
+                throw exception(SERVICE_ITEM_ALLOCATION_EXISTS);
+            }
+            // 设置名称
+            serviceItemName = ServiceItemAllocationDO.ALLOCATION_TYPE_SS_ONSITE.equals(allocationType) 
+                    ? "驻场服务费" : "二线服务费";
+        } else if (isDataSecurityAllocation) {
+            // 数据安全分配：校验是否已存在相同类型的分配
+            ServiceItemAllocationDO existing = serviceItemAllocationMapper.selectByAllocationIdAndType(
+                    reqVO.getContractDeptAllocationId(), allocationType);
+            if (existing != null) {
+                throw exception(SERVICE_ITEM_ALLOCATION_EXISTS);
+            }
+            // 设置名称
+            serviceItemName = ServiceItemAllocationDO.ALLOCATION_TYPE_DS_ONSITE.equals(allocationType) 
+                    ? "驻场服务费" : "二线服务费";
         } else {
             // 服务项分配：校验服务项是否存在
             if (reqVO.getServiceItemId() == null) {
@@ -326,19 +447,39 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
                 throw exception(SERVICE_ITEM_NOT_EXISTS);
             }
 
-            // 校验该服务项是否已分配过
-            ServiceItemAllocationDO existing = serviceItemAllocationMapper.selectByAllocationIdAndServiceItemId(
-                    reqVO.getContractDeptAllocationId(), reqVO.getServiceItemId());
-            if (existing != null) {
-                throw exception(SERVICE_ITEM_ALLOCATION_EXISTS);
+            // 校验该服务项是否已在同一父级下分配过
+            if (isServiceItemLevelAllocation) {
+                // 从费用类型分配到具体服务项：检查同一父级下是否已存在
+                List<ServiceItemAllocationDO> siblings = serviceItemAllocationMapper.selectByParentAllocationId(reqVO.getParentAllocationId());
+                boolean alreadyAllocated = siblings.stream()
+                        .anyMatch(s -> reqVO.getServiceItemId().equals(s.getServiceItemId()));
+                if (alreadyAllocated) {
+                    throw exception(SERVICE_ITEM_ALLOCATION_EXISTS);
+                }
+            } else {
+                // 传统服务项分配
+                ServiceItemAllocationDO existing = serviceItemAllocationMapper.selectByAllocationIdAndServiceItemId(
+                        reqVO.getContractDeptAllocationId(), reqVO.getServiceItemId());
+                if (existing != null) {
+                    throw exception(SERVICE_ITEM_ALLOCATION_EXISTS);
+                }
             }
             serviceItemName = (String) serviceItemInfo.get("name");
         }
 
-        // 校验金额不超过部门剩余可分配金额
-        BigDecimal deptAllocatedAmount = deptAllocation.getAllocatedAmount();
-        BigDecimal serviceItemAllocated = calculateServiceItemAllocatedAmount(reqVO.getContractDeptAllocationId());
-        BigDecimal remaining = deptAllocatedAmount.subtract(serviceItemAllocated);
+        // 校验金额：根据是否有父级分配来判断
+        BigDecimal remaining;
+        if (isServiceItemLevelAllocation && parentAllocation != null) {
+            // 从费用类型分配到具体服务项：校验不超过父级剩余可分配金额
+            BigDecimal parentAllocatedAmount = parentAllocation.getAllocatedAmount();
+            BigDecimal childAllocated = calculateChildAllocatedAmount(reqVO.getParentAllocationId());
+            remaining = parentAllocatedAmount.subtract(childAllocated);
+        } else {
+            // 费用类型级别分配：校验不超过部门剩余可分配金额
+            BigDecimal deptAllocatedAmount = deptAllocation.getAllocatedAmount();
+            BigDecimal serviceItemAllocated = calculateServiceItemAllocatedAmount(reqVO.getContractDeptAllocationId());
+            remaining = deptAllocatedAmount.subtract(serviceItemAllocated);
+        }
         if (reqVO.getAllocatedAmount().compareTo(remaining) > 0) {
             throw exception(SERVICE_ITEM_ALLOCATION_AMOUNT_EXCEED);
         }
@@ -346,8 +487,10 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
         // 创建分配记录
         ServiceItemAllocationDO allocation = new ServiceItemAllocationDO();
         allocation.setContractDeptAllocationId(reqVO.getContractDeptAllocationId());
+        allocation.setParentAllocationId(reqVO.getParentAllocationId());
         allocation.setAllocationType(allocationType);
-        allocation.setServiceItemId(isSecurityOperationAllocation ? null : reqVO.getServiceItemId());
+        // 安全运营、安全服务、数据安全的固定分配类型不需要关联服务项
+        allocation.setServiceItemId((isSecurityOperationAllocation || isSecurityServiceAllocation || isDataSecurityAllocation) ? null : reqVO.getServiceItemId());
         allocation.setServiceItemName(serviceItemName);
         allocation.setAllocatedAmount(reqVO.getAllocatedAmount());
         allocation.setRemark(reqVO.getRemark());
@@ -444,6 +587,14 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
         return serviceItemAllocationMapper.selectByServiceItemId(serviceItemId);
     }
 
+    @Override
+    public List<ServiceItemAllocationRespVO> getServiceItemAllocationsByParentId(Long parentAllocationId) {
+        List<ServiceItemAllocationDO> allocations = serviceItemAllocationMapper.selectByParentAllocationId(parentAllocationId);
+        return allocations.stream()
+                .map(this::convertToServiceItemRespVO)
+                .collect(Collectors.toList());
+    }
+
     // ========== 私有方法 ==========
 
     /**
@@ -462,6 +613,17 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
     private BigDecimal calculateServiceItemAllocatedAmount(Long contractDeptAllocationId) {
         List<ServiceItemAllocationDO> allocations = serviceItemAllocationMapper.selectByContractDeptAllocationId(contractDeptAllocationId);
         return allocations.stream()
+                .map(ServiceItemAllocationDO::getAllocatedAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
+     * 计算父级分配下的子分配总金额
+     * 用于从费用类型分配到具体服务项的场景
+     */
+    private BigDecimal calculateChildAllocatedAmount(Long parentAllocationId) {
+        List<ServiceItemAllocationDO> childAllocations = serviceItemAllocationMapper.selectByParentAllocationId(parentAllocationId);
+        return childAllocations.stream()
                 .map(ServiceItemAllocationDO::getAllocatedAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
@@ -488,10 +650,15 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
         vo.setReceivedAmount(allocation.getReceivedAmount() != null ? allocation.getReceivedAmount() : allocation.getAllocatedAmount());
         vo.setDistributedAmount(allocation.getDistributedAmount() != null ? allocation.getDistributedAmount() : BigDecimal.ZERO);
 
-        // 获取部门类型
-        DeptDO dept = deptService.getDept(allocation.getDeptId());
-        if (dept != null) {
-            vo.setDeptType(dept.getDeptType());
+        // 获取部门类型（优先使用存储的值，兼容历史数据）
+        if (allocation.getDeptType() != null) {
+            vo.setDeptType(allocation.getDeptType());
+        } else {
+            // 历史数据可能没有存储 deptType，从部门表获取
+            DeptDO dept = deptService.getDept(allocation.getDeptId());
+            if (dept != null) {
+                vo.setDeptType(dept.getDeptType());
+            }
         }
 
         // 计算服务项分配金额
@@ -543,6 +710,7 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
         ServiceItemAllocationRespVO vo = new ServiceItemAllocationRespVO();
         vo.setId(allocation.getId());
         vo.setContractDeptAllocationId(allocation.getContractDeptAllocationId());
+        vo.setParentAllocationId(allocation.getParentAllocationId());
         vo.setAllocationType(allocation.getAllocationType());
         vo.setServiceItemId(allocation.getServiceItemId());
         vo.setServiceItemName(allocation.getServiceItemName());
@@ -558,6 +726,23 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
                 vo.setServiceItemCode((String) serviceItemInfo.get("code"));
                 vo.setServiceType((String) serviceItemInfo.get("serviceType"));
             }
+        }
+
+        // 费用类型分配（非服务项分配）：计算子分配信息
+        String allocationType = allocation.getAllocationType();
+        boolean isFeeTypeAllocation = ServiceItemAllocationDO.ALLOCATION_TYPE_SO_MANAGEMENT.equals(allocationType)
+                || ServiceItemAllocationDO.ALLOCATION_TYPE_SO_ONSITE.equals(allocationType)
+                || ServiceItemAllocationDO.ALLOCATION_TYPE_SS_ONSITE.equals(allocationType)
+                || ServiceItemAllocationDO.ALLOCATION_TYPE_SS_SECOND_LINE.equals(allocationType)
+                || ServiceItemAllocationDO.ALLOCATION_TYPE_DS_ONSITE.equals(allocationType)
+                || ServiceItemAllocationDO.ALLOCATION_TYPE_DS_SECOND_LINE.equals(allocationType);
+        
+        if (isFeeTypeAllocation) {
+            BigDecimal childAllocated = calculateChildAllocatedAmount(allocation.getId());
+            vo.setChildAllocatedAmount(childAllocated);
+            BigDecimal remaining = allocation.getAllocatedAmount().subtract(childAllocated);
+            vo.setRemainingAmount(remaining);
+            vo.setCanAllocate(remaining.compareTo(BigDecimal.ZERO) > 0);
         }
 
         return vo;
@@ -661,6 +846,7 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
         allocation.setCustomerName((String) contractInfo.get("customerName"));
         allocation.setDeptId(reqVO.getDeptId());
         allocation.setDeptName(dept.getName());
+        allocation.setDeptType(dept.getDeptType()); // 保存部门类型
         allocation.setParentAllocationId(null); // 第一级，无上级
         allocation.setAllocationLevel(1);
         allocation.setReceivedAmount(reqVO.getAmount());
@@ -692,42 +878,65 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
             throw exception(CHILD_DEPT_NOT_VALID);
         }
 
-        // 3. 校验该合同+子部门是否已存在分配记录
-        ContractDeptAllocationDO existing = contractDeptAllocationMapper.selectByContractIdAndDeptId(
-                parent.getContractId(), reqVO.getChildDeptId());
-        if (existing != null) {
-            throw exception(CONTRACT_DEPT_ALLOCATION_EXISTS);
-        }
-
-        // 4. 校验金额不超过父级剩余可分配金额
-        BigDecimal parentRemaining = parent.getReceivedAmount().subtract(parent.getDistributedAmount());
+        // 3. 校验金额不超过父级剩余可分配金额
+        BigDecimal parentRemaining = (parent.getReceivedAmount() != null ? parent.getReceivedAmount() : BigDecimal.ZERO)
+                .subtract(parent.getDistributedAmount() != null ? parent.getDistributedAmount() : BigDecimal.ZERO);
         if (reqVO.getAmount().compareTo(parentRemaining) > 0) {
             throw exception(ALLOCATION_AMOUNT_EXCEED_PARENT);
         }
 
-        // 5. 创建子部门分配记录
-        ContractDeptAllocationDO child = new ContractDeptAllocationDO();
-        child.setContractId(parent.getContractId());
-        child.setContractNo(parent.getContractNo());
-        child.setCustomerName(parent.getCustomerName());
-        child.setDeptId(reqVO.getChildDeptId());
-        child.setDeptName(childDept.getName());
-        child.setParentAllocationId(reqVO.getParentAllocationId());
-        child.setAllocationLevel(parent.getAllocationLevel() + 1);
-        child.setReceivedAmount(reqVO.getAmount());
-        child.setDistributedAmount(BigDecimal.ZERO);
-        child.setAllocatedAmount(reqVO.getAmount());
-        child.setRemark(reqVO.getRemark());
+        // 4. 检查该合同+子部门是否已存在分配记录
+        ContractDeptAllocationDO existing = contractDeptAllocationMapper.selectByContractIdAndDeptId(
+                parent.getContractId(), reqVO.getChildDeptId());
+        
+        Long childId;
+        if (existing != null) {
+            // 4.1 子部门已存在分配记录（由后端自动创建的层级），更新金额
+            BigDecimal newReceivedAmount = (existing.getReceivedAmount() != null ? existing.getReceivedAmount() : BigDecimal.ZERO)
+                    .add(reqVO.getAmount());
+            existing.setReceivedAmount(newReceivedAmount);
+            existing.setAllocatedAmount(newReceivedAmount);
+            // 如果有备注，追加备注
+            if (StrUtil.isNotBlank(reqVO.getRemark())) {
+                String existingRemark = existing.getRemark();
+                existing.setRemark(StrUtil.isBlank(existingRemark) ? reqVO.getRemark() : existingRemark + "; " + reqVO.getRemark());
+            }
+            // 确保父子关系正确
+            if (existing.getParentAllocationId() == null) {
+                existing.setParentAllocationId(reqVO.getParentAllocationId());
+                existing.setAllocationLevel((parent.getAllocationLevel() != null ? parent.getAllocationLevel() : 1) + 1);
+            }
+            contractDeptAllocationMapper.updateById(existing);
+            childId = existing.getId();
+            log.info("[分层分配] 更新已存在的子部门分配记录，childId={}, newReceivedAmount={}", childId, newReceivedAmount);
+        } else {
+            // 4.2 子部门不存在分配记录，创建新记录
+            ContractDeptAllocationDO child = new ContractDeptAllocationDO();
+            child.setContractId(parent.getContractId());
+            child.setContractNo(parent.getContractNo());
+            child.setCustomerName(parent.getCustomerName());
+            child.setDeptId(reqVO.getChildDeptId());
+            child.setDeptName(childDept.getName());
+            child.setDeptType(childDept.getDeptType());
+            child.setParentAllocationId(reqVO.getParentAllocationId());
+            child.setAllocationLevel((parent.getAllocationLevel() != null ? parent.getAllocationLevel() : 1) + 1);
+            child.setReceivedAmount(reqVO.getAmount());
+            child.setDistributedAmount(BigDecimal.ZERO);
+            child.setAllocatedAmount(reqVO.getAmount());
+            child.setRemark(reqVO.getRemark());
+            contractDeptAllocationMapper.insert(child);
+            childId = child.getId();
+            log.info("[分层分配] 创建新的子部门分配记录，childId={}, amount={}", childId, reqVO.getAmount());
+        }
 
-        contractDeptAllocationMapper.insert(child);
-
-        // 6. 更新父级的已分配金额
-        parent.setDistributedAmount(parent.getDistributedAmount().add(reqVO.getAmount()));
+        // 5. 更新父级的已分配金额
+        BigDecimal parentDistributed = parent.getDistributedAmount() != null ? parent.getDistributedAmount() : BigDecimal.ZERO;
+        parent.setDistributedAmount(parentDistributed.add(reqVO.getAmount()));
         contractDeptAllocationMapper.updateById(parent);
 
-        log.info("[分层分配] 分配给子部门，parentAllocationId={}, childDeptId={}, amount={}", 
+        log.info("[分层分配] 分配给子部门完成，parentAllocationId={}, childDeptId={}, amount={}", 
                 reqVO.getParentAllocationId(), reqVO.getChildDeptId(), reqVO.getAmount());
-        return child.getId();
+        return childId;
     }
 
     @Override
