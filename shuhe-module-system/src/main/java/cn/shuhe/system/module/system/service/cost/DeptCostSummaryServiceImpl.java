@@ -195,8 +195,8 @@ public class DeptCostSummaryServiceImpl implements DeptCostSummaryService {
             return dept != null ? List.of(dept) : Collections.emptyList();
         }
 
-        // 未指定部门，查询所有三个部门类型的部门
-        List<DeptDO> allDepts = deptService.getDeptList(new DeptListReqVO());
+        // 【性能优化】从缓存获取所有部门
+        List<DeptDO> allDepts = deptService.getAllDeptListFromCache();
         return allDepts.stream()
                 .filter(dept -> {
                     Integer type = dept.getDeptType();

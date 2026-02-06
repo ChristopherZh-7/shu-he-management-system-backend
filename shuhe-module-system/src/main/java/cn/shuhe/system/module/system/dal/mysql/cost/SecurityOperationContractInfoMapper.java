@@ -68,22 +68,24 @@ public interface SecurityOperationContractInfoMapper {
     /**
      * 查询用户参与的所有安全运营合同
      * 
-     * 逻辑（已修正 v5 - 统一从 service_item_allocation 读取费用，确保与合同分配页面数据一致）：
+     * 逻辑（已修正 v6 - 使用视图优化性能，避免子查询）：
      * 1. 从 security_operation_member 表查询用户的实际参与记录
      * 2. 根据 member_type 确定是管理人员(1)还是驻场人员(2)
      * 3. 管理人员获得管理费份额，驻场人员获得驻场费份额
-     * 4. 费用从 service_item_allocation 表读取（主数据源），确保与合同分配页面一致
-     * 5. 按同一合同下同类型成员人数平均分配
+     * 4. 费用从视图 v_so_contract_fees 读取（预计算，避免子查询）
+     * 5. 成员数从视图 v_so_contract_member_type_count 读取（预计算，避免子查询）
      * 
      * 关联路径：
      * security_operation_member.so_contract_id 
      *   → security_operation_contract.contract_dept_allocation_id
-     *   → service_item_allocation（读取 so_management / so_onsite 分配金额）
+     *   → v_so_contract_fees（读取 management_fee / onsite_fee）
      *   → crm_contract（获取合同开始/结束时间）
      * 
      * 收入计算公式：
      * - 管理人员：管理费 × (截至今天工作日 / 总工作日) / 该合同管理人员数
      * - 驻场人员：驻场费 × (截至今天工作日 / 总工作日) / 该合同驻场人员数
+     * 
+     * 性能优化：使用预计算视图替代子查询，大幅提升查询速度
      */
     @Select("SELECT " +
             "  som.id as memberId, " +
@@ -102,25 +104,21 @@ public interface SecurityOperationContractInfoMapper {
             "  soc.customer_name as customerName, " +
             "  soc.contract_no as contractNo, " +
             "  CONCAT(soc.customer_name, '-', soc.contract_no) as contractName, " +
-            // 使用 crm_contract 的开始和结束时间
             "  cc.start_time as contractStartDate, " +
             "  cc.end_time as contractEndDate, " +
-            // 从 service_item_allocation 表读取管理费和驻场费（主数据源，确保一致性）
-            "  COALESCE((SELECT SUM(sia.allocated_amount) FROM service_item_allocation sia " +
-            "   WHERE sia.contract_dept_allocation_id = soc.contract_dept_allocation_id " +
-            "   AND sia.allocation_type = 'so_management' AND sia.deleted = 0), 0) as managementFee, " +
-            "  COALESCE((SELECT SUM(sia.allocated_amount) FROM service_item_allocation sia " +
-            "   WHERE sia.contract_dept_allocation_id = soc.contract_dept_allocation_id " +
-            "   AND sia.allocation_type = 'so_onsite' AND sia.deleted = 0), 0) as onsiteFee, " +
-            // 统计该合同下同类型成员数量（在岗状态）
-            "  (SELECT COUNT(*) FROM security_operation_member som2 " +
-            "   WHERE som2.deleted = 0 AND som2.status = 1 " +
-            "   AND som2.so_contract_id = som.so_contract_id " +
-            "   AND som2.member_type = som.member_type) as sameMemberTypeCount " +
+            // 使用视图获取费用，避免子查询
+            "  COALESCE(vf.management_fee, 0) as managementFee, " +
+            "  COALESCE(vf.onsite_fee, 0) as onsiteFee, " +
+            // 使用视图获取成员数量，避免子查询
+            "  COALESCE(vc.member_count, 1) as sameMemberTypeCount " +
             "FROM security_operation_member som " +
             "LEFT JOIN security_operation_site sos ON sos.id = som.site_id AND sos.deleted = 0 " +
             "LEFT JOIN security_operation_contract soc ON soc.id = som.so_contract_id AND soc.deleted = 0 " +
             "LEFT JOIN crm_contract cc ON cc.id = soc.contract_id AND cc.deleted = 0 " +
+            // JOIN费用视图
+            "LEFT JOIN v_so_contract_fees vf ON vf.so_contract_id = soc.id " +
+            // JOIN成员数视图
+            "LEFT JOIN v_so_contract_member_type_count vc ON vc.so_contract_id = som.so_contract_id AND vc.member_type = som.member_type " +
             "WHERE som.user_id = #{userId} " +
             "  AND som.deleted = 0 " +
             "  AND som.status = 1")  // 只查询在岗状态的成员

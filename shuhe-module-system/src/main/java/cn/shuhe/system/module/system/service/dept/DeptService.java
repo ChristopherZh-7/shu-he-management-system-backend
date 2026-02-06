@@ -68,6 +68,14 @@ public interface DeptService {
     List<DeptDO> getDeptList(DeptListReqVO reqVO);
 
     /**
+     * 获取所有部门列表（带缓存）
+     * 用于高频查询场景，缓存10分钟
+     *
+     * @return 所有部门列表
+     */
+    List<DeptDO> getAllDeptListFromCache();
+
+    /**
      * 获得指定编号的部门 Map
      *
      * @param ids 部门编号数组

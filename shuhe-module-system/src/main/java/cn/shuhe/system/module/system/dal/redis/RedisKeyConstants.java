@@ -18,6 +18,15 @@ public interface RedisKeyConstants {
     String DEPT_CHILDREN_ID_LIST = "dept_children_ids";
 
     /**
+     * 全部门列表缓存（带TTL）
+     * <p>
+     * KEY 格式：dept_all_list
+     * VALUE 数据类型：List<DeptDO>
+     * 过期时间：10分钟
+     */
+    String DEPT_ALL_LIST = "dept_all_list#10m";
+
+    /**
      * 角色的缓存
      * <p>
      * KEY 格式：role:{id}
@@ -110,47 +119,77 @@ public interface RedisKeyConstants {
     // ========== 经营分析缓存相关 ==========
 
     /**
-     * 经营分析汇总数据缓存
+     * 经营分析汇总数据缓存（带TTL）
      * <p>
      * KEY 格式：business_analysis:{year}:{cutoffDate}
      * VALUE 数据类型：String 经营分析结果
-     * 过期时间：10分钟
+     * 过期时间：10分钟（通过#10m指定）
      */
-    String BUSINESS_ANALYSIS = "business_analysis";
+    String BUSINESS_ANALYSIS = "business_analysis#10m";
 
     /**
-     * 部门经营分析缓存
+     * 部门经营分析缓存（带TTL）
      * <p>
      * KEY 格式：dept_analysis:{deptId}:{year}:{cutoffDate}
      * VALUE 数据类型：String 部门分析结果
+     * 过期时间：10分钟
      */
-    String DEPT_ANALYSIS = "dept_analysis";
+    String DEPT_ANALYSIS = "dept_analysis#10m";
 
     /**
-     * 员工成本缓存
+     * 员工成本缓存（带TTL）
      * <p>
      * KEY 格式：employee_cost:{userId}:{year}:{month}
      * VALUE 数据类型：BigDecimal 员工成本
      * 过期时间：30分钟
      */
-    String EMPLOYEE_COST = "employee_cost";
+    String EMPLOYEE_COST = "employee_cost#30m";
 
     /**
-     * 仪表板收入统计缓存
+     * 仪表板收入统计缓存（带TTL）
      * <p>
-     * KEY 格式：dashboard_revenue:{userId}
+     * KEY 格式：dashboard_revenue:all
      * VALUE 数据类型：String 收入统计结果
      * 过期时间：5分钟
      */
-    String DASHBOARD_REVENUE = "dashboard_revenue";
+    String DASHBOARD_REVENUE = "dashboard_revenue#5m";
 
     /**
-     * 仪表板部门排行缓存
+     * 仪表板部门排行缓存（带TTL）
      * <p>
-     * KEY 格式：dashboard_dept_ranking
+     * KEY 格式：dashboard_dept_ranking:all
      * VALUE 数据类型：String 部门排行结果
      * 过期时间：10分钟
      */
-    String DASHBOARD_DEPT_RANKING = "dashboard_dept_ranking";
+    String DASHBOARD_DEPT_RANKING = "dashboard_dept_ranking#10m";
+
+    // ========== 假期数据缓存相关 ==========
+
+    /**
+     * 年度假期数据缓存（带TTL）
+     * <p>
+     * KEY 格式：holiday_year:{year}
+     * VALUE 数据类型：List<HolidayDO>
+     * 过期时间：1天（假期数据变化不频繁）
+     */
+    String HOLIDAY_YEAR = "holiday_year#1d";
+
+    /**
+     * 月度假期数据缓存（带TTL）
+     * <p>
+     * KEY 格式：holiday_month:{year}:{month}
+     * VALUE 数据类型：List<HolidayDO>
+     * 过期时间：1天
+     */
+    String HOLIDAY_MONTH = "holiday_month#1d";
+
+    /**
+     * 职级变更历史缓存（带TTL）
+     * <p>
+     * KEY 格式：position_level_history:{userId}:{year}
+     * VALUE 数据类型：List<PositionLevelHistoryDO>
+     * 过期时间：30分钟（可能会有变更，但不太频繁）
+     */
+    String POSITION_LEVEL_HISTORY = "position_level_history#30m";
 
 }

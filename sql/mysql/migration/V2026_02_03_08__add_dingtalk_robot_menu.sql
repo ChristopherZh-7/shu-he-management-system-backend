@@ -21,7 +21,7 @@ INSERT INTO `system_menu` (
     `updater`, `update_time`, `deleted`
 ) VALUES (
     '群机器人管理', '', 2, 50, @parent_menu_id,
-    'dingtalk-robot', 'fa:robot', 'system/dingtalkRobot/index', 'DingtalkRobot', 0,
+    'dingtalk-robot', 'fa:robot', 'system/dingtalkrobot/index', 'DingtalkRobot', 0,
     1, 1, 1, 'admin', NOW(),
     'admin', NOW(), 0
 );

@@ -6,8 +6,10 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import cn.shuhe.system.module.system.dal.dataobject.holiday.HolidayDO;
 import cn.shuhe.system.module.system.dal.mysql.holiday.HolidayMapper;
+import cn.shuhe.system.module.system.dal.redis.RedisKeyConstants;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +39,12 @@ public class HolidayServiceImpl implements HolidayService {
 
     @Resource
     private HolidayMapper holidayMapper;
+
+    /**
+     * 注入自身代理，解决同类内部方法调用时 AOP 代理不生效的问题
+     */
+    @Resource
+    private HolidayService self;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -120,7 +128,11 @@ public class HolidayServiceImpl implements HolidayService {
     }
 
     @Override
+    @Cacheable(value = RedisKeyConstants.HOLIDAY_MONTH, 
+               key = "#year + ':' + #month",
+               unless = "#result == null || #result.isEmpty()")
     public List<HolidayDO> getHolidaysByMonth(int year, int month) {
+        log.debug("[缓存未命中] 查询假期数据 year={}, month={}", year, month);
         List<HolidayDO> holidays = holidayMapper.selectByYearAndMonth(year, month);
         if (CollUtil.isEmpty(holidays)) {
             // 尝试同步数据
@@ -131,7 +143,11 @@ public class HolidayServiceImpl implements HolidayService {
     }
 
     @Override
+    @Cacheable(value = RedisKeyConstants.HOLIDAY_YEAR, 
+               key = "#year",
+               unless = "#result == null || #result.isEmpty()")
     public List<HolidayDO> getHolidaysByYear(int year) {
+        log.debug("[缓存未命中] 查询年度假期数据 year={}", year);
         List<HolidayDO> holidays = holidayMapper.selectByYear(year);
         if (CollUtil.isEmpty(holidays)) {
             syncHolidayData(year);
@@ -151,9 +167,10 @@ public class HolidayServiceImpl implements HolidayService {
         int endYear = endDate.getYear();
         
         // 预加载所有相关年份的节假日数据到内存
+        // 【重要】通过 self 调用以触发 AOP 代理，使 @Cacheable 生效
         Map<LocalDate, HolidayDO> holidayMap = new java.util.HashMap<>();
         for (int year = startYear; year <= endYear; year++) {
-            List<HolidayDO> yearHolidays = getHolidaysByYear(year);
+            List<HolidayDO> yearHolidays = self.getHolidaysByYear(year);
             if (yearHolidays != null) {
                 for (HolidayDO h : yearHolidays) {
                     holidayMap.put(h.getDate(), h);

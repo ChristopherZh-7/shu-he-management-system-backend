@@ -38,7 +38,7 @@ public class DeptServiceImpl implements DeptService {
     private DeptMapper deptMapper;
 
     @Override
-    @CacheEvict(cacheNames = RedisKeyConstants.DEPT_CHILDREN_ID_LIST,
+    @CacheEvict(cacheNames = {RedisKeyConstants.DEPT_CHILDREN_ID_LIST, RedisKeyConstants.DEPT_ALL_LIST},
             allEntries = true) // allEntries 清空所有缓存，因为操作一个部门，涉及到多个缓存
     public Long createDept(DeptSaveReqVO createReqVO) {
         if (createReqVO.getParentId() == null) {
@@ -56,7 +56,7 @@ public class DeptServiceImpl implements DeptService {
     }
 
     @Override
-    @CacheEvict(cacheNames = RedisKeyConstants.DEPT_CHILDREN_ID_LIST,
+    @CacheEvict(cacheNames = {RedisKeyConstants.DEPT_CHILDREN_ID_LIST, RedisKeyConstants.DEPT_ALL_LIST},
             allEntries = true) // allEntries 清空所有缓存，因为操作一个部门，涉及到多个缓存
     public void updateDept(DeptSaveReqVO updateReqVO) {
         if (updateReqVO.getParentId() == null) {
@@ -75,7 +75,7 @@ public class DeptServiceImpl implements DeptService {
     }
 
     @Override
-    @CacheEvict(cacheNames = RedisKeyConstants.DEPT_CHILDREN_ID_LIST,
+    @CacheEvict(cacheNames = {RedisKeyConstants.DEPT_CHILDREN_ID_LIST, RedisKeyConstants.DEPT_ALL_LIST},
             allEntries = true) // allEntries 清空所有缓存，因为操作一个部门，涉及到多个缓存
     public void deleteDept(Long id) {
         // 校验是否存在
@@ -89,7 +89,7 @@ public class DeptServiceImpl implements DeptService {
     }
 
     @Override
-    @CacheEvict(cacheNames = RedisKeyConstants.DEPT_CHILDREN_ID_LIST,
+    @CacheEvict(cacheNames = {RedisKeyConstants.DEPT_CHILDREN_ID_LIST, RedisKeyConstants.DEPT_ALL_LIST},
             allEntries = true) // allEntries 清空所有缓存，因为操作一个部门，涉及到多个缓存
     public void deleteDeptList(List<Long> ids) {
         // 校验是否有子部门
@@ -180,6 +180,15 @@ public class DeptServiceImpl implements DeptService {
     @Override
     public List<DeptDO> getDeptList(DeptListReqVO reqVO) {
         List<DeptDO> list = deptMapper.selectList(reqVO);
+        list.sort(Comparator.comparing(DeptDO::getSort));
+        return list;
+    }
+
+    @Override
+    @Cacheable(cacheNames = RedisKeyConstants.DEPT_ALL_LIST, key = "'all'", unless = "#result == null || #result.isEmpty()")
+    public List<DeptDO> getAllDeptListFromCache() {
+        log.debug("[缓存未命中] 查询全部门列表");
+        List<DeptDO> list = deptMapper.selectList(new DeptListReqVO());
         list.sort(Comparator.comparing(DeptDO::getSort));
         return list;
     }

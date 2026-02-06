@@ -39,6 +39,7 @@ import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkApiService;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkConfigService;
+import cn.shuhe.system.module.system.service.dingtalkrobot.event.DingtalkNotificationEventPublisher;
 import cn.shuhe.system.module.system.dal.dataobject.dingtalkconfig.DingtalkConfigDO;
 import cn.shuhe.system.module.system.dal.dataobject.dingtalkmapping.DingtalkMappingDO;
 import cn.shuhe.system.module.system.dal.mysql.dingtalkmapping.DingtalkMappingMapper;
@@ -117,6 +118,8 @@ public class CrmContractServiceImpl implements CrmContractService {
     private DingtalkConfigService dingtalkConfigService;
     @Resource
     private DingtalkMappingMapper dingtalkMappingMapper;
+    @Resource
+    private DingtalkNotificationEventPublisher dingtalkNotificationEventPublisher;
     @Resource
     private ProjectService projectService;
     @Resource
@@ -428,6 +431,56 @@ public class CrmContractServiceImpl implements CrmContractService {
                     sendDingtalkNotifyToAssignedDepts(contract, deptIds);
                 }
             }
+            
+            // 3.5 发布钉钉通知事件（通过配置的通知场景自动发送）
+            publishContractAuditPassEvent(contract);
+        }
+    }
+    
+    /**
+     * 发布合同审批通过事件
+     */
+    private void publishContractAuditPassEvent(CrmContractDO contract) {
+        try {
+            // 获取客户名称
+            String customerName = "";
+            if (contract.getCustomerId() != null) {
+                var customer = customerMapper.selectById(contract.getCustomerId());
+                if (customer != null) {
+                    customerName = customer.getName();
+                }
+            }
+            
+            // 获取负责人名称
+            String ownerUserName = "";
+            if (contract.getOwnerUserId() != null) {
+                AdminUserRespDTO owner = adminUserApi.getUser(contract.getOwnerUserId());
+                if (owner != null) {
+                    ownerUserName = owner.getNickname();
+                }
+            }
+            
+            // 构建模板变量
+            java.util.Map<String, Object> variables = new java.util.HashMap<>();
+            variables.put("name", contract.getName());
+            variables.put("no", contract.getNo());
+            variables.put("totalPrice", contract.getTotalPrice());
+            variables.put("customerName", customerName);
+            variables.put("ownerUserName", ownerUserName);
+            variables.put("auditTime", LocalDateTime.now());
+            variables.put("auditorName", "系统"); // 可从流程变量中获取实际审批人
+            
+            // 发布事件
+            dingtalkNotificationEventPublisher.publishCrmEvent(
+                    "contract_audit_pass",
+                    contract.getId(),
+                    contract.getNo(),
+                    variables,
+                    contract.getOwnerUserId()
+            );
+            log.debug("【合同审批】已发布合同审批通过通知事件，合同ID={}", contract.getId());
+        } catch (Exception e) {
+            log.warn("【合同审批】发布通知事件失败，不影响主流程", e);
         }
     }
 

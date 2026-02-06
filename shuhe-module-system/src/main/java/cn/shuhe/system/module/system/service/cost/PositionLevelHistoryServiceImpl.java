@@ -12,9 +12,11 @@ import cn.shuhe.system.module.system.dal.dataobject.dept.DeptDO;
 import cn.shuhe.system.module.system.dal.dataobject.user.AdminUserDO;
 import cn.shuhe.system.module.system.dal.mysql.cost.PositionLevelHistoryMapper;
 import cn.shuhe.system.module.system.dal.mysql.user.AdminUserMapper;
+import cn.shuhe.system.module.system.dal.redis.RedisKeyConstants;
 import cn.shuhe.system.module.system.service.dept.DeptService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -155,7 +157,11 @@ public class PositionLevelHistoryServiceImpl implements PositionLevelHistoryServ
     }
 
     @Override
+    @Cacheable(value = RedisKeyConstants.POSITION_LEVEL_HISTORY,
+               key = "#userId + ':' + #year",
+               unless = "#result == null")
     public List<PositionLevelHistoryDO> getHistoryByUserIdAndYear(Long userId, int year) {
+        log.debug("[缓存未命中] 查询职级变更历史 userId={}, year={}", userId, year);
         return positionLevelHistoryMapper.selectByUserIdAndYear(userId, year);
     }
 

@@ -216,4 +216,44 @@ public interface ServiceItemInfoMapper {
             @Param("year") int year,
             @Param("cutoffDate") LocalDateTime cutoffDate);
 
+    /**
+     * 批量查询已完成的服务轮次（性能优化：一次查询所有，Java侧按executorIds过滤）
+     * 
+     * 返回所有符合时间条件的已完成轮次，包含executorIds字段用于Java侧过滤
+     */
+    @Select("SELECT " +
+            "  pr.id as roundId, " +
+            "  pr.service_item_id as serviceItemId, " +
+            "  pr.round_no as roundNumber, " +
+            "  pr.executor_ids as executorIds, " +
+            "  COALESCE(pr.actual_end_time, pr.update_time) as actualEndTime, " +
+            "  pi.name as serviceItemName, " +
+            "  pi.customer_name as customerName, " +
+            "  pi.max_count as maxCount, " +
+            "  pi.frequency_type as frequencyType, " +
+            "  COALESCE(" +
+            "    (SELECT sia2.allocated_amount FROM service_item_allocation sia2 " +
+            "     JOIN contract_dept_allocation cda ON cda.id = sia2.contract_dept_allocation_id AND cda.deleted = 0 " +
+            "     JOIN project_service_launch psl ON COALESCE(psl.actual_execute_dept_id, psl.execute_dept_id) = cda.dept_id " +
+            "     WHERE sia2.service_item_id = pi.id AND sia2.deleted = 0 " +
+            "       AND psl.id = pr.service_launch_id AND psl.deleted = 0 " +
+            "       AND cda.contract_id = pi.contract_id " +
+            "     LIMIT 1), " +
+            "    (SELECT SUM(sia3.allocated_amount) FROM service_item_allocation sia3 " +
+            "     WHERE sia3.service_item_id = pi.id AND sia3.deleted = 0), " +
+            "    0" +
+            "  ) as allocatedAmount " +
+            "FROM project_round pr " +
+            "JOIN project_info pi ON pi.id = pr.service_item_id " +
+            "WHERE pr.deleted = 0 " +
+            "  AND pr.status = 2 " +
+            "  AND YEAR(COALESCE(pr.actual_end_time, pr.update_time)) = #{year} " +
+            "  AND COALESCE(pr.actual_end_time, pr.update_time) <= #{cutoffDate} " +
+            "  AND pr.executor_ids IS NOT NULL " +
+            "  AND pr.executor_ids <> '' " +
+            "  AND pr.executor_ids <> '[]'")
+    List<Map<String, Object>> selectCompletedRoundsByExecutorBatch(
+            @Param("year") int year,
+            @Param("cutoffDate") LocalDateTime cutoffDate);
+
 }

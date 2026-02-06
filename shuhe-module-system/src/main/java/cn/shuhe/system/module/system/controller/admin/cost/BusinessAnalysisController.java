@@ -11,6 +11,7 @@ import cn.shuhe.system.module.system.dal.mysql.cost.SecurityOperationContractInf
 import cn.shuhe.system.module.system.service.dept.DeptService;
 import cn.shuhe.system.module.system.service.user.AdminUserService;
 import cn.shuhe.system.module.system.service.cost.BusinessAnalysisService;
+import cn.shuhe.system.module.system.service.cost.BusinessAnalysisCacheService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -39,6 +40,9 @@ public class BusinessAnalysisController {
     private BusinessAnalysisService businessAnalysisService;
 
     @Resource
+    private BusinessAnalysisCacheService businessAnalysisCacheService;
+
+    @Resource
     private SecurityOperationContractInfoMapper securityOperationContractInfoMapper;
 
     @Resource
@@ -52,6 +56,21 @@ public class BusinessAnalysisController {
     @PreAuthorize("@ss.hasPermission('system:business-analysis:query')")
     public CommonResult<BusinessAnalysisRespVO> getBusinessAnalysisSummary(@Valid BusinessAnalysisReqVO reqVO) {
         Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
+        
+        // 【性能优化】优先从Redis缓存获取
+        int year = reqVO.getYear() != null ? reqVO.getYear() : LocalDate.now().getYear();
+        LocalDate cutoffDate = reqVO.getCutoffDate() != null ? reqVO.getCutoffDate() : LocalDate.now();
+        
+        try {
+            BusinessAnalysisRespVO cachedResult = businessAnalysisCacheService.getBusinessAnalysis(year, cutoffDate, currentUserId);
+            if (cachedResult != null) {
+                return success(cachedResult);
+            }
+        } catch (Exception e) {
+            // 缓存获取失败，降级到直接计算
+        }
+        
+        // 缓存未命中或获取失败，直接计算
         return success(businessAnalysisService.getBusinessAnalysis(reqVO, currentUserId));
     }
 
@@ -132,8 +151,8 @@ public class BusinessAnalysisController {
     public CommonResult<Map<String, Object>> getDiagnosticFullAnalysis() {
         Map<String, Object> result = new LinkedHashMap<>();
         
-        // 1. 获取所有安全运营相关部门
-        List<DeptDO> allDepts = deptService.getDeptList(new cn.shuhe.system.module.system.controller.admin.dept.vo.dept.DeptListReqVO());
+        // 1. 【性能优化】从缓存获取所有部门
+        List<DeptDO> allDepts = deptService.getAllDeptListFromCache();
         List<Map<String, Object>> operationDepts = new ArrayList<>();
         Set<Long> operationDeptIds = new HashSet<>();
         

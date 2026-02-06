@@ -1034,8 +1034,8 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
 
     @Override
     public List<DeptDO> getFirstLevelDepts() {
-        // 获取所有一级业务部门（父部门为公司根节点，且有deptType的）
-        List<DeptDO> allDepts = deptService.getDeptList(new cn.shuhe.system.module.system.controller.admin.dept.vo.dept.DeptListReqVO());
+        // 【性能优化】从缓存获取所有一级业务部门
+        List<DeptDO> allDepts = deptService.getAllDeptListFromCache();
         return allDepts.stream()
                 .filter(this::isFirstLevelDept)
                 .filter(dept -> dept.getDeptType() != null)
@@ -1044,7 +1044,8 @@ public class ContractAllocationServiceImpl implements ContractAllocationService 
 
     @Override
     public List<DeptDO> getChildDepts(Long parentDeptId) {
-        List<DeptDO> allDepts = deptService.getDeptList(new cn.shuhe.system.module.system.controller.admin.dept.vo.dept.DeptListReqVO());
+        // 【性能优化】从缓存获取所有部门
+        List<DeptDO> allDepts = deptService.getAllDeptListFromCache();
         return allDepts.stream()
                 .filter(dept -> parentDeptId.equals(dept.getParentId()))
                 .collect(Collectors.toList());

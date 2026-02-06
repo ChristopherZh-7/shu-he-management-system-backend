@@ -42,13 +42,13 @@ public class DataPermissionConfiguration {
             // ========== 员工排班表 ==========
             // 员工排班 - 基于 deptId 过滤 + userId 过滤（仅本人）
             rule.addDeptColumn(EmployeeScheduleDO.class);
-            rule.addUserColumn(EmployeeScheduleDO.class, "userId");
+            rule.addUserColumn(EmployeeScheduleDO.class, "user_id");
             
             // ========== 服务发起相关表 ==========
-            // 服务发起 - 基于执行部门过滤
-            rule.addDeptColumn(ServiceLaunchDO.class, "executeDeptId");
+            // 服务发起 - 基于执行部门过滤（注意：使用数据库列名，非Java属性名）
+            rule.addDeptColumn(ServiceLaunchDO.class, "execute_dept_id");
             // 服务发起 - 基于申请人过滤（仅本人）
-            rule.addUserColumn(ServiceLaunchDO.class, "requestUserId");
+            rule.addUserColumn(ServiceLaunchDO.class, "request_user_id");
         };
     }
 

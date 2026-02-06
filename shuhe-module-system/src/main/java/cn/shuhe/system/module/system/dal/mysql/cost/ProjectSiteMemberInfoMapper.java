@@ -26,10 +26,13 @@ public interface ProjectSiteMemberInfoMapper {
      * 2. 关联 project_site 获取驻场点信息
      * 3. 关联 project 获取项目信息
      * 4. 关联 crm_contract 获取合同时间和费用分配
-     * 5. 从 service_item_allocation 获取驻场费分配金额
+     * 5. 使用视图 v_contract_allocation_fees 获取费用（避免子查询）
+     * 6. 使用视图 v_site_member_type_count 获取成员数（避免子查询）
      * 
      * 收入计算公式：
      * 驻场人员收入 = 驻场费 × (截至今天工作日 / 总工作日) / 该驻场点驻场人员数
+     * 
+     * 性能优化：使用预计算视图替代子查询，大幅提升查询速度
      * 
      * @param userId 用户ID
      * @param deptType 部门类型：1-安全服务 2-安全运营 3-数据安全，传 null 查全部
@@ -53,42 +56,22 @@ public interface ProjectSiteMemberInfoMapper {
             "  p.contract_id as crmContractId, " +
             "  p.contract_no as contractNo, " +
             "  CONCAT(p.customer_name, '-', p.contract_no) as contractName, " +
-            // 使用 crm_contract 的开始和结束时间
             "  cc.start_time as contractStartDate, " +
             "  cc.end_time as contractEndDate, " +
-            // 从 contract_dept_allocation 和 service_item_allocation 获取驻场费
-            // 根据 dept_type 使用不同的 allocation_type
-            "  COALESCE((" +
-            "    SELECT SUM(sia.allocated_amount) FROM service_item_allocation sia " +
-            "    JOIN contract_dept_allocation cda ON sia.contract_dept_allocation_id = cda.id AND cda.deleted = 0 " +
-            "    WHERE cda.contract_id = p.contract_id " +
-            "    AND cda.dept_type = psm.dept_type " +
-            "    AND sia.allocation_type = CASE " +
-            "      WHEN psm.dept_type = 2 THEN 'so_onsite' " +
-            "      WHEN psm.dept_type = 1 THEN 'ss_onsite' " +
-            "      WHEN psm.dept_type = 3 THEN 'ds_onsite' " +
-            "      ELSE 'service_onsite' " +
-            "    END " +
-            "    AND sia.deleted = 0" +
-            "  ), 0) as onsiteFee, " +
-            // 获取管理费（仅安全运营有）
-            "  COALESCE((" +
-            "    SELECT SUM(sia.allocated_amount) FROM service_item_allocation sia " +
-            "    JOIN contract_dept_allocation cda ON sia.contract_dept_allocation_id = cda.id AND cda.deleted = 0 " +
-            "    WHERE cda.contract_id = p.contract_id " +
-            "    AND cda.dept_type = psm.dept_type " +
-            "    AND sia.allocation_type = 'so_management' " +
-            "    AND sia.deleted = 0" +
-            "  ), 0) as managementFee, " +
-            // 统计该驻场点下同类型成员数量（在岗状态）
-            "  (SELECT COUNT(*) FROM project_site_member psm2 " +
-            "   WHERE psm2.deleted = 0 AND psm2.status = 1 " +
-            "   AND psm2.site_id = psm.site_id " +
-            "   AND psm2.member_type = psm.member_type) as sameMemberTypeCount " +
+            // 使用视图获取驻场费，避免子查询
+            "  COALESCE(vf.total_onsite_fee, 0) as onsiteFee, " +
+            // 使用视图获取管理费
+            "  COALESCE(vf.total_management_fee, 0) as managementFee, " +
+            // 使用视图获取同类型成员数量
+            "  COALESCE(vc.member_count, 1) as sameMemberTypeCount " +
             "FROM project_site_member psm " +
             "LEFT JOIN project_site ps ON ps.id = psm.site_id AND ps.deleted = 0 " +
             "LEFT JOIN project p ON p.id = psm.project_id AND p.deleted = 0 " +
             "LEFT JOIN crm_contract cc ON cc.id = p.contract_id AND cc.deleted = 0 " +
+            // JOIN费用视图
+            "LEFT JOIN v_contract_allocation_fees vf ON vf.contract_id = p.contract_id AND vf.dept_type = psm.dept_type " +
+            // JOIN成员数视图
+            "LEFT JOIN v_site_member_type_count vc ON vc.site_id = psm.site_id AND vc.member_type = psm.member_type " +
             "WHERE psm.user_id = #{userId} " +
             "  AND psm.deleted = 0 " +
             "  AND psm.status = 1 " +
@@ -98,6 +81,56 @@ public interface ProjectSiteMemberInfoMapper {
             "</script>")
     List<Map<String, Object>> selectMemberParticipation(@Param("userId") Long userId, 
                                                          @Param("deptType") Integer deptType);
+
+    /**
+     * 批量查询多个用户的驻场参与记录（性能优化：一次查询替代 N 次查询）
+     * 
+     * @param userIds 用户ID列表
+     * @param deptType 部门类型：1-安全服务 2-安全运营 3-数据安全，传 null 查全部
+     * @return 驻场参与记录列表（包含 userId 字段用于分组）
+     */
+    @Select("<script>" +
+            "SELECT " +
+            "  psm.user_id as userId, " +
+            "  psm.id as memberId, " +
+            "  psm.site_id as siteId, " +
+            "  psm.project_id as projectId, " +
+            "  psm.dept_type as deptType, " +
+            "  psm.member_type as memberType, " +
+            "  psm.start_date as memberStartDate, " +
+            "  psm.end_date as memberEndDate, " +
+            "  psm.status as memberStatus, " +
+            "  psm.is_leader as isLeader, " +
+            "  ps.name as siteName, " +
+            "  p.name as projectName, " +
+            "  p.customer_id as customerId, " +
+            "  p.customer_name as customerName, " +
+            "  p.contract_id as crmContractId, " +
+            "  p.contract_no as contractNo, " +
+            "  CONCAT(p.customer_name, '-', p.contract_no) as contractName, " +
+            "  cc.start_time as contractStartDate, " +
+            "  cc.end_time as contractEndDate, " +
+            "  COALESCE(vf.total_onsite_fee, 0) as onsiteFee, " +
+            "  COALESCE(vf.total_management_fee, 0) as managementFee, " +
+            "  COALESCE(vc.member_count, 1) as sameMemberTypeCount " +
+            "FROM project_site_member psm " +
+            "LEFT JOIN project_site ps ON ps.id = psm.site_id AND ps.deleted = 0 " +
+            "LEFT JOIN project p ON p.id = psm.project_id AND p.deleted = 0 " +
+            "LEFT JOIN crm_contract cc ON cc.id = p.contract_id AND cc.deleted = 0 " +
+            "LEFT JOIN v_contract_allocation_fees vf ON vf.contract_id = p.contract_id AND vf.dept_type = psm.dept_type " +
+            "LEFT JOIN v_site_member_type_count vc ON vc.site_id = psm.site_id AND vc.member_type = psm.member_type " +
+            "WHERE psm.user_id IN " +
+            "<foreach collection='userIds' item='uid' open='(' separator=',' close=')'>" +
+            "#{uid}" +
+            "</foreach>" +
+            "  AND psm.deleted = 0 " +
+            "  AND psm.status = 1 " +
+            "<if test='deptType != null'>" +
+            "  AND psm.dept_type = #{deptType} " +
+            "</if>" +
+            "</script>")
+    List<Map<String, Object>> selectMemberParticipationBatch(@Param("userIds") List<Long> userIds, 
+                                                              @Param("deptType") Integer deptType);
 
     /**
      * 查询指定部门类型的所有驻场成员（用于批量计算收入）

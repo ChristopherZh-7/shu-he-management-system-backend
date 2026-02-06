@@ -169,8 +169,8 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
      * 【性能优化】构建分析上下文，批量预加载所有需要的数据
      */
     private AnalysisContext buildAnalysisContext(int year, LocalDate cutoffDate, List<DeptDO> visibleDepts) {
-        // 1. 加载所有部门
-        List<DeptDO> allDepts = deptService.getDeptList(new cn.shuhe.system.module.system.controller.admin.dept.vo.dept.DeptListReqVO());
+        // 1. 【性能优化】从缓存加载所有部门
+        List<DeptDO> allDepts = deptService.getAllDeptListFromCache();
         Map<Long, DeptDO> deptCache = allDepts.stream()
                 .collect(Collectors.toMap(DeptDO::getId, d -> d, (a, b) -> a));
         
@@ -223,26 +223,69 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
                 costCalculationService.batchGetUserYearToDateCost(allUserIds, year, month)
         );
         
-        // 8. 批量计算收入（驻场收入 + 轮次收入）
+        // 8. 【性能优化】批量计算收入（驻场收入 + 轮次收入）- 使用批量查询替代 N 次单独查询
         Map<Long, BigDecimal> operationIncomeCache = new ConcurrentHashMap<>();  // 驻场收入缓存
         Map<Long, BigDecimal> serviceIncomeCache = new ConcurrentHashMap<>();    // 轮次收入缓存
         
         LocalDate yearStart = LocalDate.of(year, 1, 1);
         LocalDateTime cutoffDateTime = LocalDateTime.of(cutoffDate, LocalTime.MAX);
         
+        // 8.1 批量查询所有员工的驻场参与记录（一次查询替代 N 次查询）
+        List<Long> allUserIdList = new ArrayList<>(allUserIds);
+        Map<Long, List<Map<String, Object>>> userParticipationMap = new HashMap<>();
+        if (!allUserIdList.isEmpty()) {
+            // 批量查询所有驻场参与记录
+            List<Map<String, Object>> allParticipations = projectSiteMemberInfoMapper.selectMemberParticipationBatch(allUserIdList, null);
+            // 按用户ID分组
+            for (Map<String, Object> p : allParticipations) {
+                Long userId = getLongValue(p.get("userId"));
+                if (userId != null) {
+                    userParticipationMap.computeIfAbsent(userId, k -> new ArrayList<>()).add(p);
+                }
+            }
+        }
+        
+        // 8.2 批量查询所有员工的轮次收入记录
+        Map<Long, List<Map<String, Object>>> userRoundMap = new HashMap<>();
+        if (!allUserIdList.isEmpty()) {
+            List<Map<String, Object>> allRounds = serviceItemInfoMapper.selectCompletedRoundsByExecutorBatch(
+                    year, cutoffDateTime);
+            for (Map<String, Object> r : allRounds) {
+                // 解析 executorIds，可能是多个执行人
+                String executorIdsStr = (String) r.get("executorIds");
+                if (executorIdsStr != null) {
+                    for (Long userId : allUserIdList) {
+                        if (executorIdsStr.contains(String.valueOf(userId))) {
+                            userRoundMap.computeIfAbsent(userId, k -> new ArrayList<>()).add(r);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 8.3 使用预加载的数据计算每个员工的收入
         for (AdminUserDO employee : allEmployees) {
             Long userId = employee.getId();
             Long deptId = employee.getDeptId();
             Integer deptType = deptId != null ? deptTypeCache.get(deptId) : null;
             
             if (deptType != null) {
-                // 所有部门类型都可能有驻场收入（从 project_site_member 表）
-                BigDecimal onsiteIncome = calculateOnsiteIncome(userId, deptType, year, cutoffDate);
+                // 使用预加载的驻场参与记录计算收入
+                List<Map<String, Object>> participations = userParticipationMap.getOrDefault(userId, Collections.emptyList());
+                // 过滤出匹配部门类型的记录
+                List<Map<String, Object>> filteredParticipations = participations.stream()
+                        .filter(p -> {
+                            Integer pDeptType = getIntValue(p.get("deptType"));
+                            return pDeptType != null && pDeptType.equals(deptType);
+                        })
+                        .collect(Collectors.toList());
+                BigDecimal onsiteIncome = calculateOnsiteIncomeFromData(filteredParticipations, year, cutoffDate);
                 operationIncomeCache.put(userId, onsiteIncome);
                 
                 // 安全服务和数据安全还可能有轮次收入
                 if (deptType == DEPT_TYPE_SECURITY_SERVICE || deptType == DEPT_TYPE_DATA_SECURITY) {
-                    BigDecimal roundIncome = calculateServiceRoundIncome(userId, year, cutoffDate);
+                    List<Map<String, Object>> rounds = userRoundMap.getOrDefault(userId, Collections.emptyList());
+                    BigDecimal roundIncome = calculateServiceRoundIncomeFromData(rounds, userId, year, cutoffDate);
                     serviceIncomeCache.put(userId, roundIncome);
                 }
             }
@@ -342,7 +385,8 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
 
         // 获取三个顶级业务部门（parentId = 0 或父部门是公司根部门）
         // 顶级业务部门的特征：有 deptType 且是顶级部门（没有其他业务部门作为父部门）
-        List<DeptDO> allDepts = deptService.getDeptList(new cn.shuhe.system.module.system.controller.admin.dept.vo.dept.DeptListReqVO());
+        // 【性能优化】从缓存加载所有部门
+        List<DeptDO> allDepts = deptService.getAllDeptListFromCache();
         
         // 收集所有有业务类型的部门ID
         Set<Long> businessDeptIds = allDepts.stream()
@@ -412,10 +456,10 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
             }
         }
 
-        // 计算部门的跨部门收入/支出（包括本部门和所有子部门）
+        // 计算部门的跨部门收入/支出（包括本部门和所有子部门）- 使用缓存
         LocalDateTime cutoffDateTime = ctx.getCutoffDate().atTime(LocalTime.MAX);
-        BigDecimal totalOutsideIncome = calculateDeptOutsideIncome(dept.getId(), ctx.getYear(), cutoffDateTime);
-        BigDecimal totalOutsideExpense = calculateDeptOutsideExpense(dept.getId(), ctx.getYear(), cutoffDateTime);
+        BigDecimal totalOutsideIncome = calculateDeptOutsideIncomeWithCache(dept.getId(), ctx.getYear(), cutoffDateTime, ctx);
+        BigDecimal totalOutsideExpense = calculateDeptOutsideExpenseWithCache(dept.getId(), ctx.getYear(), cutoffDateTime, ctx);
 
         // 计算利润
         BigDecimal totalIncome = totalContractIncome.add(totalOutsideIncome);
@@ -1051,6 +1095,71 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
 
         log.debug("[驻场收入] 用户 {} 总驻场收入: {}", userId, totalIncome);
         return totalIncome;
+    }
+
+    /**
+     * 【性能优化】使用预加载数据计算驻场收入（替代 calculateOnsiteIncome 的批量版本）
+     * 
+     * @param participations 预加载的驻场参与记录
+     * @param year 年份
+     * @param cutoffDate 截止日期
+     * @return 驻场收入
+     */
+    private BigDecimal calculateOnsiteIncomeFromData(List<Map<String, Object>> participations, int year, LocalDate cutoffDate) {
+        if (CollUtil.isEmpty(participations)) {
+            return BigDecimal.ZERO;
+        }
+        
+        BigDecimal totalIncome = BigDecimal.ZERO;
+        LocalDate yearStart = LocalDate.of(year, 1, 1);
+        
+        for (Map<String, Object> participation : participations) {
+            BigDecimal income = calculateSingleOnsiteParticipationIncome(participation, yearStart, cutoffDate);
+            totalIncome = totalIncome.add(income);
+        }
+        
+        return totalIncome;
+    }
+
+    /**
+     * 【性能优化】使用预加载数据计算服务轮次收入（替代 calculateServiceRoundIncome 的批量版本）
+     * 
+     * @param rounds 预加载的轮次记录
+     * @param userId 用户ID（用于过滤执行人）
+     * @param year 年份
+     * @param cutoffDate 截止日期
+     * @return 轮次收入
+     */
+    private BigDecimal calculateServiceRoundIncomeFromData(List<Map<String, Object>> rounds, Long userId, 
+                                                            int year, LocalDate cutoffDate) {
+        if (CollUtil.isEmpty(rounds)) {
+            return BigDecimal.ZERO;
+        }
+        
+        BigDecimal totalIncome = BigDecimal.ZERO;
+        
+        for (Map<String, Object> round : rounds) {
+            // 确认该用户是执行人之一
+            String executorIdsStr = (String) round.get("executorIds");
+            if (executorIdsStr != null && isExecutorInList(executorIdsStr, userId)) {
+                BigDecimal roundIncome = calculateSingleRoundIncome(round, userId);
+                totalIncome = totalIncome.add(roundIncome);
+            }
+        }
+        
+        return totalIncome;
+    }
+
+    /**
+     * 判断用户是否在执行人列表中
+     */
+    private boolean isExecutorInList(String executorIdsStr, Long userId) {
+        if (executorIdsStr == null || executorIdsStr.isEmpty()) {
+            return false;
+        }
+        String userIdStr = String.valueOf(userId);
+        // 支持多种格式：纯ID、带引号、JSON数组等
+        return executorIdsStr.contains(userIdStr);
     }
 
     /**
@@ -1814,6 +1923,79 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
     }
 
     // ========== 跨部门费用计算 ==========
+
+    /**
+     * 【性能优化】使用缓存计算部门的跨部门收入（包括子部门）
+     * 跨部门收入 = 作为目标方（target_dept_id）的费用总和
+     */
+    private BigDecimal calculateDeptOutsideIncomeWithCache(Long deptId, int year, LocalDateTime cutoffDateTime, AnalysisContext ctx) {
+        // 使用缓存获取本部门及所有子部门的ID
+        List<Long> allDeptIds = getAllDescendantDeptIdsWithCache(deptId, ctx);
+        allDeptIds.add(deptId);
+        
+        if (allDeptIds.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        
+        List<Map<String, Object>> results = outsideCostRecordMapper.batchSumIncomeByDeptIds(allDeptIds, year, cutoffDateTime);
+        
+        BigDecimal total = BigDecimal.ZERO;
+        if (results != null) {
+            for (Map<String, Object> result : results) {
+                Object amountObj = result.get("amount");
+                if (amountObj != null) {
+                    BigDecimal amount = amountObj instanceof BigDecimal 
+                            ? (BigDecimal) amountObj 
+                            : new BigDecimal(amountObj.toString());
+                    total = total.add(amount);
+                }
+            }
+        }
+        
+        return total;
+    }
+
+    /**
+     * 【性能优化】使用缓存计算部门的跨部门支出（包括子部门）
+     * 跨部门支出 = 作为发起方（request_dept_id）的费用总和
+     */
+    private BigDecimal calculateDeptOutsideExpenseWithCache(Long deptId, int year, LocalDateTime cutoffDateTime, AnalysisContext ctx) {
+        // 使用缓存获取本部门及所有子部门的ID
+        List<Long> allDeptIds = getAllDescendantDeptIdsWithCache(deptId, ctx);
+        allDeptIds.add(deptId);
+        
+        if (allDeptIds.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        
+        List<Map<String, Object>> results = outsideCostRecordMapper.batchSumExpenseByDeptIds(allDeptIds, year, cutoffDateTime);
+        
+        BigDecimal total = BigDecimal.ZERO;
+        if (results != null) {
+            for (Map<String, Object> result : results) {
+                Object amountObj = result.get("amount");
+                if (amountObj != null) {
+                    BigDecimal amount = amountObj instanceof BigDecimal 
+                            ? (BigDecimal) amountObj 
+                            : new BigDecimal(amountObj.toString());
+                    total = total.add(amount);
+                }
+            }
+        }
+        
+        return total;
+    }
+
+    /**
+     * 【性能优化】使用缓存获取部门的所有后代部门ID
+     * 
+     * 使用预加载的 childDeptCache 替代 deptService.getChildDeptList 调用
+     */
+    private List<Long> getAllDescendantDeptIdsWithCache(Long deptId, AnalysisContext ctx) {
+        Set<Long> result = new HashSet<>();
+        collectChildDeptIdsWithCache(deptId, result, ctx.getChildDeptCache());
+        return new ArrayList<>(result);
+    }
 
     /**
      * 计算部门的跨部门收入（包括子部门）

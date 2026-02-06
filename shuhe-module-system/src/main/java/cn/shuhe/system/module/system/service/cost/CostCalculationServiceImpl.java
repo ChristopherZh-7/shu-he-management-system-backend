@@ -10,7 +10,6 @@ import cn.shuhe.system.module.system.dal.dataobject.cost.PositionLevelHistoryDO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.DeptDO;
 import cn.shuhe.system.module.system.dal.dataobject.holiday.HolidayDO;
 import cn.shuhe.system.module.system.dal.dataobject.user.AdminUserDO;
-import cn.shuhe.system.module.system.dal.mysql.holiday.HolidayMapper;
 import cn.shuhe.system.module.system.dal.mysql.user.AdminUserMapper;
 import cn.shuhe.system.module.system.service.dept.DeptService;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -108,9 +107,6 @@ public class CostCalculationServiceImpl implements CostCalculationService {
     private DeptService deptService;
 
     @Resource
-    private HolidayMapper holidayMapper;
-
-    @Resource
     private HolidayService holidayService;
 
     @Resource
@@ -151,14 +147,8 @@ public class CostCalculationServiceImpl implements CostCalculationService {
 
     @Override
     public int getWorkingDays(int year, int month) {
-        // 先尝试从缓存获取
-        List<HolidayDO> holidays = holidayMapper.selectByYearAndMonth(year, month);
-
-        if (CollUtil.isEmpty(holidays)) {
-            // 如果缓存没有，先同步节假日数据
-            holidayService.syncHolidayData(year);
-            holidays = holidayMapper.selectByYearAndMonth(year, month);
-        }
+        // 【性能优化】使用缓存服务获取假期数据
+        List<HolidayDO> holidays = holidayService.getHolidaysByMonth(year, month);
 
         // 如果还是没有数据，使用默认计算（只排除周末）
         if (CollUtil.isEmpty(holidays)) {
@@ -263,13 +253,8 @@ public class CostCalculationServiceImpl implements CostCalculationService {
         int totalDays = yearMonth.lengthOfMonth();
         respVO.setTotalDays(totalDays);
 
-        // 获取节假日数据
-        List<HolidayDO> holidays = holidayMapper.selectByYearAndMonth(year, month);
-        if (CollUtil.isEmpty(holidays)) {
-            // 同步数据
-            holidayService.syncHolidayData(year);
-            holidays = holidayMapper.selectByYearAndMonth(year, month);
-        }
+        // 【性能优化】使用缓存服务获取假期数据
+        List<HolidayDO> holidays = holidayService.getHolidaysByMonth(year, month);
 
         if (CollUtil.isEmpty(holidays)) {
             // 使用默认计算
@@ -712,7 +697,15 @@ public class CostCalculationServiceImpl implements CostCalculationService {
             }
         }
 
-        // 3. 批量计算成本
+        // 3. 【性能优化】预加载假期数据，避免循环中重复查询
+        // 预热当前年份和可能涉及的前一年份的假期数据（跨年场景）
+        holidayService.getHolidaysByYear(year);
+        if (month <= 2) {
+            // 如果是年初，可能需要计算上一年的数据
+            holidayService.getHolidaysByYear(year - 1);
+        }
+
+        // 4. 批量计算成本
         Map<Long, BigDecimal> result = new HashMap<>();
         for (AdminUserDO user : users) {
             try {

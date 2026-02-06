@@ -65,6 +65,21 @@ public class ProjectRoundDO extends BaseDO {
     private LocalDateTime deadline;
 
     /**
+     * 提前几天提醒（默认3天）
+     */
+    private Integer remindDays;
+
+    /**
+     * 提醒时间（自动计算：deadline - remindDays）
+     */
+    private LocalDateTime remindTime;
+
+    /**
+     * 是否已提醒：false-未提醒 true-已提醒
+     */
+    private Boolean reminded;
+
+    /**
      * 计划结束时间（保留字段，部分模块使用）
      */
     private LocalDateTime planEndTime;

@@ -53,10 +53,10 @@ public class BusinessAnalysisCacheServiceImpl implements BusinessAnalysisCacheSe
 
     @Override
     @Cacheable(value = RedisKeyConstants.BUSINESS_ANALYSIS, 
-               key = "#year + ':' + #cutoffDate.toString() + ':' + #userId",
+               key = "#year + ':' + #cutoffDate.toString()",
                unless = "#result == null")
     public BusinessAnalysisRespVO getBusinessAnalysis(int year, LocalDate cutoffDate, Long userId) {
-        log.info("[缓存未命中] 开始计算经营分析数据，year={}, cutoffDate={}, userId={}", year, cutoffDate, userId);
+        log.info("[缓存未命中] 开始计算经营分析数据，year={}, cutoffDate={}", year, cutoffDate);
         long startTime = System.currentTimeMillis();
         
         BusinessAnalysisReqVO reqVO = new BusinessAnalysisReqVO();
@@ -65,7 +65,8 @@ public class BusinessAnalysisCacheServiceImpl implements BusinessAnalysisCacheSe
         reqVO.setLevel(2); // 包含子部门
         reqVO.setIncludeEmployees(false); // 不包含员工详情，加快查询
         
-        BusinessAnalysisRespVO result = businessAnalysisService.getBusinessAnalysis(reqVO, userId);
+        // 使用系统管理员ID(1L)获取完整数据，供所有用户共享
+        BusinessAnalysisRespVO result = businessAnalysisService.getBusinessAnalysis(reqVO, 1L);
         
         log.info("[缓存未命中] 经营分析计算完成，耗时={}ms", System.currentTimeMillis() - startTime);
         return result;
@@ -73,10 +74,10 @@ public class BusinessAnalysisCacheServiceImpl implements BusinessAnalysisCacheSe
 
     @Override
     @Cacheable(value = RedisKeyConstants.DASHBOARD_REVENUE,
-               key = "#userId",
+               key = "'all'",
                unless = "#result == null")
     public RevenueStats getRevenueStats(Long userId) {
-        log.info("[缓存未命中] 开始计算收入统计，userId={}", userId);
+        log.info("[缓存未命中] 开始计算收入统计");
         long startTime = System.currentTimeMillis();
         
         LocalDate now = LocalDate.now();
@@ -170,22 +171,22 @@ public class BusinessAnalysisCacheServiceImpl implements BusinessAnalysisCacheSe
     public void clearAllCache() {
         log.info("[缓存清除] 开始清除所有经营分析相关缓存");
         try {
-            // 清除经营分析缓存
-            Set<String> analysisKeys = stringRedisTemplate.keys(RedisKeyConstants.BUSINESS_ANALYSIS + ":*");
+            // 清除经营分析缓存（去除#ttl后缀）
+            Set<String> analysisKeys = stringRedisTemplate.keys("business_analysis:*");
             if (analysisKeys != null && !analysisKeys.isEmpty()) {
                 stringRedisTemplate.delete(analysisKeys);
                 log.info("[缓存清除] 已清除 {} 个经营分析缓存", analysisKeys.size());
             }
             
             // 清除收入统计缓存
-            Set<String> revenueKeys = stringRedisTemplate.keys(RedisKeyConstants.DASHBOARD_REVENUE + ":*");
+            Set<String> revenueKeys = stringRedisTemplate.keys("dashboard_revenue:*");
             if (revenueKeys != null && !revenueKeys.isEmpty()) {
                 stringRedisTemplate.delete(revenueKeys);
                 log.info("[缓存清除] 已清除 {} 个收入统计缓存", revenueKeys.size());
             }
             
             // 清除部门排行缓存
-            Set<String> rankingKeys = stringRedisTemplate.keys(RedisKeyConstants.DASHBOARD_DEPT_RANKING + ":*");
+            Set<String> rankingKeys = stringRedisTemplate.keys("dashboard_dept_ranking:*");
             if (rankingKeys != null && !rankingKeys.isEmpty()) {
                 stringRedisTemplate.delete(rankingKeys);
                 log.info("[缓存清除] 已清除 {} 个部门排行缓存", rankingKeys.size());

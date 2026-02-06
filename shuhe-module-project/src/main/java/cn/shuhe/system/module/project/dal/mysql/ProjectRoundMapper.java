@@ -110,4 +110,41 @@ public interface ProjectRoundMapper extends BaseMapperX<ProjectRoundDO> {
                 .in(ProjectRoundDO::getStatus, 1, 2))); // 执行中、已完成
     }
 
+    /**
+     * 查询需要提醒的执行计划
+     * 条件：
+     * 1. remind_time <= 当前时间（到了提醒时间）
+     * 2. reminded = 0（未提醒）
+     * 3. status IN (0, 1)（待执行或执行中，不包括已完成和已取消）
+     *
+     * @param now 当前时间
+     * @return 需要提醒的执行计划列表
+     */
+    default List<ProjectRoundDO> selectRoundsNeedRemind(LocalDateTime now) {
+        return selectList(new LambdaQueryWrapperX<ProjectRoundDO>()
+                .le(ProjectRoundDO::getRemindTime, now)
+                .eq(ProjectRoundDO::getReminded, false)
+                .in(ProjectRoundDO::getStatus, 0, 1) // 待执行、执行中
+                .isNotNull(ProjectRoundDO::getDeadline)
+                .orderByAsc(ProjectRoundDO::getRemindTime));
+    }
+
+    /**
+     * 查询即将到期的执行计划（用于Dashboard展示）
+     * 条件：
+     * 1. deadline 在指定天数内
+     * 2. status IN (0, 1)（待执行或执行中）
+     *
+     * @param startTime 开始时间
+     * @param endTime   结束时间
+     * @return 即将到期的执行计划列表
+     */
+    default List<ProjectRoundDO> selectUpcomingDeadlineRounds(LocalDateTime startTime, LocalDateTime endTime) {
+        return selectList(new LambdaQueryWrapperX<ProjectRoundDO>()
+                .ge(ProjectRoundDO::getDeadline, startTime)
+                .le(ProjectRoundDO::getDeadline, endTime)
+                .in(ProjectRoundDO::getStatus, 0, 1) // 待执行、执行中
+                .orderByAsc(ProjectRoundDO::getDeadline));
+    }
+
 }

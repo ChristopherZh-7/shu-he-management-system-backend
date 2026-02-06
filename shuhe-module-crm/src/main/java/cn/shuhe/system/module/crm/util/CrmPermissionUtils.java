@@ -28,12 +28,16 @@ public class CrmPermissionUtils {
 
     /**
      * 校验用户是否是 CRM 管理员
+     * 注意：超级管理员(super_admin)自动拥有 CRM 管理员权限
      *
      * @return 是/否
      */
     public static boolean isCrmAdmin() {
         PermissionCommonApi permissionApi = SpringUtil.getBean(PermissionCommonApi.class);
-        return permissionApi.hasAnyRoles(getLoginUserId(), RoleCodeEnum.CRM_ADMIN.getCode());
+        Long userId = getLoginUserId();
+        // 超级管理员或 CRM 管理员都视为 CRM 管理员
+        return permissionApi.hasAnyRoles(userId, RoleCodeEnum.SUPER_ADMIN.getCode())
+                || permissionApi.hasAnyRoles(userId, RoleCodeEnum.CRM_ADMIN.getCode());
     }
 
     /**

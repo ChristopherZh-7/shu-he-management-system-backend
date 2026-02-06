@@ -150,6 +150,13 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
             round.setName("第" + newRoundNo + "次执行");
         }
 
+        // 设置提醒相关字段
+        round.setRemindDays(3); // 默认提前3天提醒
+        round.setReminded(false);
+        if (round.getDeadline() != null) {
+            round.setRemindTime(round.getDeadline().minusDays(3));
+        }
+
         projectRoundMapper.insert(round);
         return round.getId();
     }
@@ -174,6 +181,16 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
         updateObj.setDeadline(updateReqVO.getDeadline());
         updateObj.setPlanEndTime(updateReqVO.getPlanEndTime());
         updateObj.setRemark(updateReqVO.getRemark());
+        
+        // 如果截止日期变化了，重新计算提醒时间并重置提醒状态
+        if (updateReqVO.getDeadline() != null) {
+            Integer remindDays = existingRound.getRemindDays() != null ? existingRound.getRemindDays() : 3;
+            updateObj.setRemindTime(updateReqVO.getDeadline().minusDays(remindDays));
+            // 如果新的截止日期还没到提醒时间，重置提醒状态
+            if (updateReqVO.getDeadline().minusDays(remindDays).isAfter(LocalDateTime.now())) {
+                updateObj.setReminded(false);
+            }
+        }
         
         // 更新状态和实际时间
         if (updateReqVO.getStatus() != null) {
