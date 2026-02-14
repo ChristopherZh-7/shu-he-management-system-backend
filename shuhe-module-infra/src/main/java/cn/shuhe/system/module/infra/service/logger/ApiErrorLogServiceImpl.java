@@ -68,8 +68,12 @@ public class ApiErrorLogServiceImpl implements ApiErrorLogService {
             throw exception(API_ERROR_LOG_PROCESSED);
         }
         // 标记处理
-        apiErrorLogMapper.updateById(ApiErrorLogDO.builder().id(id).processStatus(processStatus)
-                .processUserId(processUserId).processTime(LocalDateTime.now()).build());
+        ApiErrorLogDO updateObj = new ApiErrorLogDO();
+        updateObj.setId(id);
+        updateObj.setProcessStatus(processStatus);
+        updateObj.setProcessUserId(processUserId);
+        updateObj.setProcessTime(LocalDateTime.now());
+        apiErrorLogMapper.updateById(updateObj);
     }
 
     @Override
