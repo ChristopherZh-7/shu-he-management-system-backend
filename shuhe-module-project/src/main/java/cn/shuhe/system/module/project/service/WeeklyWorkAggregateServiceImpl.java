@@ -5,17 +5,22 @@ import cn.hutool.json.JSONUtil;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectWorkRecordRespVO;
+import cn.shuhe.system.module.project.controller.admin.vo.TeamOverviewRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.WeeklyWorkAggregateReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.WeeklyWorkAggregateRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.WeeklyWorkAggregateRespVO.DailyWorkVO;
 import cn.shuhe.system.module.project.dal.dataobject.DailyManagementRecordDO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectSiteMemberDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectWorkRecordDO;
 import cn.shuhe.system.module.project.dal.mysql.DailyManagementRecordMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectSiteMemberMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectWorkRecordMapper;
 import cn.shuhe.system.module.system.api.dept.DeptApi;
 import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
+import cn.shuhe.system.module.system.dal.dataobject.holiday.HolidayDO;
+import cn.shuhe.system.module.system.service.cost.HolidayService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -43,10 +48,16 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
     private ProjectWorkRecordMapper projectWorkRecordMapper;
 
     @Resource
+    private ProjectSiteMemberMapper projectSiteMemberMapper;
+
+    @Resource
     private AdminUserApi adminUserApi;
 
     @Resource
     private DeptApi deptApi;
+
+    @Resource
+    private HolidayService holidayService;
 
     /**
      * 星期名称映射
@@ -88,17 +99,49 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
         Map<LocalDate, List<ProjectWorkRecordDO>> projectRecordsByDate = projectRecords.stream()
                 .collect(Collectors.groupingBy(ProjectWorkRecordDO::getRecordDate));
 
-        // 4. 构建每日工作列表（周一到周五）
+        // 4. 查询本周的节假日数据
+        Map<LocalDate, HolidayDO> holidayMap = new HashMap<>();
+        try {
+            List<HolidayDO> monthHolidays = holidayService.getHolidaysByMonth(
+                    weekStartDate.getYear(), weekStartDate.getMonthValue());
+            for (HolidayDO h : monthHolidays) {
+                holidayMap.put(h.getDate(), h);
+            }
+            // 如果跨月，也加载下个月的
+            if (weekStartDate.getMonthValue() != weekEndDate.getMonthValue()) {
+                List<HolidayDO> nextMonthHolidays = holidayService.getHolidaysByMonth(
+                        weekEndDate.getYear(), weekEndDate.getMonthValue());
+                for (HolidayDO h : nextMonthHolidays) {
+                    holidayMap.put(h.getDate(), h);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("获取节假日数据失败，使用默认周末判断", e);
+        }
+
+        // 5. 构建每日工作列表（周一到周日，前端根据工作日状态决定显示哪些天）
         List<DailyWorkVO> dailyWorks = new ArrayList<>();
         LocalDate today = LocalDate.now();
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 7; i++) {
             LocalDate currentDate = weekStartDate.plusDays(i);
             DailyWorkVO dailyWork = new DailyWorkVO();
             dailyWork.setDate(currentDate);
             dailyWork.setDayOfWeek(currentDate.getDayOfWeek().getValue());
             dailyWork.setDayOfWeekName(DAY_OF_WEEK_NAMES.get(currentDate.getDayOfWeek().getValue()));
             dailyWork.setIsToday(currentDate.equals(today));
+
+            // 设置工作日状态
+            HolidayDO holiday = holidayMap.get(currentDate);
+            if (holiday != null) {
+                dailyWork.setIsWorkday(holiday.getIsWorkday() != null && holiday.getIsWorkday() == 1);
+                dailyWork.setHolidayName(holiday.getHolidayName());
+            } else {
+                // 无节假日数据时按周末判断
+                boolean isWeekend = currentDate.getDayOfWeek() == DayOfWeek.SATURDAY
+                        || currentDate.getDayOfWeek() == DayOfWeek.SUNDAY;
+                dailyWork.setIsWorkday(!isWeekend);
+            }
 
             // 设置日常管理内容
             if (dailyRecord != null) {
@@ -340,6 +383,235 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
         log.info("【周工作日历】用户 {} 可查看 {} 个员工", currentUserId, result.size());
         
         return result;
+    }
+
+    @Override
+    public TeamOverviewRespVO getTeamOverview(Integer year, Integer weekNumber) {
+        // 1. 获取可查看的用户列表
+        List<Map<String, Object>> viewableUsers = getViewableUserList();
+
+        // 2. 计算周日期范围
+        LocalDate[] weekDates = calculateWeekDates(year, weekNumber);
+        LocalDate weekStartDate = weekDates[0];
+        LocalDate weekEndDate = weekDates[1];
+
+        // 3. 构建响应
+        TeamOverviewRespVO respVO = new TeamOverviewRespVO();
+        respVO.setYear(year);
+        respVO.setWeekNumber(weekNumber);
+        respVO.setWeekStartDate(weekStartDate);
+        respVO.setWeekEndDate(weekEndDate);
+
+        List<TeamOverviewRespVO.MemberWorkSummary> memberSummaries = new ArrayList<>();
+
+        for (Map<String, Object> userMap : viewableUsers) {
+            Long userId = ((Number) userMap.get("id")).longValue();
+            String nickname = (String) userMap.get("nickname");
+            String deptName = (String) userMap.get("deptName");
+
+            TeamOverviewRespVO.MemberWorkSummary summary = new TeamOverviewRespVO.MemberWorkSummary();
+            summary.setUserId(userId);
+            summary.setNickname(nickname);
+            summary.setDeptName(deptName);
+
+            summary.setWorkMode(resolveUserWorkMode(userId));
+
+            // 判断是否为管理人员（部门负责人）
+            AdminUserRespDTO memberUser = adminUserApi.getUser(userId);
+            boolean isManager = false;
+            if (memberUser != null && memberUser.getDeptId() != null) {
+                DeptRespDTO memberDept = deptApi.getDept(memberUser.getDeptId());
+                if (memberDept != null && memberDept.getLeaderUserId() != null
+                        && memberDept.getLeaderUserId().equals(userId)) {
+                    isManager = true;
+                }
+                // 也检查上级部门负责人
+                if (!isManager && memberDept != null && memberDept.getParentId() != null) {
+                    DeptRespDTO parentDept = deptApi.getDept(memberDept.getParentId());
+                    if (parentDept != null && parentDept.getLeaderUserId() != null
+                            && parentDept.getLeaderUserId().equals(userId)) {
+                        isManager = true;
+                    }
+                }
+            }
+            // 也检查 project_site_member 里的管理人员类型
+            if (!isManager) {
+                List<ProjectSiteMemberDO> activeMembers = projectSiteMemberMapper.selectActiveByUserIds(
+                        Collections.singletonList(userId));
+                isManager = activeMembers.stream().anyMatch(m ->
+                        m.getMemberType() != null && m.getMemberType() == ProjectSiteMemberDO.MEMBER_TYPE_MANAGEMENT);
+            }
+            summary.setIsManager(isManager);
+
+            // 查询日常管理记录
+            DailyManagementRecordDO dailyRecord = dailyManagementRecordMapper.selectByCreatorAndYearAndWeek(
+                    String.valueOf(userId), year, weekNumber);
+
+            // 查询项目工作记录
+            List<ProjectWorkRecordDO> projectRecords = projectWorkRecordMapper.selectListByCreatorAndDateRange(
+                    userId, weekStartDate, weekEndDate);
+
+            // 按日期分组项目记录
+            Map<LocalDate, List<ProjectWorkRecordDO>> projectRecordsByDate = projectRecords.stream()
+                    .collect(Collectors.groupingBy(ProjectWorkRecordDO::getRecordDate));
+
+            // 构建每日详情
+            List<TeamOverviewRespVO.DayDetail> dayDetails = new ArrayList<>();
+            int dailyContentDays = 0;
+
+            for (int i = 0; i < 5; i++) {
+                LocalDate currentDate = weekStartDate.plusDays(i);
+                TeamOverviewRespVO.DayDetail dayDetail = new TeamOverviewRespVO.DayDetail();
+                dayDetail.setDate(currentDate);
+                dayDetail.setDayOfWeekName(DAY_OF_WEEK_NAMES.get(currentDate.getDayOfWeek().getValue()));
+
+                if (dailyRecord != null) {
+                    String content = getDailyContentByDayOfWeek(dailyRecord, currentDate.getDayOfWeek().getValue());
+                    dayDetail.setDailyContent(content);
+                    if (content != null && !content.trim().isEmpty()) {
+                        dailyContentDays++;
+                    }
+                }
+
+                List<ProjectWorkRecordDO> dayProjectRecords = projectRecordsByDate.getOrDefault(currentDate, Collections.emptyList());
+                dayDetail.setProjectRecords(convertToProjectRecordRespVOs(dayProjectRecords));
+                dayDetail.setProjectRecordCount(dayProjectRecords.size());
+
+                dayDetails.add(dayDetail);
+            }
+
+            summary.setDayDetails(dayDetails);
+            summary.setProjectRecordCount(projectRecords.size());
+            summary.setDailyContentDays(dailyContentDays);
+            summary.setHasWeeklySummary(dailyRecord != null && dailyRecord.getWeeklySummary() != null
+                    && !dailyRecord.getWeeklySummary().trim().isEmpty());
+            summary.setWeeklySummary(dailyRecord != null ? dailyRecord.getWeeklySummary() : null);
+            summary.setNextWeekPlan(dailyRecord != null ? dailyRecord.getNextWeekPlan() : null);
+
+            memberSummaries.add(summary);
+        }
+
+        respVO.setMemberSummaries(memberSummaries);
+        return respVO;
+    }
+
+    @Override
+    public Integer getCurrentUserWorkMode() {
+        Long userId = SecurityFrameworkUtils.getLoginUserId();
+        return resolveUserWorkMode(userId);
+    }
+
+    @Resource
+    private cn.shuhe.system.module.project.dal.mysql.ProjectMapper projectMapper;
+
+    @Resource
+    private cn.shuhe.system.module.project.dal.mysql.ProjectSiteMapper projectSiteMapper;
+
+    @Override
+    public Map<String, Object> getCurrentUserWorkModeInfo() {
+        Long userId = SecurityFrameworkUtils.getLoginUserId();
+        Integer workMode = resolveUserWorkMode(userId);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("workMode", workMode);
+
+        if (workMode == 1) {
+            // 查询在岗的驻场分配信息
+            List<ProjectSiteMemberDO> activeMembers = projectSiteMemberMapper.selectActiveByUserIds(
+                    Collections.singletonList(userId));
+            if (CollUtil.isNotEmpty(activeMembers)) {
+                List<Map<String, Object>> siteProjects = new ArrayList<>();
+                for (ProjectSiteMemberDO member : activeMembers) {
+                    Map<String, Object> projectInfo = new HashMap<>();
+                    projectInfo.put("projectId", member.getProjectId());
+                    projectInfo.put("siteId", member.getSiteId());
+                    projectInfo.put("positionName", member.getPositionName());
+                    projectInfo.put("isLeader", member.getIsLeader());
+                    projectInfo.put("startDate", member.getStartDate());
+
+                    // 获取项目名称和客户信息
+                    if (member.getProjectId() != null) {
+                        cn.shuhe.system.module.project.dal.dataobject.ProjectDO project =
+                                projectMapper.selectById(member.getProjectId());
+                        if (project != null) {
+                            projectInfo.put("projectName", project.getName());
+                            projectInfo.put("customerName", project.getCustomerName());
+                        }
+                    }
+
+                    // 获取驻场点名称
+                    if (member.getSiteId() != null) {
+                        cn.shuhe.system.module.project.dal.dataobject.ProjectSiteDO site =
+                                projectSiteMapper.selectById(member.getSiteId());
+                        if (site != null) {
+                            projectInfo.put("siteName", site.getName());
+                            projectInfo.put("siteAddress", site.getAddress());
+                        }
+                    }
+
+                    siteProjects.add(projectInfo);
+                }
+                result.put("siteProjects", siteProjects);
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * 综合判断用户的工作模式
+     * 返回值：1-驻场(在岗) 2-二线 3-未入场(驻场部门但不在项目上)
+     *
+     * 逻辑：
+     * 1. 沿部门树向上查找 workMode 设置
+     * 2. 驻场部门 + 在岗 → 1(驻场)
+     * 3. 驻场部门 + 不在岗 → 3(未入场)
+     * 4. 二线部门 → 2(二线)
+     * 5. 查不到部门 → 用 project_site_member 兜底
+     */
+    private Integer resolveUserWorkMode(Long userId) {
+        AdminUserRespDTO user = adminUserApi.getUser(userId);
+        if (user == null || user.getDeptId() == null) {
+            return projectSiteMemberMapper.isUserOnSite(userId) ? 1 : 2;
+        }
+
+        try {
+            Integer deptWorkMode = findDeptWorkModeRecursively(user.getDeptId());
+
+            if (deptWorkMode != null && deptWorkMode == 1) {
+                // 驻场部门：在岗→1, 不在岗→3(未入场)
+                return projectSiteMemberMapper.isUserOnSite(userId) ? 1 : 3;
+            }
+
+            if (deptWorkMode != null) {
+                return 2; // 明确设置为二线
+            }
+        } catch (Exception e) {
+            log.warn("【工作模式】查询部门workMode失败，使用驻场人员表兜底，userId={}", userId, e);
+        }
+
+        return projectSiteMemberMapper.isUserOnSite(userId) ? 1 : 2;
+    }
+
+    /**
+     * 沿部门树向上递归查找 workMode（最多向上查5级防止死循环）
+     */
+    private Integer findDeptWorkModeRecursively(Long deptId) {
+        return findDeptWorkModeRecursively(deptId, 5);
+    }
+
+    private Integer findDeptWorkModeRecursively(Long deptId, int maxDepth) {
+        if (deptId == null || deptId == 0 || maxDepth <= 0) {
+            return null;
+        }
+        DeptRespDTO dept = deptApi.getDept(deptId);
+        if (dept == null) {
+            return null;
+        }
+        if (dept.getWorkMode() != null) {
+            return dept.getWorkMode();
+        }
+        return findDeptWorkModeRecursively(dept.getParentId(), maxDepth - 1);
     }
 
 }

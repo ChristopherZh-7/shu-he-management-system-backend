@@ -36,6 +36,9 @@ public class DeptRespVO {
     @Schema(description = "部门类型：1-安全服务 2-安全运营 3-数据安全", example = "1")
     private Integer deptType;
 
+    @Schema(description = "工作模式：null-继承上级 1-驻场 2-二线", example = "1")
+    private Integer workMode;
+
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED, example = "时间戳格式")
     private LocalDateTime createTime;
 

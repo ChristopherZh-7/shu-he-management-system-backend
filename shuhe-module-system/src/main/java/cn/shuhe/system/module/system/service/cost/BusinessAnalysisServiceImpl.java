@@ -369,26 +369,28 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
      * 只返回三个顶级业务部门，避免重复统计
      */
     private List<DeptDO> getVisibleDepts(Long requestedDeptId, Long currentUserId) {
-        // 获取当前用户信息
         AdminUserDO currentUser = adminUserService.getUser(currentUserId);
         if (currentUser == null) {
+            log.warn("[getVisibleDepts] 用户 {} 不存在", currentUserId);
             return Collections.emptyList();
         }
 
-        // TODO: 判断是否是总经理或人事（可以看所有）
-        // 暂时简化：如果请求了特定部门就只返回该部门，否则返回三个顶级业务部门
-        
         if (requestedDeptId != null) {
             DeptDO dept = deptService.getDept(requestedDeptId);
+            log.info("[getVisibleDepts] 指定部门 deptId={}, found={}", requestedDeptId, dept != null);
             return dept != null ? List.of(dept) : Collections.emptyList();
         }
 
-        // 获取三个顶级业务部门（parentId = 0 或父部门是公司根部门）
-        // 顶级业务部门的特征：有 deptType 且是顶级部门（没有其他业务部门作为父部门）
-        // 【性能优化】从缓存加载所有部门
         List<DeptDO> allDepts = deptService.getAllDeptListFromCache();
-        
-        // 收集所有有业务类型的部门ID
+        log.info("[getVisibleDepts] 总部门数: {}", allDepts.size());
+
+        for (DeptDO dept : allDepts) {
+            Integer type = dept.getDeptType();
+            Integer inferred = inferDeptTypeFromName(dept.getName());
+            log.info("[getVisibleDepts] 部门 id={}, name={}, deptType={}, inferredType={}, parentId={}",
+                    dept.getId(), dept.getName(), type, inferred, dept.getParentId());
+        }
+
         Set<Long> businessDeptIds = allDepts.stream()
                 .filter(dept -> {
                     Integer type = dept.getDeptType();
@@ -401,9 +403,9 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
                 })
                 .map(DeptDO::getId)
                 .collect(Collectors.toSet());
-        
-        // 只返回顶级业务部门：其父部门不在业务部门集合中
-        return allDepts.stream()
+        log.info("[getVisibleDepts] 业务部门IDs: {}", businessDeptIds);
+
+        List<DeptDO> result = allDepts.stream()
                 .filter(dept -> {
                     Integer type = dept.getDeptType();
                     if (type == null) {
@@ -414,11 +416,19 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
                             && type != DEPT_TYPE_DATA_SECURITY)) {
                         return false;
                     }
-                    // 父部门不是业务部门，说明这是顶级业务部门
                     Long parentId = dept.getParentId();
-                    return parentId == null || parentId == 0L || !businessDeptIds.contains(parentId);
+                    boolean isTopLevel = parentId == null || parentId == 0L || !businessDeptIds.contains(parentId);
+                    if (!isTopLevel) {
+                        log.info("[getVisibleDepts] 部门 {} ({}) 被过滤：父部门 {} 也是业务部门",
+                                dept.getId(), dept.getName(), parentId);
+                    }
+                    return isTopLevel;
                 })
                 .collect(Collectors.toList());
+
+        log.info("[getVisibleDepts] 最终返回 {} 个顶级业务部门: {}", result.size(),
+                result.stream().map(d -> d.getId() + "(" + d.getName() + ")").collect(Collectors.joining(", ")));
+        return result;
     }
 
     // ========== 使用缓存的优化版本方法 ==========

@@ -45,4 +45,10 @@ public class AdminUserRespDTO {
      */
     private String avatar;
 
+    /**
+     * 工作模式
+     * 1-驻场 2-二线
+     */
+    private Integer workMode;
+
 }

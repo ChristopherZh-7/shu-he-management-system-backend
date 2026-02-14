@@ -127,4 +127,22 @@ public interface ProjectSiteMemberMapper extends BaseMapperX<ProjectSiteMemberDO
                 .orderByAsc(ProjectSiteMemberDO::getMemberType));
     }
 
+    /**
+     * 查询用户当前是否有"在岗"的驻场分配
+     */
+    default boolean isUserOnSite(Long userId) {
+        return selectCount(new LambdaQueryWrapperX<ProjectSiteMemberDO>()
+                .eq(ProjectSiteMemberDO::getUserId, userId)
+                .eq(ProjectSiteMemberDO::getStatus, ProjectSiteMemberDO.STATUS_ACTIVE)) > 0;
+    }
+
+    /**
+     * 批量查询多个用户的在岗驻场状态
+     */
+    default List<ProjectSiteMemberDO> selectActiveByUserIds(List<Long> userIds) {
+        return selectList(new LambdaQueryWrapperX<ProjectSiteMemberDO>()
+                .in(ProjectSiteMemberDO::getUserId, userIds)
+                .eq(ProjectSiteMemberDO::getStatus, ProjectSiteMemberDO.STATUS_ACTIVE));
+    }
+
 }

@@ -45,4 +45,10 @@ public class DeptRespDTO {
      */
     private Integer deptType;
 
+    /**
+     * 工作模式
+     * null-继承上级 1-驻场 2-二线
+     */
+    private Integer workMode;
+
 }

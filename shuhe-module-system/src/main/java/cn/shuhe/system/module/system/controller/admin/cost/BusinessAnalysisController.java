@@ -57,20 +57,24 @@ public class BusinessAnalysisController {
     public CommonResult<BusinessAnalysisRespVO> getBusinessAnalysisSummary(@Valid BusinessAnalysisReqVO reqVO) {
         Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
         
-        // 【性能优化】优先从Redis缓存获取
         int year = reqVO.getYear() != null ? reqVO.getYear() : LocalDate.now().getYear();
         LocalDate cutoffDate = reqVO.getCutoffDate() != null ? reqVO.getCutoffDate() : LocalDate.now();
         
-        try {
-            BusinessAnalysisRespVO cachedResult = businessAnalysisCacheService.getBusinessAnalysis(year, cutoffDate, currentUserId);
-            if (cachedResult != null) {
-                return success(cachedResult);
+        boolean needsDetailedData = (reqVO.getLevel() != null && reqVO.getLevel() >= 3) 
+                || Boolean.TRUE.equals(reqVO.getIncludeEmployees())
+                || reqVO.getDeptId() != null;
+        
+        if (!needsDetailedData) {
+            try {
+                BusinessAnalysisRespVO cachedResult = businessAnalysisCacheService.getBusinessAnalysis(year, cutoffDate, currentUserId);
+                if (cachedResult != null) {
+                    return success(cachedResult);
+                }
+            } catch (Exception e) {
+                // 缓存获取失败，降级到直接计算
             }
-        } catch (Exception e) {
-            // 缓存获取失败，降级到直接计算
         }
         
-        // 缓存未命中或获取失败，直接计算
         return success(businessAnalysisService.getBusinessAnalysis(reqVO, currentUserId));
     }
 

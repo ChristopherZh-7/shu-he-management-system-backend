@@ -117,4 +117,10 @@ public class AdminUserDO extends BaseDO {
      */
     private String positionLevel;
 
+    /**
+     * 工作模式
+     * 1-驻场 2-二线
+     */
+    private Integer workMode;
+
 }

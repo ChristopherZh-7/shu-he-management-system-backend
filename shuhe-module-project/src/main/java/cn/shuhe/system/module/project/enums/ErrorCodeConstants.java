@@ -104,4 +104,9 @@ public interface ErrorCodeConstants {
     ErrorCode PROJECT_SITE_MEMBER_USER_REQUIRED = new ErrorCode(1_030_017_001, "创建驻场人员时用户不能为空");
     ErrorCode PROJECT_SITE_MEMBER_DUPLICATE = new ErrorCode(1_030_017_002, "该用户已在驻场点中");
 
+    // ========== 项目周报/汇报 1-030-018-000 ==========
+    ErrorCode PROJECT_REPORT_NOT_EXISTS = new ErrorCode(1_030_018_000, "项目周报不存在");
+    ErrorCode PROJECT_REPORT_UPDATE_NOT_OWNER = new ErrorCode(1_030_018_001, "只能修改自己创建的项目周报");
+    ErrorCode PROJECT_REPORT_DELETE_NOT_OWNER = new ErrorCode(1_030_018_002, "只能删除自己创建的项目周报");
+
 }

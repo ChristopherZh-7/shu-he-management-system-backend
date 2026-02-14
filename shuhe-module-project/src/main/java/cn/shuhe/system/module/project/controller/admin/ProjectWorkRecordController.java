@@ -5,6 +5,7 @@ import cn.hutool.json.JSONUtil;
 import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
+import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
 import cn.shuhe.system.framework.excel.core.util.ExcelUtils;
 import cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectWorkRecordPageReqVO;
@@ -66,14 +67,14 @@ public class ProjectWorkRecordController {
 
     @PostMapping("/create")
     @Operation(summary = "创建工作记录")
-    @PreAuthorize("@ss.hasPermission('project:work-record:create')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:work-record:create', 'project:management-record:create', 'project:my-work-record:create')")
     public CommonResult<Long> createWorkRecord(@Valid @RequestBody ProjectWorkRecordSaveReqVO createReqVO) {
         return success(workRecordService.createWorkRecord(createReqVO));
     }
 
     @PutMapping("/update")
     @Operation(summary = "更新工作记录")
-    @PreAuthorize("@ss.hasPermission('project:work-record:update')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:work-record:update', 'project:management-record:update', 'project:my-work-record:update')")
     public CommonResult<Boolean> updateWorkRecord(@Valid @RequestBody ProjectWorkRecordSaveReqVO updateReqVO) {
         workRecordService.updateWorkRecord(updateReqVO);
         return success(true);
@@ -82,7 +83,7 @@ public class ProjectWorkRecordController {
     @DeleteMapping("/delete")
     @Operation(summary = "删除工作记录")
     @Parameter(name = "id", description = "记录编号", required = true)
-    @PreAuthorize("@ss.hasPermission('project:work-record:delete')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:work-record:delete', 'project:management-record:delete')")
     public CommonResult<Boolean> deleteWorkRecord(@RequestParam("id") Long id) {
         workRecordService.deleteWorkRecord(id);
         return success(true);
@@ -91,7 +92,7 @@ public class ProjectWorkRecordController {
     @GetMapping("/get")
     @Operation(summary = "获取工作记录详情")
     @Parameter(name = "id", description = "记录编号", required = true)
-    @PreAuthorize("@ss.hasPermission('project:work-record:query')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:work-record:query', 'project:management-record:query', 'project:my-work-record:query')")
     public CommonResult<ProjectWorkRecordRespVO> getWorkRecord(@RequestParam("id") Long id) {
         ProjectWorkRecordDO record = workRecordService.getWorkRecord(id);
         return success(convertToRespVO(record));
@@ -99,7 +100,7 @@ public class ProjectWorkRecordController {
 
     @GetMapping("/page")
     @Operation(summary = "获取工作记录分页")
-    @PreAuthorize("@ss.hasPermission('project:work-record:query')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:work-record:query', 'project:management-record:query', 'project:my-work-record:query')")
     public CommonResult<PageResult<ProjectWorkRecordRespVO>> getWorkRecordPage(@Valid ProjectWorkRecordPageReqVO pageReqVO) {
         PageResult<ProjectWorkRecordDO> pageResult = workRecordService.getWorkRecordPage(pageReqVO);
         
@@ -114,7 +115,7 @@ public class ProjectWorkRecordController {
     @GetMapping("/list-by-project")
     @Operation(summary = "根据项目ID获取工作记录列表")
     @Parameter(name = "projectId", description = "项目ID", required = true)
-    @PreAuthorize("@ss.hasPermission('project:work-record:query')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:work-record:query', 'project:management-record:query', 'project:my-work-record:query')")
     public CommonResult<List<ProjectWorkRecordRespVO>> getWorkRecordListByProject(@RequestParam("projectId") Long projectId) {
         List<ProjectWorkRecordDO> list = workRecordService.getWorkRecordListByProjectId(projectId);
         return success(list.stream().map(this::convertToRespVO).collect(Collectors.toList()));
@@ -123,7 +124,7 @@ public class ProjectWorkRecordController {
     @GetMapping("/list-by-service-item")
     @Operation(summary = "根据服务项ID获取工作记录列表")
     @Parameter(name = "serviceItemId", description = "服务项ID", required = true)
-    @PreAuthorize("@ss.hasPermission('project:work-record:query')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:work-record:query', 'project:management-record:query', 'project:my-work-record:query')")
     public CommonResult<List<ProjectWorkRecordRespVO>> getWorkRecordListByServiceItem(@RequestParam("serviceItemId") Long serviceItemId) {
         List<ProjectWorkRecordDO> list = workRecordService.getWorkRecordListByServiceItemId(serviceItemId);
         return success(list.stream().map(this::convertToRespVO).collect(Collectors.toList()));
@@ -131,7 +132,7 @@ public class ProjectWorkRecordController {
 
     @GetMapping("/export")
     @Operation(summary = "导出工作记录Excel")
-    @PreAuthorize("@ss.hasPermission('project:work-record:export')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:work-record:export', 'project:management-record:export')")
     public void exportWorkRecordExcel(@Valid ProjectWorkRecordPageReqVO reqVO, HttpServletResponse response) throws IOException {
         List<ProjectWorkRecordDO> list = workRecordService.getWorkRecordListForExport(reqVO);
         List<ProjectWorkRecordRespVO> respList = list.stream()
@@ -144,7 +145,8 @@ public class ProjectWorkRecordController {
 
     @GetMapping("/my-projects")
     @Operation(summary = "获取当前用户可见的项目列表", description = "管理层看部门+子部门的项目，员工看自己负责/参与的项目")
-    @PreAuthorize("@ss.hasPermission('project:work-record:query')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:work-record:query', 'project:management-record:query', 'project:my-work-record:query')")
+    @DataPermission(enable = false)
     public CommonResult<List<Map<String, Object>>> getMyProjects(
             @RequestParam(value = "projectType", required = false) Integer projectType) {
         Long userId = SecurityFrameworkUtils.getLoginUserId();
@@ -256,7 +258,8 @@ public class ProjectWorkRecordController {
     @Operation(summary = "根据项目ID获取服务项列表")
     @Parameter(name = "projectId", description = "项目ID", required = true)
     @Parameter(name = "projectType", description = "项目类型", required = true)
-    @PreAuthorize("@ss.hasPermission('project:work-record:query')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:work-record:query', 'project:management-record:query', 'project:my-work-record:query')")
+    @DataPermission(enable = false)
     public CommonResult<List<Map<String, Object>>> getServiceItemsByProject(
             @RequestParam("projectId") Long projectId,
             @RequestParam("projectType") Integer projectType) {

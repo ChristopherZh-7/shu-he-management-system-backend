@@ -68,6 +68,12 @@ public class WeeklyWorkAggregateRespVO {
 
         @Schema(description = "是否为今天", requiredMode = Schema.RequiredMode.REQUIRED, example = "true")
         private Boolean isToday;
+
+        @Schema(description = "是否工作日（考虑中国节假日和调休）", example = "true")
+        private Boolean isWorkday;
+
+        @Schema(description = "节假日名称（如有）", example = "春节")
+        private String holidayName;
     }
 
 }

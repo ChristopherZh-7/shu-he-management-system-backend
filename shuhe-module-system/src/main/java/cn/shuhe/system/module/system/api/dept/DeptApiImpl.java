@@ -1,6 +1,7 @@
 package cn.shuhe.system.module.system.api.dept;
 
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
+import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
 import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.DeptDO;
 import cn.shuhe.system.module.system.service.dept.DeptService;
@@ -22,6 +23,7 @@ public class DeptApiImpl implements DeptApi {
     private DeptService deptService;
 
     @Override
+    @DataPermission(enable = false)
     public DeptRespDTO getDept(Long id) {
         DeptDO dept = deptService.getDept(id);
         return BeanUtils.toBean(dept, DeptRespDTO.class);
