@@ -1,5 +1,6 @@
 package cn.shuhe.system.module.project.service;
 
+import cn.shuhe.system.module.project.controller.admin.vo.GlobalOverviewRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.TeamOverviewRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.WeeklyWorkAggregateReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.WeeklyWorkAggregateRespVO;
@@ -58,5 +59,15 @@ public interface WeeklyWorkAggregateService {
      * @return 包含 workMode、驻场项目信息的 Map
      */
     Map<String, Object> getCurrentUserWorkModeInfo();
+
+    /**
+     * 获取全局总览（总经办专用）
+     * 汇总所有部门、所有项目的工作情况
+     *
+     * @param year 年份
+     * @param weekNumber 周数
+     * @return 全局总览数据
+     */
+    GlobalOverviewRespVO getGlobalOverview(Integer year, Integer weekNumber);
 
 }

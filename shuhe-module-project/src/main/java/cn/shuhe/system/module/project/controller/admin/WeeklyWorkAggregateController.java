@@ -1,6 +1,8 @@
 package cn.shuhe.system.module.project.controller.admin;
 
 import cn.shuhe.system.framework.common.pojo.CommonResult;
+import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
+import cn.shuhe.system.module.project.controller.admin.vo.GlobalOverviewRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.TeamOverviewRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.WeeklyWorkAggregateReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.WeeklyWorkAggregateRespVO;
@@ -71,6 +73,16 @@ public class WeeklyWorkAggregateController {
     @PreAuthorize("@ss.hasAnyPermissions('project:daily-record:query', 'project:work-record:query', 'project:management-record:query', 'project:my-work-record:query', 'project:team-overview:query')")
     public CommonResult<Integer> getCurrentUserWorkMode() {
         return success(weeklyWorkAggregateService.getCurrentUserWorkMode());
+    }
+
+    @GetMapping("/global-overview")
+    @Operation(summary = "获取全局总览", description = "总经办专用，查看所有部门所有项目的工作汇总")
+    @PreAuthorize("@ss.hasAnyPermissions('project:daily-record:query', 'project:work-record:query', 'project:management-record:query', 'project:my-work-record:query', 'project:team-overview:query', 'project:global-overview:query')")
+    @DataPermission(enable = false)
+    public CommonResult<GlobalOverviewRespVO> getGlobalOverview(
+            @RequestParam("year") Integer year,
+            @RequestParam("weekNumber") Integer weekNumber) {
+        return success(weeklyWorkAggregateService.getGlobalOverview(year, weekNumber));
     }
 
     @GetMapping("/work-mode-info")

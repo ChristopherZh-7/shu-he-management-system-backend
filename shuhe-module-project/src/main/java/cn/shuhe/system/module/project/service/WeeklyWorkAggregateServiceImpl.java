@@ -4,15 +4,19 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.json.JSONUtil;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils;
+import cn.shuhe.system.module.project.controller.admin.vo.GlobalOverviewRespVO;
+import cn.shuhe.system.module.project.controller.admin.vo.ProjectReportRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectWorkRecordRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.TeamOverviewRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.WeeklyWorkAggregateReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.WeeklyWorkAggregateRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.WeeklyWorkAggregateRespVO.DailyWorkVO;
 import cn.shuhe.system.module.project.dal.dataobject.DailyManagementRecordDO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectReportDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectSiteMemberDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectWorkRecordDO;
 import cn.shuhe.system.module.project.dal.mysql.DailyManagementRecordMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectReportMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectSiteMemberMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectWorkRecordMapper;
 import cn.shuhe.system.module.system.api.dept.DeptApi;
@@ -49,6 +53,9 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
 
     @Resource
     private ProjectSiteMemberMapper projectSiteMemberMapper;
+
+    @Resource
+    private ProjectReportMapper projectReportMapper;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -612,6 +619,274 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
             return dept.getWorkMode();
         }
         return findDeptWorkModeRecursively(dept.getParentId(), maxDepth - 1);
+    }
+
+    @Override
+    public GlobalOverviewRespVO getGlobalOverview(Integer year, Integer weekNumber) {
+        LocalDate[] weekDates = calculateWeekDates(year, weekNumber);
+        LocalDate weekStartDate = weekDates[0];
+        LocalDate weekEndDate = weekDates[1];
+
+        GlobalOverviewRespVO resp = new GlobalOverviewRespVO();
+        resp.setYear(year);
+        resp.setWeekNumber(weekNumber);
+        resp.setWeekStartDate(weekStartDate);
+        resp.setWeekEndDate(weekEndDate);
+
+        // 获取所有业务部门及其子部门
+        Set<Long> allDeptIds = new HashSet<>();
+        Map<Long, String> deptNameMap = new HashMap<>();
+        // 收集顶级业务部门 ID 用于按部门分组
+        Map<Long, String> topDeptMap = new LinkedHashMap<>();
+
+        for (int deptType = 1; deptType <= 3; deptType++) {
+            List<DeptRespDTO> deptsByType = deptApi.getDeptListByDeptType(deptType);
+            if (CollUtil.isNotEmpty(deptsByType)) {
+                for (DeptRespDTO dept : deptsByType) {
+                    allDeptIds.add(dept.getId());
+                    deptNameMap.put(dept.getId(), dept.getName());
+                    if (dept.getParentId() == null || dept.getParentId() == 0) {
+                        topDeptMap.put(dept.getId(), dept.getName());
+                    }
+                    List<DeptRespDTO> childDepts = deptApi.getChildDeptList(dept.getId());
+                    if (CollUtil.isNotEmpty(childDepts)) {
+                        for (DeptRespDTO child : childDepts) {
+                            allDeptIds.add(child.getId());
+                            deptNameMap.put(child.getId(), child.getName());
+                        }
+                    }
+                }
+            }
+        }
+
+        // 获取所有用户
+        List<AdminUserRespDTO> allUsers = adminUserApi.getUserListByDeptIds(allDeptIds);
+        if (CollUtil.isEmpty(allUsers)) {
+            resp.setTotalStaff(0);
+            resp.setOnSiteCount(0);
+            resp.setPendingCount(0);
+            resp.setBackOfficeCount(0);
+            resp.setFilledCount(0);
+            resp.setUnfilledCount(0);
+            resp.setDeptStats(Collections.emptyList());
+            resp.setProjectStats(Collections.emptyList());
+            resp.setManagerReports(Collections.emptyList());
+            resp.setUnfilledMembers(Collections.emptyList());
+            return resp;
+        }
+
+        // 计算每个用户的工作模式
+        Map<Long, Integer> userWorkModeMap = new HashMap<>();
+        int onSite = 0, pending = 0, backOffice = 0;
+        for (AdminUserRespDTO user : allUsers) {
+            Integer mode = resolveUserWorkMode(user.getId());
+            userWorkModeMap.put(user.getId(), mode);
+            if (mode == 1) onSite++;
+            else if (mode == 3) pending++;
+            else backOffice++;
+        }
+
+        resp.setTotalStaff(allUsers.size());
+        resp.setOnSiteCount(onSite);
+        resp.setPendingCount(pending);
+        resp.setBackOfficeCount(backOffice);
+
+        // 查询所有人本周的记录填写情况
+        Set<Long> filledUserIds = new HashSet<>();
+
+        // 日常管理记录
+        List<DailyManagementRecordDO> allDailyRecords = dailyManagementRecordMapper.selectListByYearAndWeek(year, weekNumber);
+        for (DailyManagementRecordDO r : allDailyRecords) {
+            if (r.getCreator() != null) {
+                filledUserIds.add(Long.parseLong(r.getCreator()));
+            }
+        }
+
+        // 项目工作记录
+        Map<Long, List<ProjectWorkRecordDO>> allProjectRecords = new HashMap<>();
+        for (AdminUserRespDTO user : allUsers) {
+            List<ProjectWorkRecordDO> records = projectWorkRecordMapper.selectListByCreatorAndDateRange(
+                    user.getId(), weekStartDate, weekEndDate);
+            if (CollUtil.isNotEmpty(records)) {
+                filledUserIds.add(user.getId());
+                allProjectRecords.put(user.getId(), records);
+            }
+        }
+
+        resp.setFilledCount(filledUserIds.size());
+        resp.setUnfilledCount(allUsers.size() - filledUserIds.size());
+
+        // 未填写记录的人员名单
+        List<GlobalOverviewRespVO.UnfilledMember> unfilledMembers = new ArrayList<>();
+        for (AdminUserRespDTO user : allUsers) {
+            if (!filledUserIds.contains(user.getId())) {
+                GlobalOverviewRespVO.UnfilledMember m = new GlobalOverviewRespVO.UnfilledMember();
+                m.setUserId(user.getId());
+                m.setNickname(user.getNickname());
+                m.setDeptName(user.getDeptId() != null ? deptNameMap.getOrDefault(user.getDeptId(), "") : "");
+                m.setWorkMode(userWorkModeMap.getOrDefault(user.getId(), 2));
+                unfilledMembers.add(m);
+            }
+        }
+        resp.setUnfilledMembers(unfilledMembers);
+
+        // 按顶级部门统计
+        List<GlobalOverviewRespVO.DeptStat> deptStats = new ArrayList<>();
+        for (Map.Entry<Long, String> entry : topDeptMap.entrySet()) {
+            Long topDeptId = entry.getKey();
+            String topDeptName = entry.getValue();
+
+            // 获取该顶级部门下所有子部门ID
+            Set<Long> subDeptIds = new HashSet<>();
+            subDeptIds.add(topDeptId);
+            List<DeptRespDTO> children = deptApi.getChildDeptList(topDeptId);
+            if (CollUtil.isNotEmpty(children)) {
+                for (DeptRespDTO c : children) {
+                    subDeptIds.add(c.getId());
+                }
+            }
+
+            // 筛选该部门的用户
+            List<AdminUserRespDTO> deptUsers = allUsers.stream()
+                    .filter(u -> u.getDeptId() != null && subDeptIds.contains(u.getDeptId()))
+                    .collect(Collectors.toList());
+
+            GlobalOverviewRespVO.DeptStat stat = new GlobalOverviewRespVO.DeptStat();
+            stat.setDeptId(topDeptId);
+            stat.setDeptName(topDeptName);
+            stat.setTotalMembers(deptUsers.size());
+            stat.setOnSiteCount((int) deptUsers.stream()
+                    .filter(u -> userWorkModeMap.getOrDefault(u.getId(), 2) == 1).count());
+
+            // 该部门的项目记录数
+            int deptProjectRecords = 0;
+            int deptFilledCount = 0;
+            for (AdminUserRespDTO u : deptUsers) {
+                List<ProjectWorkRecordDO> userRecords = allProjectRecords.get(u.getId());
+                if (userRecords != null) {
+                    deptProjectRecords += userRecords.size();
+                }
+                if (filledUserIds.contains(u.getId())) {
+                    deptFilledCount++;
+                }
+            }
+            stat.setProjectRecordCount(deptProjectRecords);
+            stat.setFilledCount(deptFilledCount);
+            stat.setUnfilledCount(deptUsers.size() - deptFilledCount);
+
+            deptStats.add(stat);
+        }
+        resp.setDeptStats(deptStats);
+
+        // 按项目统计（从所有项目工作记录中提取）
+        Map<Long, GlobalOverviewRespVO.ProjectStat> projectStatMap = new LinkedHashMap<>();
+        for (Map.Entry<Long, List<ProjectWorkRecordDO>> e : allProjectRecords.entrySet()) {
+            Long userId = e.getKey();
+            AdminUserRespDTO user = allUsers.stream().filter(u -> u.getId().equals(userId)).findFirst().orElse(null);
+            String userName = user != null ? user.getNickname() : "";
+
+            for (ProjectWorkRecordDO record : e.getValue()) {
+                if (record.getProjectId() == null) continue;
+                GlobalOverviewRespVO.ProjectStat ps = projectStatMap.computeIfAbsent(record.getProjectId(), k -> {
+                    GlobalOverviewRespVO.ProjectStat s = new GlobalOverviewRespVO.ProjectStat();
+                    s.setProjectId(record.getProjectId());
+                    s.setProjectName(record.getProjectName());
+                    s.setRecordCount(0);
+                    s.setMemberCount(0);
+                    s.setMemberNames(new ArrayList<>());
+                    return s;
+                });
+                ps.setRecordCount(ps.getRecordCount() + 1);
+                if (!ps.getMemberNames().contains(userName)) {
+                    ps.getMemberNames().add(userName);
+                    ps.setMemberCount(ps.getMemberNames().size());
+                }
+            }
+        }
+
+        // 获取项目客户名称
+        for (GlobalOverviewRespVO.ProjectStat ps : projectStatMap.values()) {
+            try {
+                cn.shuhe.system.module.project.dal.dataobject.ProjectDO project = projectMapper.selectById(ps.getProjectId());
+                if (project != null) {
+                    ps.setCustomerName(project.getCustomerName());
+                }
+            } catch (Exception ignored) {}
+        }
+
+        List<GlobalOverviewRespVO.ProjectStat> projectStats = new ArrayList<>(projectStatMap.values());
+        projectStats.sort((a, b) -> b.getRecordCount() - a.getRecordCount());
+        resp.setProjectStats(projectStats);
+
+        // 各主管的周报/管理总结
+        List<GlobalOverviewRespVO.ManagerReport> managerReports = new ArrayList<>();
+        for (Map.Entry<Long, String> entry : topDeptMap.entrySet()) {
+            Long topDeptId = entry.getKey();
+            // 找这个部门及子部门的负责人
+            Set<Long> subDeptIds = new HashSet<>();
+            subDeptIds.add(topDeptId);
+            List<DeptRespDTO> children = deptApi.getChildDeptList(topDeptId);
+            if (CollUtil.isNotEmpty(children)) {
+                for (DeptRespDTO c : children) {
+                    subDeptIds.add(c.getId());
+                }
+            }
+
+            // 收集所有负责人
+            Set<Long> leaderIds = new HashSet<>();
+            for (Long did : subDeptIds) {
+                DeptRespDTO d = deptApi.getDept(did);
+                if (d != null && d.getLeaderUserId() != null) {
+                    leaderIds.add(d.getLeaderUserId());
+                }
+            }
+
+            for (Long leaderId : leaderIds) {
+                // 避免重复
+                if (managerReports.stream().anyMatch(r -> r.getUserId().equals(leaderId))) continue;
+
+                AdminUserRespDTO leader = adminUserApi.getUser(leaderId);
+                if (leader == null) continue;
+
+                GlobalOverviewRespVO.ManagerReport report = new GlobalOverviewRespVO.ManagerReport();
+                report.setUserId(leaderId);
+                report.setNickname(leader.getNickname());
+                report.setDeptName(leader.getDeptId() != null ? deptNameMap.getOrDefault(leader.getDeptId(), "") : "");
+
+                // 查询该主管的日常管理记录（周总结）
+                DailyManagementRecordDO leaderDailyRecord = dailyManagementRecordMapper.selectByCreatorAndYearAndWeek(
+                        String.valueOf(leaderId), year, weekNumber);
+                if (leaderDailyRecord != null) {
+                    report.setWeeklySummary(leaderDailyRecord.getWeeklySummary());
+                    report.setNextWeekPlan(leaderDailyRecord.getNextWeekPlan());
+                    report.setHasFilled(true);
+                } else {
+                    report.setHasFilled(false);
+                }
+
+                // 查询该主管写的项目反馈
+                List<ProjectReportDO> leaderProjectReports = projectReportMapper.selectList(
+                        new cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX<ProjectReportDO>()
+                                .eq(ProjectReportDO::getCreator, String.valueOf(leaderId))
+                                .eq(ProjectReportDO::getYear, year)
+                                .eq(ProjectReportDO::getWeekNumber, weekNumber));
+                if (CollUtil.isNotEmpty(leaderProjectReports)) {
+                    report.setProjectReports(leaderProjectReports.stream()
+                            .map(r -> {
+                                ProjectReportRespVO vo = BeanUtils.toBean(r, ProjectReportRespVO.class);
+                                if (r.getAttachments() != null && !r.getAttachments().isEmpty()) {
+                                    vo.setAttachments(cn.hutool.json.JSONUtil.toList(r.getAttachments(), String.class));
+                                }
+                                return vo;
+                            }).collect(Collectors.toList()));
+                }
+
+                managerReports.add(report);
+            }
+        }
+        resp.setManagerReports(managerReports);
+
+        return resp;
     }
 
 }
