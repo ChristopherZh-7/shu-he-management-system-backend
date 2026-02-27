@@ -79,6 +79,12 @@ public class GlobalOverviewRespVO {
         @Schema(description = "驻场在岗人数")
         private Integer onSiteCount;
 
+        @Schema(description = "未入场人数")
+        private Integer pendingCount;
+
+        @Schema(description = "二线人数")
+        private Integer backOfficeCount;
+
         @Schema(description = "本周项目记录数")
         private Integer projectRecordCount;
 

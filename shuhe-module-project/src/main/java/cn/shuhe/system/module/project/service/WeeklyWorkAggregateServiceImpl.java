@@ -757,6 +757,10 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
             stat.setTotalMembers(deptUsers.size());
             stat.setOnSiteCount((int) deptUsers.stream()
                     .filter(u -> userWorkModeMap.getOrDefault(u.getId(), 2) == 1).count());
+            stat.setPendingCount((int) deptUsers.stream()
+                    .filter(u -> userWorkModeMap.getOrDefault(u.getId(), 2) == 3).count());
+            stat.setBackOfficeCount((int) deptUsers.stream()
+                    .filter(u -> userWorkModeMap.getOrDefault(u.getId(), 2) == 2).count());
 
             // 该部门的项目记录数
             int deptProjectRecords = 0;
