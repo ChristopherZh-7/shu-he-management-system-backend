@@ -540,6 +540,11 @@ public class AdminUserServiceImpl implements AdminUserService {
 
         if (!"none".equals(notifyType)) {
             for (AdminUserDO user : users) {
+                // 跳过离职用户（employeeStatus=2）和禁用用户
+                if (Integer.valueOf(2).equals(user.getEmployeeStatus())
+                        || !CommonStatusEnum.ENABLE.getStatus().equals(user.getStatus())) {
+                    continue;
+                }
                 sendPasswordResetNotification(user, password, notifyType);
             }
         }
