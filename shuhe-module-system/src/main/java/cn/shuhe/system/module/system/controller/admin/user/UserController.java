@@ -85,7 +85,8 @@ public class UserController {
     @PreAuthorize("@ss.hasPermission('system:user:update-password')")
     public CommonResult<Boolean> updateUserPassword(@Valid @RequestBody UserUpdatePasswordReqVO reqVO) {
         userService.updateUserPassword(reqVO.getId(), reqVO.getPassword(),
-                reqVO.getNotifyType() != null ? reqVO.getNotifyType() : "none");
+                reqVO.getNotifyType() != null ? reqVO.getNotifyType() : "none",
+                reqVO.getLoginUrl());
         return success(true);
     }
 
@@ -93,12 +94,14 @@ public class UserController {
     @Operation(summary = "重置所有用户密码")
     @Parameters({
             @Parameter(name = "password", description = "新密码", required = true),
-            @Parameter(name = "notifyType", description = "通知方式：none/workNotice/privateMessage", required = false)
+            @Parameter(name = "notifyType", description = "通知方式：none/workNotice/privateMessage", required = false),
+            @Parameter(name = "loginUrl", description = "登录地址", required = false)
     })
     @PreAuthorize("@ss.hasPermission('system:user:update-password')")
     public CommonResult<Boolean> resetAllPasswords(@RequestParam("password") String password,
-                                                    @RequestParam(value = "notifyType", required = false, defaultValue = "none") String notifyType) {
-        userService.resetAllPasswords(password, notifyType);
+                                                    @RequestParam(value = "notifyType", required = false, defaultValue = "none") String notifyType,
+                                                    @RequestParam(value = "loginUrl", required = false) String loginUrl) {
+        userService.resetAllPasswords(password, notifyType, loginUrl);
         return success(true);
     }
 

@@ -23,4 +23,7 @@ public class UserUpdatePasswordReqVO {
     @Schema(description = "通知方式：none-不通知, workNotice-工作通知, privateMessage-单聊机器人", example = "none")
     private String notifyType;
 
+    @Schema(description = "登录地址", example = "https://example.com")
+    private String loginUrl;
+
 }

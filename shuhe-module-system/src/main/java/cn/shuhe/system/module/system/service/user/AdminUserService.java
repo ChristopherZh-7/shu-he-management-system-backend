@@ -86,8 +86,9 @@ public interface AdminUserService {
      * @param id         用户编号
      * @param password   密码
      * @param notifyType 通知方式：none-不通知, workNotice-工作通知, privateMessage-单聊机器人
+     * @param loginUrl   登录地址（可为空）
      */
-    void updateUserPassword(Long id, String password, String notifyType);
+    void updateUserPassword(Long id, String password, String notifyType, String loginUrl);
 
     /**
      * 修改状态
@@ -228,7 +229,8 @@ public interface AdminUserService {
      *
      * @param password   新密码（明文）
      * @param notifyType 通知方式：none-不通知, workNotice-工作通知, privateMessage-单聊机器人
+     * @param loginUrl   登录地址（可为空）
      */
-    void resetAllPasswords(String password, String notifyType);
+    void resetAllPasswords(String password, String notifyType, String loginUrl);
 
 }

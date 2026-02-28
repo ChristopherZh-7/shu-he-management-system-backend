@@ -195,11 +195,11 @@ public class AdminUserServiceImpl implements AdminUserService {
     @LogRecord(type = SYSTEM_USER_TYPE, subType = SYSTEM_USER_UPDATE_PASSWORD_SUB_TYPE, bizNo = "{{#id}}",
             success = SYSTEM_USER_UPDATE_PASSWORD_SUCCESS)
     public void updateUserPassword(Long id, String password) {
-        updateUserPassword(id, password, "none");
+        updateUserPassword(id, password, "none", null);
     }
 
     @Override
-    public void updateUserPassword(Long id, String password, String notifyType) {
+    public void updateUserPassword(Long id, String password, String notifyType, String loginUrl) {
         // 1. 校验用户存在
         AdminUserDO user = validateUserExists(id);
 
@@ -214,7 +214,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         LogRecordContext.putVariable("newPassword", updateObj.getPassword());
 
         // 4. 发送钉钉通知
-        sendPasswordResetNotification(user, password, notifyType);
+        sendPasswordResetNotification(user, password, notifyType, loginUrl);
     }
 
     @Override
@@ -528,7 +528,7 @@ public class AdminUserServiceImpl implements AdminUserService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void resetAllPasswords(String password, String notifyType) {
+    public void resetAllPasswords(String password, String notifyType, String loginUrl) {
         String encodedPassword = encodePassword(password);
         List<AdminUserDO> users = userMapper.selectList();
         for (AdminUserDO user : users) {
@@ -545,7 +545,7 @@ public class AdminUserServiceImpl implements AdminUserService {
                         || !CommonStatusEnum.ENABLE.getStatus().equals(user.getStatus())) {
                     continue;
                 }
-                sendPasswordResetNotification(user, password, notifyType);
+                sendPasswordResetNotification(user, password, notifyType, loginUrl);
             }
         }
     }
@@ -556,21 +556,28 @@ public class AdminUserServiceImpl implements AdminUserService {
      * @param user       用户
      * @param password   明文密码
      * @param notifyType 通知方式：none / workNotice / privateMessage
+     * @param loginUrl   登录地址（可为空）
      */
-    private void sendPasswordResetNotification(AdminUserDO user, String password, String notifyType) {
+    private void sendPasswordResetNotification(AdminUserDO user, String password, String notifyType, String loginUrl) {
         if ("none".equals(notifyType) || cn.hutool.core.util.StrUtil.isEmpty(notifyType)) {
             return;
         }
         try {
+            StringBuilder content = new StringBuilder();
+            content.append("## 密码重置通知\n\n");
+            content.append("管理员已重置您的登录密码，请使用以下信息登录系统：\n\n");
+            content.append("- **帐号**：").append(user.getUsername()).append("\n");
+            content.append("- **新密码**：").append(password).append("\n");
+            if (cn.hutool.core.util.StrUtil.isNotEmpty(loginUrl)) {
+                content.append("- **登录地址**：[点击登录](").append(loginUrl).append(")\n");
+            }
+            content.append("\n请登录后尽快修改密码。");
+
             cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO reqDTO =
                     new cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO()
                             .setUserIds(java.util.Collections.singletonList(user.getId()))
                             .setTitle("密码重置通知")
-                            .setContent("## 密码重置通知\n\n" +
-                                    "管理员已重置您的登录密码，请使用以下信息登录系统：\n\n" +
-                                    "- **帐号**：" + user.getUsername() + "\n" +
-                                    "- **新密码**：" + password + "\n\n" +
-                                    "请登录后尽快修改密码。");
+                            .setContent(content.toString());
             if ("privateMessage".equals(notifyType)) {
                 dingtalkNotifyApi.sendPrivateMessage(reqDTO);
             } else {
