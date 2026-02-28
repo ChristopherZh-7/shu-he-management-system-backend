@@ -81,6 +81,15 @@ public interface AdminUserService {
     void updateUserPassword(Long id, String password);
 
     /**
+     * 修改密码并可选发送钉钉通知
+     *
+     * @param id              用户编号
+     * @param password        密码
+     * @param notifyDingtalk  是否发送钉钉通知
+     */
+    void updateUserPassword(Long id, String password, boolean notifyDingtalk);
+
+    /**
      * 修改状态
      *
      * @param id     用户编号
@@ -213,5 +222,13 @@ public interface AdminUserService {
      * @return 是否匹配
      */
     boolean isPasswordMatch(String rawPassword, String encodedPassword);
+
+    /**
+     * 重置所有用户密码为指定密码
+     *
+     * @param password 新密码（明文）
+     * @param notifyDingtalk 是否发送钉钉通知
+     */
+    void resetAllPasswords(String password, boolean notifyDingtalk);
 
 }

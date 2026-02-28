@@ -84,7 +84,21 @@ public class UserController {
     @Operation(summary = "重置用户密码")
     @PreAuthorize("@ss.hasPermission('system:user:update-password')")
     public CommonResult<Boolean> updateUserPassword(@Valid @RequestBody UserUpdatePasswordReqVO reqVO) {
-        userService.updateUserPassword(reqVO.getId(), reqVO.getPassword());
+        userService.updateUserPassword(reqVO.getId(), reqVO.getPassword(),
+                Boolean.TRUE.equals(reqVO.getNotifyDingtalk()));
+        return success(true);
+    }
+
+    @PutMapping("/reset-all-passwords")
+    @Operation(summary = "重置所有用户密码")
+    @Parameters({
+            @Parameter(name = "password", description = "新密码", required = true),
+            @Parameter(name = "notifyDingtalk", description = "是否发送钉钉通知", required = false)
+    })
+    @PreAuthorize("@ss.hasPermission('system:user:update-password')")
+    public CommonResult<Boolean> resetAllPasswords(@RequestParam("password") String password,
+                                                    @RequestParam(value = "notifyDingtalk", required = false, defaultValue = "false") Boolean notifyDingtalk) {
+        userService.resetAllPasswords(password, notifyDingtalk);
         return success(true);
     }
 

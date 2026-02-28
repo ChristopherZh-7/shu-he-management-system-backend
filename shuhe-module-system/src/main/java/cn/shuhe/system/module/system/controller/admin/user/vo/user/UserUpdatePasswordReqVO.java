@@ -20,4 +20,7 @@ public class UserUpdatePasswordReqVO {
     @Length(min = 4, max = 16, message = "密码长度为 4-16 位")
     private String password;
 
+    @Schema(description = "是否发送钉钉通知", example = "false")
+    private Boolean notifyDingtalk;
+
 }

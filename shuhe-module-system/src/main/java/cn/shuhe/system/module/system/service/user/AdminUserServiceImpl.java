@@ -83,6 +83,10 @@ public class AdminUserServiceImpl implements AdminUserService {
     @Resource
     private ConfigApi configApi;
 
+    @Resource
+    @Lazy
+    private cn.shuhe.system.module.system.api.dingtalk.DingtalkNotifyApi dingtalkNotifyApi;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     @LogRecord(type = SYSTEM_USER_TYPE, subType = SYSTEM_USER_CREATE_SUB_TYPE, bizNo = "{{#user.id}}",
@@ -191,18 +195,41 @@ public class AdminUserServiceImpl implements AdminUserService {
     @LogRecord(type = SYSTEM_USER_TYPE, subType = SYSTEM_USER_UPDATE_PASSWORD_SUB_TYPE, bizNo = "{{#id}}",
             success = SYSTEM_USER_UPDATE_PASSWORD_SUCCESS)
     public void updateUserPassword(Long id, String password) {
+        updateUserPassword(id, password, false);
+    }
+
+    @Override
+    public void updateUserPassword(Long id, String password, boolean notifyDingtalk) {
         // 1. 校验用户存在
         AdminUserDO user = validateUserExists(id);
 
         // 2. 更新密码
         AdminUserDO updateObj = new AdminUserDO();
         updateObj.setId(id);
-        updateObj.setPassword(encodePassword(password)); // 加密密码
+        updateObj.setPassword(encodePassword(password));
         userMapper.updateById(updateObj);
 
         // 3. 记录操作日志上下文
         LogRecordContext.putVariable("user", user);
         LogRecordContext.putVariable("newPassword", updateObj.getPassword());
+
+        // 4. 发送钉钉通知
+        if (notifyDingtalk) {
+            try {
+                cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO reqDTO =
+                        new cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO()
+                                .setUserIds(java.util.Collections.singletonList(id))
+                                .setTitle("密码重置通知")
+                                .setContent("## 密码重置通知\n\n" +
+                                        "管理员已重置您的登录密码，请使用以下信息登录系统：\n\n" +
+                                        "- **帐号**：" + user.getUsername() + "\n" +
+                                        "- **新密码**：" + password + "\n\n" +
+                                        "请登录后尽快修改密码。");
+                dingtalkNotifyApi.sendWorkNotice(reqDTO);
+            } catch (Exception e) {
+                log.warn("发送密码重置钉钉通知失败：用户 {}", user.getUsername(), e);
+            }
+        }
     }
 
     @Override
@@ -512,6 +539,38 @@ public class AdminUserServiceImpl implements AdminUserService {
     @Override
     public boolean isPasswordMatch(String rawPassword, String encodedPassword) {
         return passwordEncoder.matches(rawPassword, encodedPassword);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void resetAllPasswords(String password, boolean notifyDingtalk) {
+        String encodedPassword = encodePassword(password);
+        List<AdminUserDO> users = userMapper.selectList();
+        for (AdminUserDO user : users) {
+            AdminUserDO updateObj = new AdminUserDO();
+            updateObj.setId(user.getId());
+            updateObj.setPassword(encodedPassword);
+            userMapper.updateById(updateObj);
+        }
+
+        if (notifyDingtalk) {
+            for (AdminUserDO user : users) {
+                try {
+                    cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO reqDTO =
+                            new cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO()
+                                    .setUserIds(java.util.Collections.singletonList(user.getId()))
+                                    .setTitle("密码重置通知")
+                                    .setContent("## 密码重置通知\n\n" +
+                                            "管理员已重置您的登录密码，请使用以下信息登录系统：\n\n" +
+                                            "- **帐号**：" + user.getUsername() + "\n" +
+                                            "- **新密码**：" + password + "\n\n" +
+                                            "请登录后尽快修改密码。");
+                    dingtalkNotifyApi.sendWorkNotice(reqDTO);
+                } catch (Exception e) {
+                    log.warn("发送密码重置钉钉通知失败：用户 {}", user.getUsername(), e);
+                }
+            }
+        }
     }
 
     /**
