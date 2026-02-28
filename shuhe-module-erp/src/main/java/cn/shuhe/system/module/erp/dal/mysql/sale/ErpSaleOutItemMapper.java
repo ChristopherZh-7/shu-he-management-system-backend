@@ -17,7 +17,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.c
 /**
  * ERP 销售出库项 Mapper
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Mapper
 public interface ErpSaleOutItemMapper extends BaseMapperX<ErpSaleOutItemDO> {

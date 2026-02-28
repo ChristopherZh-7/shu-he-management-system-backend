@@ -39,7 +39,7 @@ import static cn.shuhe.system.framework.common.util.json.JsonUtils.toJsonString;
 /**
  * 权限 Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 @Slf4j

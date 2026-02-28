@@ -37,7 +37,7 @@ import static cn.shuhe.system.module.mp.enums.ErrorCodeConstants.USER_UPDATE_TAG
 /**
  * 微信公众号粉丝 Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 @Validated

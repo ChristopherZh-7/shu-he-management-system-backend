@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 /**
  * 客户自动掉入公海 Job
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Component
 public class CrmCustomerAutoPutPoolJob implements JobHandler {

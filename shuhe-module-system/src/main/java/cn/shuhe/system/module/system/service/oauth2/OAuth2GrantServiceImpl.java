@@ -19,7 +19,7 @@ import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUt
 /**
  * OAuth2 授予 Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 public class OAuth2GrantServiceImpl implements OAuth2GrantService {

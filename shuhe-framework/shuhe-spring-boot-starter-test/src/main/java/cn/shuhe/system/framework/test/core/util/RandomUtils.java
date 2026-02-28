@@ -21,7 +21,7 @@ import java.util.stream.Stream;
 /**
  * 随机工具类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public class RandomUtils {
 

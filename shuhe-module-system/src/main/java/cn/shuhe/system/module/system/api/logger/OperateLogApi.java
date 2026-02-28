@@ -8,7 +8,7 @@ import cn.shuhe.system.module.system.api.logger.dto.OperateLogRespDTO;
 /**
  * 操作日志 API 接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface OperateLogApi extends OperateLogCommonApi {
 

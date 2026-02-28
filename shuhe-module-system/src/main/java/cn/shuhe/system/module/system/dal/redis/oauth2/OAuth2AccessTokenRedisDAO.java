@@ -19,7 +19,7 @@ import static cn.shuhe.system.module.system.dal.redis.RedisKeyConstants.OAUTH2_A
 /**
  * {@link OAuth2AccessTokenDO} 的 RedisDAO
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Repository
 public class OAuth2AccessTokenRedisDAO {

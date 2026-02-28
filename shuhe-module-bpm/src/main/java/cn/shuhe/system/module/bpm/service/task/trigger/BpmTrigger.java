@@ -2,7 +2,7 @@ package cn.shuhe.system.module.bpm.service.task.trigger;
 
 import cn.shuhe.system.module.bpm.enums.definition.BpmTriggerTypeEnum;
 
-// TODO @芋艿：可能会想换个包地址
+// TODO：可能会想换个包地址
 /**
  * BPM 触发器接口
  * <p>

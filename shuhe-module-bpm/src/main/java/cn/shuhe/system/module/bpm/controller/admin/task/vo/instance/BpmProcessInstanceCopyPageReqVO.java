@@ -13,7 +13,7 @@ import static cn.shuhe.system.framework.common.util.date.DateUtils.FORMAT_YEAR_M
 @Data
 public class BpmProcessInstanceCopyPageReqVO extends PageParam {
 
-    @Schema(description = "流程名称", example = "芋道")
+    @Schema(description = "流程名称", example = "戍合")
     private String processInstanceName;
 
     @Schema(description = "创建时间")

@@ -13,7 +13,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.c
 /**
  * Array 工具类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public class ArrayUtils {
 

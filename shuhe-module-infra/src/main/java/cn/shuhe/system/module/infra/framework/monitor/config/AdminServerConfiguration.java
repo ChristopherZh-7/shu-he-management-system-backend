@@ -24,7 +24,7 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
  * 安全配置独立于 {@link cn.shuhe.system.framework.security.config.ShuheWebSecurityConfigurerAdapter}，
  * 使用 HTTP Basic 认证保护 Admin Server 端点，不影响现有的 Token 认证机制
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Configuration(proxyBeanMethods = false)
 @EnableAdminServer

@@ -19,7 +19,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.c
 /**
  * CRM 联系人 Service 接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface CrmContactService {
 

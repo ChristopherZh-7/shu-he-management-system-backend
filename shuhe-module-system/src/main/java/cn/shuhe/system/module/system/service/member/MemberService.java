@@ -3,7 +3,7 @@ package cn.shuhe.system.module.system.service.member;
 /**
  * Member Service 接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface MemberService {
 

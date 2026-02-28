@@ -9,7 +9,7 @@ import org.springframework.validation.annotation.Validated;
 /**
  * HTTP API 加解密配置
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @ConfigurationProperties(prefix = "shuhe.api-encrypt")
 @Validated

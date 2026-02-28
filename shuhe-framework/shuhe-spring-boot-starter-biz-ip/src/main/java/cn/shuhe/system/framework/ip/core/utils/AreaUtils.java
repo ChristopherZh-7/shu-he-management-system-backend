@@ -22,7 +22,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.f
 /**
  * 区域工具类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Slf4j
 public class AreaUtils {

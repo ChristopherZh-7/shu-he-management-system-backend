@@ -15,7 +15,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.c
 /**
  * ERP 结算账户 Service 接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface ErpAccountService {
 

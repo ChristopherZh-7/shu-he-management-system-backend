@@ -22,7 +22,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.c
  *
  * @author yunlong.li
  * @author ZJQ
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface BpmProcessDefinitionService {
 

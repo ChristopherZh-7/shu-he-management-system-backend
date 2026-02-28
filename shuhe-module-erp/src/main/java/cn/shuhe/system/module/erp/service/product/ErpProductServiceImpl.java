@@ -25,7 +25,7 @@ import static cn.shuhe.system.module.erp.enums.ErrorCodeConstants.*;
 /**
  * ERP 产品 Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 @Validated
@@ -41,7 +41,7 @@ public class ErpProductServiceImpl implements ErpProductService {
 
     @Override
     public Long createProduct(ProductSaveReqVO createReqVO) {
-        // TODO 芋艿：校验分类
+        // TODO：校验分类
         // 插入
         ErpProductDO product = BeanUtils.toBean(createReqVO, ErpProductDO.class);
         productMapper.insert(product);
@@ -51,7 +51,7 @@ public class ErpProductServiceImpl implements ErpProductService {
 
     @Override
     public void updateProduct(ProductSaveReqVO updateReqVO) {
-        // TODO 芋艿：校验分类
+        // TODO：校验分类
         // 校验存在
         validateProductExists(updateReqVO.getId());
         // 更新

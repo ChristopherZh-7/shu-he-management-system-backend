@@ -24,7 +24,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.c
 /**
  * 工具：列出指定目录的文件列表
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Component("directory_list")
 public class DirectoryListToolFunction implements Function<DirectoryListToolFunction.Request, DirectoryListToolFunction.Response> {

@@ -31,7 +31,7 @@ import static cn.shuhe.system.module.system.enums.ErrorCodeConstants.SOCIAL_USER
 /**
  * 社交用户 Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 @Validated

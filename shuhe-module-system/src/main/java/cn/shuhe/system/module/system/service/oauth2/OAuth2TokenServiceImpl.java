@@ -36,7 +36,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.c
 /**
  * OAuth2.0 Token Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 public class OAuth2TokenServiceImpl implements OAuth2TokenService {

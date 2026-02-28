@@ -5,7 +5,7 @@ import cn.shuhe.system.framework.common.biz.system.permission.dto.DeptDataPermis
 /**
  * 权限 API 接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface PermissionCommonApi {
 

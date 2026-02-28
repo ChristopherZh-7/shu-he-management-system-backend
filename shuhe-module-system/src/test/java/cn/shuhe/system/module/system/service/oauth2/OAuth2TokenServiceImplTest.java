@@ -36,7 +36,7 @@ import static org.mockito.Mockito.when;
 /**
  * {@link OAuth2TokenServiceImpl} 的单元测试类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Import({OAuth2TokenServiceImpl.class, OAuth2AccessTokenRedisDAO.class})
 public class OAuth2TokenServiceImplTest extends BaseDbAndRedisUnitTest {
@@ -76,7 +76,7 @@ public class OAuth2TokenServiceImplTest extends BaseDbAndRedisUnitTest {
         OAuth2AccessTokenDO accessTokenDO = oauth2TokenService.createAccessToken(userId, userType, clientId, scopes);
         // 断言访问令牌
         OAuth2AccessTokenDO dbAccessTokenDO = oauth2AccessTokenMapper.selectByAccessToken(accessTokenDO.getAccessToken());
-        // TODO @芋艿：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
+        // TODO：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
         assertPojoEquals(accessTokenDO, dbAccessTokenDO, "expiresTime", "createTime", "updateTime", "deleted");
         assertEquals(userId, accessTokenDO.getUserId());
         assertEquals(userType, accessTokenDO.getUserType());
@@ -88,7 +88,7 @@ public class OAuth2TokenServiceImplTest extends BaseDbAndRedisUnitTest {
         assertFalse(DateUtils.isExpired(accessTokenDO.getExpiresTime()));
         // 断言访问令牌的缓存
         OAuth2AccessTokenDO redisAccessTokenDO = oauth2AccessTokenRedisDAO.get(accessTokenDO.getAccessToken());
-        // TODO @芋艿：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
+        // TODO：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
         assertPojoEquals(accessTokenDO, redisAccessTokenDO, "expiresTime", "createTime", "updateTime", "deleted");
         // 断言刷新令牌
         OAuth2RefreshTokenDO refreshTokenDO = oauth2RefreshTokenMapper.selectList().get(0);
@@ -177,14 +177,14 @@ public class OAuth2TokenServiceImplTest extends BaseDbAndRedisUnitTest {
         assertNull(oauth2AccessTokenRedisDAO.get(accessTokenDO.getAccessToken()));
         // 断言，新的访问令牌
         OAuth2AccessTokenDO dbAccessTokenDO = oauth2AccessTokenMapper.selectByAccessToken(newAccessTokenDO.getAccessToken());
-        // TODO @芋艿：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
+        // TODO：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
         assertPojoEquals(newAccessTokenDO, dbAccessTokenDO, "expiresTime", "createTime", "updateTime", "deleted");
         assertPojoEquals(newAccessTokenDO, refreshTokenDO, "id", "expiresTime", "createTime", "updateTime", "deleted",
                 "creator", "updater");
         assertFalse(DateUtils.isExpired(newAccessTokenDO.getExpiresTime()));
         // 断言，新的访问令牌的缓存
         OAuth2AccessTokenDO redisAccessTokenDO = oauth2AccessTokenRedisDAO.get(newAccessTokenDO.getAccessToken());
-        // TODO @芋艿：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
+        // TODO：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
         assertPojoEquals(newAccessTokenDO, redisAccessTokenDO, "expiresTime", "createTime", "updateTime", "deleted");
     }
 
@@ -200,10 +200,10 @@ public class OAuth2TokenServiceImplTest extends BaseDbAndRedisUnitTest {
         // 调用
         OAuth2AccessTokenDO result = oauth2TokenService.getAccessToken(accessToken);
         // 断言
-        // TODO @芋艿：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
+        // TODO：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
         assertPojoEquals(accessTokenDO, result, "expiresTime", "createTime", "updateTime", "deleted",
                 "creator", "updater");
-        // TODO @芋艿：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
+        // TODO：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
         assertPojoEquals(accessTokenDO, oauth2AccessTokenRedisDAO.get(accessToken), "expiresTime", "createTime", "updateTime", "deleted",
                 "creator", "updater");
     }
@@ -258,7 +258,7 @@ public class OAuth2TokenServiceImplTest extends BaseDbAndRedisUnitTest {
         // 调研，并断言
         OAuth2AccessTokenDO result = oauth2TokenService.getAccessToken(accessToken);
         // 断言
-        // TODO @芋艿：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
+        // TODO：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
         assertPojoEquals(accessTokenDO, result, "expiresTime", "createTime", "updateTime", "deleted",
                 "creator", "updater");
     }
@@ -281,7 +281,7 @@ public class OAuth2TokenServiceImplTest extends BaseDbAndRedisUnitTest {
         oauth2RefreshTokenMapper.insert(refreshTokenDO);
         // 调用
         OAuth2AccessTokenDO result = oauth2TokenService.removeAccessToken(accessTokenDO.getAccessToken());
-        // TODO @芋艿：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
+        // TODO：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
         assertPojoEquals(accessTokenDO, result, "expiresTime", "createTime", "updateTime", "deleted",
                 "creator", "updater");
         // 断言数据
@@ -320,7 +320,7 @@ public class OAuth2TokenServiceImplTest extends BaseDbAndRedisUnitTest {
         // 断言
         assertEquals(1, pageResult.getTotal());
         assertEquals(1, pageResult.getList().size());
-        // TODO @芋艿：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
+        // TODO：expiresTime 被屏蔽，仅 win11 会复现，建议后续修复。
         assertPojoEquals(dbAccessToken, pageResult.getList().get(0), "expiresTime");
     }
 

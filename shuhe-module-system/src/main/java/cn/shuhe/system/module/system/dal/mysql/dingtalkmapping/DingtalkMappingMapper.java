@@ -12,7 +12,7 @@ import cn.shuhe.system.module.system.controller.admin.dingtalkmapping.vo.*;
 /**
  * 钉钉数据映射 Mapper
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Mapper
 public interface DingtalkMappingMapper extends BaseMapperX<DingtalkMappingDO> {

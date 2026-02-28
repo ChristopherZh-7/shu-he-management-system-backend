@@ -3,7 +3,7 @@ package cn.shuhe.system.module.infra.framework.file.core.client;
 /**
  * 文件客户端
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface FileClient {
 

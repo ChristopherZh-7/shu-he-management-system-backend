@@ -49,7 +49,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.c
 /**
  * 流程实例 Convert
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Mapper
 public interface BpmProcessInstanceConvert {

@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * 示例联系人 Service 接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface Demo01ContactService {
 

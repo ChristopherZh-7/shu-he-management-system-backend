@@ -5,7 +5,7 @@ import cn.shuhe.system.module.report.controller.admin.goview.vo.data.GoViewDataR
 /**
  * GoView 数据 Service 接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface GoViewDataService {
 

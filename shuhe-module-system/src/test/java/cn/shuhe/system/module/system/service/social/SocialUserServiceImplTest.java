@@ -37,7 +37,7 @@ import static org.mockito.Mockito.when;
 /**
  * {@link SocialUserServiceImpl} 的单元测试类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Import(SocialUserServiceImpl.class)
 public class SocialUserServiceImplTest extends BaseDbUnitTest {
@@ -257,7 +257,7 @@ public class SocialUserServiceImplTest extends BaseDbUnitTest {
         // mock 数据
         SocialUserDO dbSocialUser = randomPojo(SocialUserDO.class, o -> { // 等会查询到
             o.setType(SocialTypeEnum.GITEE.getType());
-            o.setNickname("芋艿");
+            o.setNickname("测试");
             o.setOpenid("shuheyuanma");
             o.setCreateTime(buildTime(2020, 1, 15));
         });

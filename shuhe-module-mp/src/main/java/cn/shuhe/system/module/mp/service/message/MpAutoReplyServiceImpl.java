@@ -33,7 +33,7 @@ import static cn.shuhe.system.module.mp.enums.ErrorCodeConstants.*;
 /**
  * 公众号的自动回复 Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 @Validated

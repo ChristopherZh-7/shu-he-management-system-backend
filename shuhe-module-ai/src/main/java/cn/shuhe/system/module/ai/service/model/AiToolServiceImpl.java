@@ -22,7 +22,7 @@ import static cn.shuhe.system.module.ai.enums.ErrorCodeConstants.TOOL_NOT_EXISTS
 /**
  * AI 工具 Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 @Validated

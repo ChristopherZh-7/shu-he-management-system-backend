@@ -33,7 +33,7 @@ import static cn.shuhe.system.module.mp.enums.ErrorCodeConstants.MENU_SAVE_FAIL;
 /**
  * 公众号菜单 Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 @Validated

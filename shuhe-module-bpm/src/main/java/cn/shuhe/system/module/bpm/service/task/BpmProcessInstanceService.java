@@ -17,7 +17,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.c
 /**
  * 流程实例 Service 接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface BpmProcessInstanceService {
 

@@ -31,7 +31,7 @@ import static cn.shuhe.system.module.bpm.enums.ErrorCodeConstants.PROCESS_INSTAN
 /**
  * 工作流发起 HTTP 请求工具类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Slf4j
 public class BpmHttpRequestUtils {

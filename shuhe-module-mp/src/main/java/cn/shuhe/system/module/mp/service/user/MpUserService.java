@@ -15,7 +15,7 @@ import static cn.shuhe.system.module.mp.enums.ErrorCodeConstants.USER_NOT_EXISTS
 /**
  * 公众号粉丝 Service 接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface MpUserService {
 

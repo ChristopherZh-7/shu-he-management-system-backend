@@ -9,7 +9,7 @@ import cn.shuhe.system.framework.common.pojo.PageResult;
 /**
  * BPM 流程监听器 Service 接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface BpmProcessListenerService {
 

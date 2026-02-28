@@ -15,7 +15,7 @@ import static cn.shuhe.system.module.mp.enums.ErrorCodeConstants.ACCOUNT_NOT_EXI
 /**
  * 公众号账号 Service 接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface MpAccountService {
 

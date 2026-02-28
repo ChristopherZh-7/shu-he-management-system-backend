@@ -24,7 +24,7 @@ import static cn.shuhe.system.module.bpm.enums.ErrorCodeConstants.USER_GROUP_NOT
 /**
  * 用户组 Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 @Validated

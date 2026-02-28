@@ -47,7 +47,7 @@ import static cn.shuhe.system.module.system.enums.ErrorCodeConstants.*;
 /**
  * Auth Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 @Slf4j

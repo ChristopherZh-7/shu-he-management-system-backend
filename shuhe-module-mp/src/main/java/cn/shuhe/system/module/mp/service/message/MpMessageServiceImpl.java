@@ -41,7 +41,7 @@ import static cn.shuhe.system.module.mp.enums.ErrorCodeConstants.MESSAGE_SEND_FA
 /**
  * 粉丝消息 Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 @Validated

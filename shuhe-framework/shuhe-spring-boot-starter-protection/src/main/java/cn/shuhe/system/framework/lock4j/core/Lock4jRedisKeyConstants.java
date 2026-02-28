@@ -3,7 +3,7 @@ package cn.shuhe.system.framework.lock4j.core;
 /**
  * Lock4j Redis Key 枚举类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface Lock4jRedisKeyConstants {
 

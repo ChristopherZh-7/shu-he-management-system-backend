@@ -10,7 +10,7 @@ import cn.shuhe.system.framework.common.pojo.PageParam;
 /**
  * 分类 Service 接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface InfraCategoryService {
 

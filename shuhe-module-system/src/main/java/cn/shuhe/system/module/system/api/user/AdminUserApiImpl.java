@@ -22,7 +22,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.c
 /**
  * Admin 用户 API 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 public class AdminUserApiImpl implements AdminUserApi {

@@ -37,7 +37,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.c
 /**
  * Flowable 相关的工具方法
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public class FlowableUtils {
 

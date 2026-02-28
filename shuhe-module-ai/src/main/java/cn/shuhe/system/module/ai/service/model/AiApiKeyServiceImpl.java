@@ -20,7 +20,7 @@ import static cn.shuhe.system.module.ai.enums.ErrorCodeConstants.API_KEY_NOT_EXI
 /**
  * AI API 密钥 Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 @Validated

@@ -26,7 +26,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.c
  *
  * @see <a href="https://open.bochaai.com/overview">博查 AI 开放平台</a>
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Slf4j
 public class AiBoChaWebSearchClient implements AiWebSearchClient {

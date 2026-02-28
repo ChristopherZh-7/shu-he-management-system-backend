@@ -15,7 +15,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.c
 /**
  * BPM 流程分类 Service 接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface BpmCategoryService {
 

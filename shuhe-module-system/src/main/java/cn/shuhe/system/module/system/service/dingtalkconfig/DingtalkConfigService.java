@@ -10,7 +10,7 @@ import cn.shuhe.system.framework.common.pojo.PageParam;
 /**
  * 钉钉配置 Service 接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface DingtalkConfigService {
 

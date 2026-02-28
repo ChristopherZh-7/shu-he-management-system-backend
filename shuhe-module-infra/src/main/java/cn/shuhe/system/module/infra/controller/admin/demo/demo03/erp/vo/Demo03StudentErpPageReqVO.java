@@ -13,7 +13,7 @@ import static cn.shuhe.system.framework.common.util.date.DateUtils.FORMAT_YEAR_M
 @Data
 public class Demo03StudentErpPageReqVO extends PageParam {
 
-    @Schema(description = "名字", example = "芋艿")
+    @Schema(description = "名字", example = "管理员")
     private String name;
 
     @Schema(description = "性别")

@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * {@link WxMpService} 工厂接口
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 public interface MpServiceFactory {
 

@@ -20,7 +20,7 @@ import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.c
 /**
  * OAuth2 批准 Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 @Validated

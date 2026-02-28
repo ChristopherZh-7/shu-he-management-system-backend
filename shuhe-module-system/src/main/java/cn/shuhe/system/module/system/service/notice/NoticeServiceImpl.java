@@ -18,7 +18,7 @@ import static cn.shuhe.system.module.system.enums.ErrorCodeConstants.NOTICE_NOT_
 /**
  * 通知公告 Service 实现类
  *
- * @author 芋道源码
+ * @author ShuHe
  */
 @Service
 public class NoticeServiceImpl implements NoticeService {
