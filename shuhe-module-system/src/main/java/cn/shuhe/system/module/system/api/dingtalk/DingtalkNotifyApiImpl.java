@@ -109,6 +109,54 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
     }
 
     @Override
+    public boolean sendPrivateMessage(DingtalkNotifySendReqDTO reqDTO) {
+        if (CollUtil.isEmpty(reqDTO.getUserIds())) {
+            log.warn("单聊机器人发送失败：接收人列表为空");
+            return false;
+        }
+
+        // 1. 获取启用的钉钉配置
+        List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
+        if (CollUtil.isEmpty(configs)) {
+            log.warn("单聊机器人发送失败：没有启用的钉钉配置");
+            return false;
+        }
+        DingtalkConfigDO config = configs.get(0);
+
+        // 2. 获取钉钉用户ID列表
+        List<String> dingtalkUserIds = new ArrayList<>();
+        for (Long userId : reqDTO.getUserIds()) {
+            String dingtalkUserId = getDingtalkUserIdByLocalUserId(userId);
+            if (dingtalkUserId != null) {
+                dingtalkUserIds.add(dingtalkUserId);
+            } else {
+                log.warn("单聊机器人发送：用户 {} 没有对应的钉钉用户ID", userId);
+            }
+        }
+
+        if (CollUtil.isEmpty(dingtalkUserIds)) {
+            log.warn("单聊机器人发送失败：没有找到对应的钉钉用户ID");
+            return false;
+        }
+
+        // 3. 获取 accessToken 并发送消息（robotCode 使用应用的 clientId）
+        try {
+            String accessToken = dingtalkApiService.getAccessToken(config);
+            DingtalkApiService.RobotPrivateSendResult result = dingtalkApiService.sendRobotPrivateMarkdown(
+                    accessToken,
+                    config.getClientId(),
+                    dingtalkUserIds,
+                    reqDTO.getTitle(),
+                    reqDTO.getContent()
+            );
+            return result.isSuccess();
+        } catch (Exception e) {
+            log.error("单聊机器人发送异常", e);
+            return false;
+        }
+    }
+
+    @Override
     public String getDingtalkUserIdByLocalUserId(Long userId) {
         if (userId == null) {
             return null;

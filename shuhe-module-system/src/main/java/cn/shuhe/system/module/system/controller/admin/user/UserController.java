@@ -85,7 +85,7 @@ public class UserController {
     @PreAuthorize("@ss.hasPermission('system:user:update-password')")
     public CommonResult<Boolean> updateUserPassword(@Valid @RequestBody UserUpdatePasswordReqVO reqVO) {
         userService.updateUserPassword(reqVO.getId(), reqVO.getPassword(),
-                Boolean.TRUE.equals(reqVO.getNotifyDingtalk()));
+                reqVO.getNotifyType() != null ? reqVO.getNotifyType() : "none");
         return success(true);
     }
 
@@ -93,12 +93,12 @@ public class UserController {
     @Operation(summary = "重置所有用户密码")
     @Parameters({
             @Parameter(name = "password", description = "新密码", required = true),
-            @Parameter(name = "notifyDingtalk", description = "是否发送钉钉通知", required = false)
+            @Parameter(name = "notifyType", description = "通知方式：none/workNotice/privateMessage", required = false)
     })
     @PreAuthorize("@ss.hasPermission('system:user:update-password')")
     public CommonResult<Boolean> resetAllPasswords(@RequestParam("password") String password,
-                                                    @RequestParam(value = "notifyDingtalk", required = false, defaultValue = "false") Boolean notifyDingtalk) {
-        userService.resetAllPasswords(password, notifyDingtalk);
+                                                    @RequestParam(value = "notifyType", required = false, defaultValue = "none") String notifyType) {
+        userService.resetAllPasswords(password, notifyType);
         return success(true);
     }
 

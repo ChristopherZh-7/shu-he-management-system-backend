@@ -195,11 +195,11 @@ public class AdminUserServiceImpl implements AdminUserService {
     @LogRecord(type = SYSTEM_USER_TYPE, subType = SYSTEM_USER_UPDATE_PASSWORD_SUB_TYPE, bizNo = "{{#id}}",
             success = SYSTEM_USER_UPDATE_PASSWORD_SUCCESS)
     public void updateUserPassword(Long id, String password) {
-        updateUserPassword(id, password, false);
+        updateUserPassword(id, password, "none");
     }
 
     @Override
-    public void updateUserPassword(Long id, String password, boolean notifyDingtalk) {
+    public void updateUserPassword(Long id, String password, String notifyType) {
         // 1. 校验用户存在
         AdminUserDO user = validateUserExists(id);
 
@@ -214,22 +214,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         LogRecordContext.putVariable("newPassword", updateObj.getPassword());
 
         // 4. 发送钉钉通知
-        if (notifyDingtalk) {
-            try {
-                cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO reqDTO =
-                        new cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO()
-                                .setUserIds(java.util.Collections.singletonList(id))
-                                .setTitle("密码重置通知")
-                                .setContent("## 密码重置通知\n\n" +
-                                        "管理员已重置您的登录密码，请使用以下信息登录系统：\n\n" +
-                                        "- **帐号**：" + user.getUsername() + "\n" +
-                                        "- **新密码**：" + password + "\n\n" +
-                                        "请登录后尽快修改密码。");
-                dingtalkNotifyApi.sendWorkNotice(reqDTO);
-            } catch (Exception e) {
-                log.warn("发送密码重置钉钉通知失败：用户 {}", user.getUsername(), e);
-            }
-        }
+        sendPasswordResetNotification(user, password, notifyType);
     }
 
     @Override
@@ -543,7 +528,7 @@ public class AdminUserServiceImpl implements AdminUserService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void resetAllPasswords(String password, boolean notifyDingtalk) {
+    public void resetAllPasswords(String password, String notifyType) {
         String encodedPassword = encodePassword(password);
         List<AdminUserDO> users = userMapper.selectList();
         for (AdminUserDO user : users) {
@@ -553,23 +538,41 @@ public class AdminUserServiceImpl implements AdminUserService {
             userMapper.updateById(updateObj);
         }
 
-        if (notifyDingtalk) {
+        if (!"none".equals(notifyType)) {
             for (AdminUserDO user : users) {
-                try {
-                    cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO reqDTO =
-                            new cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO()
-                                    .setUserIds(java.util.Collections.singletonList(user.getId()))
-                                    .setTitle("密码重置通知")
-                                    .setContent("## 密码重置通知\n\n" +
-                                            "管理员已重置您的登录密码，请使用以下信息登录系统：\n\n" +
-                                            "- **帐号**：" + user.getUsername() + "\n" +
-                                            "- **新密码**：" + password + "\n\n" +
-                                            "请登录后尽快修改密码。");
-                    dingtalkNotifyApi.sendWorkNotice(reqDTO);
-                } catch (Exception e) {
-                    log.warn("发送密码重置钉钉通知失败：用户 {}", user.getUsername(), e);
-                }
+                sendPasswordResetNotification(user, password, notifyType);
             }
+        }
+    }
+
+    /**
+     * 发送密码重置钉钉通知
+     *
+     * @param user       用户
+     * @param password   明文密码
+     * @param notifyType 通知方式：none / workNotice / privateMessage
+     */
+    private void sendPasswordResetNotification(AdminUserDO user, String password, String notifyType) {
+        if ("none".equals(notifyType) || cn.hutool.core.util.StrUtil.isEmpty(notifyType)) {
+            return;
+        }
+        try {
+            cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO reqDTO =
+                    new cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO()
+                            .setUserIds(java.util.Collections.singletonList(user.getId()))
+                            .setTitle("密码重置通知")
+                            .setContent("## 密码重置通知\n\n" +
+                                    "管理员已重置您的登录密码，请使用以下信息登录系统：\n\n" +
+                                    "- **帐号**：" + user.getUsername() + "\n" +
+                                    "- **新密码**：" + password + "\n\n" +
+                                    "请登录后尽快修改密码。");
+            if ("privateMessage".equals(notifyType)) {
+                dingtalkNotifyApi.sendPrivateMessage(reqDTO);
+            } else {
+                dingtalkNotifyApi.sendWorkNotice(reqDTO);
+            }
+        } catch (Exception e) {
+            log.warn("发送密码重置钉钉通知失败：用户 {}", user.getUsername(), e);
         }
     }
 

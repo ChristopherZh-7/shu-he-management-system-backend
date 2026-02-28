@@ -83,11 +83,11 @@ public interface AdminUserService {
     /**
      * 修改密码并可选发送钉钉通知
      *
-     * @param id              用户编号
-     * @param password        密码
-     * @param notifyDingtalk  是否发送钉钉通知
+     * @param id         用户编号
+     * @param password   密码
+     * @param notifyType 通知方式：none-不通知, workNotice-工作通知, privateMessage-单聊机器人
      */
-    void updateUserPassword(Long id, String password, boolean notifyDingtalk);
+    void updateUserPassword(Long id, String password, String notifyType);
 
     /**
      * 修改状态
@@ -226,9 +226,9 @@ public interface AdminUserService {
     /**
      * 重置所有用户密码为指定密码
      *
-     * @param password 新密码（明文）
-     * @param notifyDingtalk 是否发送钉钉通知
+     * @param password   新密码（明文）
+     * @param notifyType 通知方式：none-不通知, workNotice-工作通知, privateMessage-单聊机器人
      */
-    void resetAllPasswords(String password, boolean notifyDingtalk);
+    void resetAllPasswords(String password, String notifyType);
 
 }

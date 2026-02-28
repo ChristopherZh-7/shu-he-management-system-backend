@@ -871,6 +871,177 @@ public class DingtalkApiService {
         }
     }
 
+    // ==================== 单聊机器人消息 ====================
+
+    private static final String DINGTALK_ROBOT_PRIVATE_MSG_URL = "https://api.dingtalk.com/v1.0/robot/oToMessages/batchSend";
+
+    /**
+     * 单聊机器人发送结果
+     */
+    @lombok.Data
+    @lombok.Builder
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class RobotPrivateSendResult {
+        private boolean success;
+        private String processQueryKey;
+        private List<String> invalidStaffIdList;
+        private List<String> flowControlledStaffIdList;
+        private String errorMsg;
+    }
+
+    /**
+     * 通过单聊机器人发送 Markdown 消息给用户（一对一私聊）
+     *
+     * @param accessToken access_token
+     * @param robotCode   机器人编码（应用的 ClientId / AppKey）
+     * @param userIds     接收人钉钉用户ID列表（单次最多20人）
+     * @param title       消息标题
+     * @param text        消息内容（markdown格式）
+     * @return 发送结果
+     */
+    public RobotPrivateSendResult sendRobotPrivateMarkdown(String accessToken, String robotCode,
+                                                            List<String> userIds, String title, String text) {
+        return sendRobotPrivateMessage(accessToken, robotCode, userIds,
+                "sampleMarkdown", JSONUtil.toJsonStr(new HashMap<String, String>() {{
+                    put("title", title);
+                    put("text", text);
+                }}));
+    }
+
+    /**
+     * 通过单聊机器人发送文本消息给用户（一对一私聊）
+     *
+     * @param accessToken access_token
+     * @param robotCode   机器人编码（应用的 ClientId / AppKey）
+     * @param userIds     接收人钉钉用户ID列表（单次最多20人）
+     * @param content     文本内容
+     * @return 发送结果
+     */
+    public RobotPrivateSendResult sendRobotPrivateText(String accessToken, String robotCode,
+                                                        List<String> userIds, String content) {
+        return sendRobotPrivateMessage(accessToken, robotCode, userIds,
+                "sampleText", JSONUtil.toJsonStr(new HashMap<String, String>() {{
+                    put("content", content);
+                }}));
+    }
+
+    /**
+     * 通过单聊机器人发送 ActionCard 消息给用户（一对一私聊，带按钮）
+     *
+     * @param accessToken access_token
+     * @param robotCode   机器人编码（应用的 ClientId / AppKey）
+     * @param userIds     接收人钉钉用户ID列表（单次最多20人）
+     * @param title       消息标题
+     * @param text        消息内容（markdown格式）
+     * @param singleTitle 按钮文字
+     * @param singleUrl   按钮跳转URL
+     * @return 发送结果
+     */
+    public RobotPrivateSendResult sendRobotPrivateActionCard(String accessToken, String robotCode,
+                                                              List<String> userIds, String title,
+                                                              String text, String singleTitle, String singleUrl) {
+        Map<String, String> params = new HashMap<>();
+        params.put("title", title);
+        params.put("text", text);
+        params.put("singleTitle", singleTitle);
+        params.put("singleURL", singleUrl);
+        return sendRobotPrivateMessage(accessToken, robotCode, userIds,
+                "sampleActionCard", JSONUtil.toJsonStr(params));
+    }
+
+    /**
+     * 单聊机器人发送消息（通用底层方法）
+     *
+     * @param accessToken access_token
+     * @param robotCode   机器人编码（应用的 ClientId / AppKey）
+     * @param userIds     接收人钉钉用户ID列表（单次最多20人）
+     * @param msgKey      消息类型（sampleText / sampleMarkdown / sampleActionCard / sampleLink / sampleImageMsg）
+     * @param msgParam    消息参数（JSON字符串）
+     * @return 发送结果
+     */
+    public RobotPrivateSendResult sendRobotPrivateMessage(String accessToken, String robotCode,
+                                                           List<String> userIds, String msgKey, String msgParam) {
+        if (userIds == null || userIds.isEmpty()) {
+            log.warn("单聊机器人发送失败：接收人列表为空");
+            return RobotPrivateSendResult.builder().success(false).errorMsg("接收人列表为空").build();
+        }
+
+        // 单次最多20人，需要分批发送
+        List<RobotPrivateSendResult> results = new ArrayList<>();
+        int batchSize = 20;
+        for (int i = 0; i < userIds.size(); i += batchSize) {
+            List<String> batch = userIds.subList(i, Math.min(i + batchSize, userIds.size()));
+            results.add(doSendRobotPrivateMessage(accessToken, robotCode, batch, msgKey, msgParam));
+        }
+
+        // 合并结果
+        boolean allSuccess = results.stream().allMatch(RobotPrivateSendResult::isSuccess);
+        List<String> allInvalid = results.stream()
+                .filter(r -> r.getInvalidStaffIdList() != null)
+                .flatMap(r -> r.getInvalidStaffIdList().stream())
+                .collect(java.util.stream.Collectors.toList());
+        List<String> allFlowControlled = results.stream()
+                .filter(r -> r.getFlowControlledStaffIdList() != null)
+                .flatMap(r -> r.getFlowControlledStaffIdList().stream())
+                .collect(java.util.stream.Collectors.toList());
+
+        return RobotPrivateSendResult.builder()
+                .success(allSuccess)
+                .invalidStaffIdList(allInvalid)
+                .flowControlledStaffIdList(allFlowControlled)
+                .build();
+    }
+
+    private RobotPrivateSendResult doSendRobotPrivateMessage(String accessToken, String robotCode,
+                                                              List<String> userIds, String msgKey, String msgParam) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("robotCode", robotCode);
+        params.put("userIds", userIds);
+        params.put("msgKey", msgKey);
+        params.put("msgParam", msgParam);
+
+        try {
+            String result = cn.hutool.http.HttpRequest.post(DINGTALK_ROBOT_PRIVATE_MSG_URL)
+                    .header("x-acs-dingtalk-access-token", accessToken)
+                    .header("Content-Type", "application/json")
+                    .body(JSONUtil.toJsonStr(params))
+                    .execute()
+                    .body();
+
+            log.debug("单聊机器人消息发送返回: {}", result);
+            JSONObject json = JSONUtil.parseObj(result);
+
+            // 错误处理
+            if (json.containsKey("code")) {
+                String code = json.getStr("code");
+                String message = json.getStr("message", "未知错误");
+                log.error("单聊机器人消息发送失败: code={}, message={}", code, message);
+                return RobotPrivateSendResult.builder().success(false).errorMsg(message).build();
+            }
+
+            String processQueryKey = json.getStr("processQueryKey");
+            JSONArray invalidArray = json.getJSONArray("invalidStaffIdList");
+            JSONArray flowArray = json.getJSONArray("flowControlledStaffIdList");
+
+            List<String> invalidList = invalidArray != null
+                    ? invalidArray.toList(String.class) : new ArrayList<>();
+            List<String> flowList = flowArray != null
+                    ? flowArray.toList(String.class) : new ArrayList<>();
+
+            log.info("单聊机器人消息发送成功，接收人: {}, processQueryKey: {}", userIds, processQueryKey);
+            return RobotPrivateSendResult.builder()
+                    .success(true)
+                    .processQueryKey(processQueryKey)
+                    .invalidStaffIdList(invalidList)
+                    .flowControlledStaffIdList(flowList)
+                    .build();
+        } catch (Exception e) {
+            log.error("单聊机器人消息发送异常", e);
+            return RobotPrivateSendResult.builder().success(false).errorMsg(e.getMessage()).build();
+        }
+    }
+
     // ==================== OA审批流程 ====================
 
     private static final String DINGTALK_PROCESS_CREATE_URL = "https://oapi.dingtalk.com/topapi/processinstance/create";

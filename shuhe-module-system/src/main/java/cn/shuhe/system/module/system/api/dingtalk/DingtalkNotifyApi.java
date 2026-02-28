@@ -77,6 +77,14 @@ public interface DingtalkNotifyApi {
                                    String reason, String destination);
 
     /**
+     * 通过单聊机器人发送私聊消息（Markdown格式）
+     *
+     * @param reqDTO 发送请求（包含 userIds、title、content）
+     * @return 是否成功
+     */
+    boolean sendPrivateMessage(DingtalkNotifySendReqDTO reqDTO);
+
+    /**
      * 发起钉钉OA外出申请（DDBizSuite套件模式）
      * 
      * 适用于使用钉钉内置"外出"套件（DDBizSuite, biz_type: attendance.goout）的表单
