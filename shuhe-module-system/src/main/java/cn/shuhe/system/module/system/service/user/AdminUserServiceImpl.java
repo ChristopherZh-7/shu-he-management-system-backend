@@ -526,9 +526,20 @@ public class AdminUserServiceImpl implements AdminUserService {
         return passwordEncoder.matches(rawPassword, encodedPassword);
     }
 
+    private static final java.util.regex.Pattern STRONG_PASSWORD_PATTERN =
+            java.util.regex.Pattern.compile(
+                    "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>/?`~]).{8,20}$");
+
+    private void validateStrongPassword(String password) {
+        if (password == null || !STRONG_PASSWORD_PATTERN.matcher(password).matches()) {
+            throw new ServiceException(400, "密码需为 8-20 位，且包含大小写字母、数字和特殊字符");
+        }
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void resetAllPasswords(String password, String notifyType, String loginUrl) {
+        validateStrongPassword(password);
         String encodedPassword = encodePassword(password);
         List<AdminUserDO> users = userMapper.selectList();
         for (AdminUserDO user : users) {

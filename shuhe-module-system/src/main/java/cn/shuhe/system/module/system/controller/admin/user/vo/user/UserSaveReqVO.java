@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
 import lombok.Data;
 import org.hibernate.validator.constraints.Length;
+import jakarta.validation.constraints.Pattern;
 
 import java.util.Set;
 
@@ -66,8 +67,10 @@ public class UserSaveReqVO {
 
     // ========== 仅【创建】时，需要传递的字段 ==========
 
-    @Schema(description = "密码", requiredMode = Schema.RequiredMode.REQUIRED, example = "123456")
-    @Length(min = 4, max = 16, message = "密码长度为 4-16 位")
+    @Schema(description = "密码", requiredMode = Schema.RequiredMode.REQUIRED, example = "Abc@1234")
+    @Length(min = 8, max = 20, message = "密码长度为 8-20 位")
+    @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>/?`~]).+$",
+            message = "密码需包含大小写字母、数字和特殊字符")
     private String password;
 
     @AssertTrue(message = "密码不能为空")
