@@ -2,6 +2,7 @@ package cn.shuhe.system.module.project.service;
 
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
+import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectDeptServicePageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectDeptServiceSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDeptServiceDO;
@@ -86,31 +87,37 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     }
 
     @Override
+    @DataPermission(enable = false)
     public ProjectDeptServiceDO getDeptService(Long id) {
         return deptServiceMapper.selectById(id);
     }
 
     @Override
+    @DataPermission(enable = false) // dept_id 在创建时为 NULL，数据权限过滤会导致记录不可见
     public PageResult<ProjectDeptServiceDO> getDeptServicePage(ProjectDeptServicePageReqVO pageReqVO) {
         return deptServiceMapper.selectPage(pageReqVO);
     }
 
     @Override
+    @DataPermission(enable = false)
     public List<ProjectDeptServiceDO> getDeptServiceListByProjectId(Long projectId) {
         return deptServiceMapper.selectListByProjectId(projectId);
     }
 
     @Override
+    @DataPermission(enable = false)
     public ProjectDeptServiceDO getDeptServiceByProjectIdAndDeptType(Long projectId, Integer deptType) {
         return deptServiceMapper.selectByProjectIdAndDeptType(projectId, deptType);
     }
 
     @Override
+    @DataPermission(enable = false)
     public List<ProjectDeptServiceDO> getDeptServiceListByContractId(Long contractId) {
         return deptServiceMapper.selectListByContractId(contractId);
     }
 
     @Override
+    @DataPermission(enable = false)
     public ProjectDeptServiceDO getDeptServiceByContractIdAndDeptType(Long contractId, Integer deptType) {
         return deptServiceMapper.selectByContractIdAndDeptType(contractId, deptType);
     }
@@ -297,6 +304,7 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     }
 
     @Override
+    @DataPermission(enable = false)
     public void claimDeptService(Long id, Long deptId, String deptName, Long userId, String userName) {
         // 校验存在
         ProjectDeptServiceDO deptService = validateDeptServiceExists(id);
@@ -322,6 +330,7 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     }
 
     @Override
+    @DataPermission(enable = false)
     @Transactional(rollbackFor = Exception.class)
     public List<ProjectDeptServiceDO> batchCreateDeptService(Long projectId, Long contractId, String contractNo,
                                                               Long customerId, String customerName, List<Integer> deptTypes) {

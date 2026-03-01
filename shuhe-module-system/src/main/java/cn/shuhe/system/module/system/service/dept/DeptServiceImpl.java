@@ -213,6 +213,7 @@ public class DeptServiceImpl implements DeptService {
     }
 
     @Override
+    @DataPermission(enable = false) // 查找用户作为负责人的部门不应受数据权限限制
     public List<DeptDO> getDeptListByLeaderUserId(Long id) {
         return deptMapper.selectListByLeaderUserId(id);
     }
