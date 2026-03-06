@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -89,5 +90,16 @@ public class ServiceItemSaveReqVO {
 
     @Schema(description = "服务项归属人员类型（安全运营专用）：1-驻场人员 2-管理人员", example = "1")
     private Integer serviceMemberType;
+
+    // ========== 资金池分配 ==========
+
+    @Schema(description = "分配给该服务项的金额（元），二线/管理服务项必填，驻场服务项不填", example = "50000.00")
+    private BigDecimal allocatedAmount;
+
+    @Schema(description = "执行人用户ID（二线/管理服务项必填，该人将获得此服务项的收入）", example = "123")
+    private Long executorId;
+
+    @Schema(description = "执行人姓名（冗余存储）", example = "张三")
+    private String executorName;
 
 }

@@ -26,8 +26,11 @@ public interface ErrorCodeConstants {
     // ========== 商机管理 1-020-002-000 ==========
     ErrorCode BUSINESS_NOT_EXISTS = new ErrorCode(1_020_002_000, "商机不存在");
     ErrorCode BUSINESS_DELETE_FAIL_CONTRACT_EXISTS = new ErrorCode(1_020_002_001, "商机已关联合同，不能删除");
-    ErrorCode BUSINESS_UPDATE_STATUS_FAIL_END_STATUS = new ErrorCode(1_020_002_002, "更新商机状态失败，原因：已经是结束状态");
-    ErrorCode BUSINESS_UPDATE_STATUS_FAIL_STATUS_EQUALS = new ErrorCode(1_020_002_003, "更新商机状态失败，原因：已经是该状态");
+    ErrorCode BUSINESS_UPDATE_STATUS_FAIL_END_STATUS = new ErrorCode(1_020_002_002, "更新商机结束状态失败，原因：已经是结束状态");
+    ErrorCode BUSINESS_UPDATE_STATUS_FAIL_AUDIT_NOT_PASS = new ErrorCode(1_020_002_005, "更新商机结束状态失败，原因：商机尚未审批通过");
+    ErrorCode BUSINESS_SUBMIT_FAIL_NOT_DRAFT = new ErrorCode(1_020_002_003, "商机提交审核失败，原因：商机没处在未提交状态");
+    ErrorCode BUSINESS_ALLOCATION_SUM_MISMATCH = new ErrorCode(1_020_002_004, "部门分配金额之和须等于预计总金额");
+    ErrorCode CONTRACT_CREATE_FAIL_EARLY_INVESTMENT_PROCESSING = new ErrorCode(1_020_000_007, "签合同失败：该商机正在进行提前投入审批，请等待审批完成后再签合同");
 
     // ========== 联系人管理 1-020-003-000 ==========
     ErrorCode CONTACT_NOT_EXISTS = new ErrorCode(1_020_003_000, "联系人不存在");
@@ -94,13 +97,6 @@ public interface ErrorCodeConstants {
     ErrorCode PRODUCT_CATEGORY_PARENT_NOT_EXISTS = new ErrorCode(1_020_009_003, "父分类不存在");
     ErrorCode PRODUCT_CATEGORY_PARENT_NOT_FIRST_LEVEL = new ErrorCode(1_020_009_004, "父分类不能是二级分类");
     ErrorCode PRODUCT_CATEGORY_EXISTS_CHILDREN = new ErrorCode(1_020_009_005, "存在子分类，无法删除");
-
-    // ========== 商机状态 1_020_010_000 ==========
-    ErrorCode BUSINESS_STATUS_TYPE_NOT_EXISTS = new ErrorCode(1_020_010_000, "商机状态组不存在");
-    ErrorCode BUSINESS_STATUS_TYPE_NAME_EXISTS = new ErrorCode(1_020_010_001, "商机状态组的名称已存在");
-    ErrorCode BUSINESS_STATUS_UPDATE_FAIL_USED = new ErrorCode(1_020_010_002, "已经被使用的商机状态组，无法进行更新");
-    ErrorCode BUSINESS_STATUS_DELETE_FAIL_USED = new ErrorCode(1_020_010_002, "已经被使用的商机状态组，无法进行删除");
-    ErrorCode BUSINESS_STATUS_NOT_EXISTS = new ErrorCode(1_020_010_003, "商机状态不存在");
 
     // ========== 客户公海规则设置 1_020_012_000 ==========
     ErrorCode CUSTOMER_LIMIT_CONFIG_NOT_EXISTS = new ErrorCode(1_020_012_001, "客户限制配置不存在");

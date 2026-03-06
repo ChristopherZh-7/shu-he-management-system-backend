@@ -6,7 +6,6 @@ import cn.shuhe.system.module.crm.controller.admin.contract.vo.contract.CrmContr
 import cn.shuhe.system.module.crm.controller.admin.contract.vo.contract.CrmContractTransferReqVO;
 import cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessDO;
 import cn.shuhe.system.module.crm.dal.dataobject.contract.CrmContractDO;
-import cn.shuhe.system.module.crm.dal.dataobject.contract.CrmContractProductDO;
 import cn.shuhe.system.module.crm.dal.dataobject.customer.CrmCustomerDO;
 import jakarta.validation.Valid;
 
@@ -80,6 +79,20 @@ public interface CrmContractService {
      * @param processVariables 流程变量（包含审批时选择的分派部门等）
      */
     void updateContractAuditStatus(Long id, Integer bpmResult, java.util.Map<String, Object> processVariables);
+
+    /**
+     * 通过钉钉群链接确认合同（无需 BPM 流程）
+     *
+     * @param id 合同编号
+     */
+    void approveContractByDingtalk(Long id);
+
+    /**
+     * 通过钉钉群链接驳回合同
+     *
+     * @param id 合同编号
+     */
+    void rejectContractByDingtalk(Long id);
 
     /**
      * 获得合同
@@ -181,14 +194,6 @@ public interface CrmContractService {
     Long getContractCountByBusinessId(Long businessId);
 
     /**
-     * 根据合同编号，获得合同的产品列表
-     *
-     * @param contactId 合同编号
-     * @return 产品列表
-     */
-    List<CrmContractProductDO> getContractProductListByContractId(Long contactId);
-
-    /**
      * 获得待审核合同数量
      *
      * @param userId 用户编号
@@ -212,23 +217,5 @@ public interface CrmContractService {
      * @return 合同列表
      */
     List<CrmContractDO> getContractListByCustomerIdOwnerUserId(Long customerId, Long ownerUserId);
-
-    /**
-     * 领取合同（按部门领取）
-     *
-     * @param id     合同编号
-     * @param deptId 领取的部门编号
-     * @param userId 用户编号
-     */
-    void claimContract(Long id, Long deptId, Long userId);
-
-    /**
-     * 获得待领取合同分页（基于当前用户部门）
-     *
-     * @param pageReqVO 分页查询
-     * @param userId    用户编号
-     * @return 合同分页
-     */
-    PageResult<CrmContractDO> getPendingClaimContractPage(CrmContractPageReqVO pageReqVO, Long userId);
 
 }

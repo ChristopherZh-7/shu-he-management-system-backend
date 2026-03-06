@@ -52,9 +52,6 @@ public class OutsideCostRecordServiceImpl implements OutsideCostRecordService {
     @Resource
     private DingtalkNotifyApi dingtalkNotifyApi;
 
-    @Resource
-    private ContractAllocationService contractAllocationService;
-
     @Override
     public PageResult<OutsideCostRecordRespVO> getOutsideCostRecordPage(OutsideCostRecordPageReqVO reqVO) {
         PageResult<OutsideCostRecordDO> pageResult = outsideCostRecordMapper.selectPage(reqVO);
@@ -133,56 +130,9 @@ public class OutsideCostRecordServiceImpl implements OutsideCostRecordService {
         // 填充额外信息（外出申请或服务发起）
         fillExtraInfo(respVO, record);
         
-        // 填充合同分配相关信息
-        fillContractAllocationInfo(respVO, record);
-        
         return respVO;
     }
 
-    /**
-     * 填充合同分配相关信息
-     */
-    private void fillContractAllocationInfo(OutsideCostRecordRespVO respVO, OutsideCostRecordDO record) {
-        if (record.getContractId() == null) {
-            return;
-        }
-        
-        try {
-            // 1. 获取合同分配详情
-            ContractAllocationDetailRespVO allocationDetail = contractAllocationService.getContractAllocationDetail(record.getContractId());
-            if (allocationDetail != null) {
-                respVO.setContractTotalAmount(allocationDetail.getTotalAmount());
-                respVO.setContractAllocatedAmount(allocationDetail.getAllocatedAmount());
-                
-                // 2. 构建部门分配列表
-                if (allocationDetail.getDeptAllocations() != null && !allocationDetail.getDeptAllocations().isEmpty()) {
-                    List<OutsideCostRecordRespVO.DeptAllocationInfo> deptList = new ArrayList<>();
-                    for (ContractDeptAllocationRespVO deptAllocation : allocationDetail.getDeptAllocations()) {
-                        OutsideCostRecordRespVO.DeptAllocationInfo info = new OutsideCostRecordRespVO.DeptAllocationInfo();
-                        info.setDeptId(deptAllocation.getDeptId());
-                        info.setDeptName(deptAllocation.getDeptName());
-                        info.setAllocatedAmount(deptAllocation.getAllocatedAmount());
-                        // 标记是否为发起部门或目标部门
-                        info.setIsRequestDept(record.getRequestDeptId() != null && 
-                            record.getRequestDeptId().equals(deptAllocation.getDeptId()));
-                        info.setIsTargetDept(record.getTargetDeptId() != null && 
-                            record.getTargetDeptId().equals(deptAllocation.getDeptId()));
-                        deptList.add(info);
-                    }
-                    respVO.setDeptAllocations(deptList);
-                }
-            }
-            
-            // 3. 查询该合同已产生的跨部门费用统计
-            BigDecimal costTotal = sumAmountByContractId(record.getContractId());
-            Integer costCount = countByContractId(record.getContractId());
-            respVO.setContractOutsideCostTotal(costTotal != null ? costTotal : BigDecimal.ZERO);
-            respVO.setContractOutsideCostCount(costCount != null ? costCount : 0);
-            
-        } catch (Exception e) {
-            log.warn("填充合同分配信息失败，contractId={}", record.getContractId(), e);
-        }
-    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)

@@ -100,23 +100,25 @@ public interface SecurityOperationContractInfoMapper {
             "  soc.id as securityOperationContractId, " +
             "  soc.name as projectName, " +
             "  soc.contract_id as crmContractId, " +
-            "  soc.contract_dept_allocation_id as contractDeptAllocationId, " +
             "  soc.customer_name as customerName, " +
             "  soc.contract_no as contractNo, " +
             "  CONCAT(soc.customer_name, '-', soc.contract_no) as contractName, " +
             "  cc.start_time as contractStartDate, " +
             "  cc.end_time as contractEndDate, " +
-            // 使用视图获取费用，避免子查询
-            "  COALESCE(vf.management_fee, 0) as managementFee, " +
-            "  COALESCE(vf.onsite_fee, 0) as onsiteFee, " +
-            // 使用视图获取成员数量，避免子查询
+            // 管理费：从 project_dept_service.second_line_budget 读取（新数据源）
+            "  COALESCE(pds.second_line_budget, 0) as managementFee, " +
+            // 驻场费：从 project_dept_service.onsite_budget 读取（新数据源）
+            "  COALESCE(pds.onsite_budget, 0) as onsiteFee, " +
+            // 成员数量：从视图读取（保持不变）
             "  COALESCE(vc.member_count, 1) as sameMemberTypeCount " +
             "FROM security_operation_member som " +
             "LEFT JOIN security_operation_site sos ON sos.id = som.site_id AND sos.deleted = 0 " +
             "LEFT JOIN security_operation_contract soc ON soc.id = som.so_contract_id AND soc.deleted = 0 " +
             "LEFT JOIN crm_contract cc ON cc.id = soc.contract_id AND cc.deleted = 0 " +
-            // JOIN费用视图
-            "LEFT JOIN v_so_contract_fees vf ON vf.so_contract_id = soc.id " +
+            // JOIN project_dept_service 获取新预算字段（按合同ID + 安全运营部门类型）
+            "LEFT JOIN project p ON p.contract_id = soc.contract_id AND p.deleted = 0 " +
+            "LEFT JOIN project_dept_service pds ON pds.project_id = p.id " +
+            "  AND pds.dept_type = 2 AND pds.deleted = 0 " +
             // JOIN成员数视图
             "LEFT JOIN v_so_contract_member_type_count vc ON vc.so_contract_id = som.so_contract_id AND vc.member_type = som.member_type " +
             "WHERE som.user_id = #{userId} " +

@@ -75,6 +75,12 @@ public class DingtalkConfigDO extends BaseDO {
     private String callbackBaseUrl;
 
     /**
+     * 审批链接 baseUrl（前端/网关入口，如 http://localhost:5666）
+     * 不填则用 callbackBaseUrl。用于生成「通过审批」「驳回」「修改金额」等链接
+     */
+    private String approveBaseUrl;
+
+    /**
      * 钉钉OA外出申请流程编码
      */
     private String outsideProcessCode;
@@ -84,5 +90,16 @@ public class DingtalkConfigDO extends BaseDO {
      */
     private String outsideType;
 
+    /**
+     * 商机审批固定群 chatId
+     * 配置后不再每个商机建群，所有审批通知发到此群。需手动建群并加应用机器人一次。
+     */
+    private String businessAuditChatId;
+
+    /**
+     * 商机审批场景群模板ID
+     * 配置后使用场景群API建群，机器人自动进群，无需每次手动添加。
+     */
+    private String businessAuditTemplateId;
 
 }

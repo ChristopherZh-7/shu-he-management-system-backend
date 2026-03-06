@@ -3,9 +3,7 @@ package cn.shuhe.system.module.crm.controller.admin.contract.vo.contract;
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -42,6 +40,12 @@ public class CrmContractRespVO {
     @ExcelProperty("商机名称")
     private String businessName;
 
+    @Schema(description = "合作商客户编号（可为空）", example = "10300")
+    private Long intermediaryId;
+    @Schema(description = "合作商名称", example = "XX科技有限公司")
+    @ExcelProperty("合作商名称")
+    private String intermediaryName;
+
     @Schema(description = "最后跟进时间")
     @ExcelProperty("最后跟进时间")
     private LocalDateTime contactLastTime;
@@ -76,14 +80,6 @@ public class CrmContractRespVO {
     @ExcelProperty("结束时间")
     private LocalDateTime endTime;
 
-    @Schema(description = "产品总金额", example = "19510")
-    @ExcelProperty("产品总金额")
-    private BigDecimal totalProductPrice;
-
-    @Schema(description = "整单折扣")
-    @ExcelProperty("整单折扣")
-    private BigDecimal discountPercent;
-
     @Schema(description = "合同金额", example = "5617")
     @ExcelProperty("合同金额")
     private BigDecimal totalPrice;
@@ -111,45 +107,8 @@ public class CrmContractRespVO {
     @Schema(description = "合同附件URL")
     private String attachment;
 
-    @Schema(description = "分派部门IDs")
-    private String assignDeptIds;
-
-    @Schema(description = "分派部门名称")
-    private String assignDeptNames;
-
-    @Schema(description = "领取状态：0=待领取，1=已领取")
-    private Integer claimStatus;
-
-    @Schema(description = "领取人用户ID")
-    private Long claimUserId;
-
-    @Schema(description = "领取人名称")
-    private String claimUserName;
-
-    @Schema(description = "领取时间")
-    private LocalDateTime claimTime;
-
-    @Schema(description = "分派部门详细信息列表（包含领取状态）")
-    private List<AssignDeptInfo> assignDeptInfoList;
-
-    @Schema(description = "分派部门信息")
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class AssignDeptInfo {
-        @Schema(description = "部门ID")
-        private Long deptId;
-        @Schema(description = "部门名称")
-        private String deptName;
-        @Schema(description = "是否已领取")
-        private Boolean claimed;
-        @Schema(description = "领取人用户ID")
-        private Long claimUserId;
-        @Schema(description = "领取人名称")
-        private String claimUserName;
-        @Schema(description = "领取时间")
-        private LocalDateTime claimTime;
-    }
+    @Schema(description = "部门金额分配列表")
+    private List<cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessDO.DeptAllocation> deptAllocations;
 
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
@@ -166,40 +125,5 @@ public class CrmContractRespVO {
     @Schema(description = "更新时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("更新时间")
     private LocalDateTime updateTime;
-
-    @Schema(description = "产品列表")
-    private List<Product> products;
-
-    @Schema(description = "产品列表")
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class Product {
-
-        @Schema(description = "编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "888")
-        private Long id;
-
-        @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "20529")
-        private Long productId;
-        @Schema(description = "产品名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "李四")
-        private String productName;
-        @Schema(description = "产品条码", requiredMode = Schema.RequiredMode.REQUIRED, example = "20529")
-        private String productNo;
-        @Schema(description = "产品单位", requiredMode = Schema.RequiredMode.REQUIRED, example = "李四")
-        private Integer productUnit;
-
-        @Schema(description = "产品单价", requiredMode = Schema.RequiredMode.REQUIRED, example = "123.00")
-        private BigDecimal productPrice;
-
-        @Schema(description = "合同价格", requiredMode = Schema.RequiredMode.REQUIRED, example = "123.00")
-        private BigDecimal contractPrice;
-
-        @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "8911")
-        private BigDecimal count;
-
-        @Schema(description = "总计价格", requiredMode = Schema.RequiredMode.REQUIRED, example = "123.00")
-        private BigDecimal totalPrice;
-
-    }
 
 }

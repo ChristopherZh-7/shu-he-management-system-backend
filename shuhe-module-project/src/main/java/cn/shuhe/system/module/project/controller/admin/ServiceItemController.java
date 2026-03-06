@@ -7,6 +7,7 @@ import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.framework.excel.core.util.ExcelUtils;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemBatchSaveReqVO;
+import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemDeptBudgetRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemImportExcelVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemImportRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemPageReqVO;
@@ -239,6 +240,8 @@ public class ServiceItemController {
             respVO.setUsedCount(serviceItemService.getExecutedCount(id));
             // 填充合同名称
             fillContractName(respVO, serviceItem.getContractId());
+            // 填充收入分配金额
+            respVO.setAllocatedAmount(serviceItemService.getServiceItemAllocatedAmount(id));
         }
         return success(respVO);
     }
@@ -266,6 +269,8 @@ public class ServiceItemController {
             respVO.setUsedCount(serviceItemService.getExecutedCount(serviceItem.getId()));
             // 填充合同名称
             fillContractName(respVO, serviceItem.getContractId());
+            // 填充收入分配金额
+            respVO.setAllocatedAmount(serviceItemService.getServiceItemAllocatedAmount(serviceItem.getId()));
         }
         return success(result);
     }
@@ -316,6 +321,8 @@ public class ServiceItemController {
             respVO.setUsedCount(serviceItemService.getExecutedCount(serviceItem.getId()));
             // 填充合同名称
             fillContractName(respVO, serviceItem.getContractId());
+            // 填充收入分配金额
+            respVO.setAllocatedAmount(serviceItemService.getServiceItemAllocatedAmount(serviceItem.getId()));
         }
         return success(result);
     }
@@ -470,6 +477,31 @@ public class ServiceItemController {
             }
         }
         return success(result);
+    }
+
+    @GetMapping("/dept-budget")
+    @Operation(summary = "查询部门预算使用情况", description = "根据合同ID和部门ID查询该部门的预算总额、已用金额和剩余金额")
+    @Parameter(name = "contractId", description = "合同ID", required = true)
+    @Parameter(name = "deptId", description = "部门ID", required = true)
+    @PreAuthorize("@ss.hasPermission('project:service-item:query')")
+    public CommonResult<ServiceItemDeptBudgetRespVO> getDeptBudget(
+            @RequestParam("contractId") Long contractId,
+            @RequestParam("deptId") Long deptId) {
+        return success(serviceItemService.getDeptBudget(contractId, deptId));
+    }
+
+    @GetMapping("/remaining-budget")
+    @Operation(summary = "查询资金池剩余预算",
+               description = "根据部门服务单ID和服务模式查询对应资金池的总预算、已用金额、剩余金额。serviceMode：1=驻场, 2=二线/管理")
+    @Parameter(name = "deptServiceId", description = "部门服务单ID", required = true)
+    @Parameter(name = "serviceMode", description = "服务模式：1-驻场 2-二线（安全运营用 serviceMemberType：1-驻场人员 2-管理人员）", required = false)
+    @Parameter(name = "serviceMemberType", description = "安全运营成员类型：1-驻场人员 2-管理人员", required = false)
+    @PreAuthorize("@ss.hasPermission('project:service-item:query')")
+    public CommonResult<java.util.Map<String, Object>> getRemainingBudget(
+            @RequestParam("deptServiceId") Long deptServiceId,
+            @RequestParam(value = "serviceMode", required = false) Integer serviceMode,
+            @RequestParam(value = "serviceMemberType", required = false) Integer serviceMemberType) {
+        return success(serviceItemService.getRemainingBudget(deptServiceId, serviceMode, serviceMemberType));
     }
 
     /**

@@ -35,6 +35,10 @@ public class CrmCustomerSaveReqVO {
     @NotEmpty(message = "客户名称不能为空")
     private String name;
 
+    @Schema(description = "客户类型：1=最终客户 2=合作商", example = "1")
+    @DiffLogField(name = "客户类型")
+    private Integer type;
+
     @Schema(description = "下次联系时间")
     @DiffLogField(name = "下次联系时间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)

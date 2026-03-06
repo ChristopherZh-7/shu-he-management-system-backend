@@ -78,6 +78,14 @@ public interface ProjectService {
     ProjectDO getProjectByContractId(Long contractId);
 
     /**
+     * 根据商机ID获取项目
+     *
+     * @param businessId 商机ID
+     * @return 项目
+     */
+    ProjectDO getProjectByBusinessId(Long businessId);
+
+    /**
      * 添加项目成员
      *
      * @param projectId 项目ID
@@ -86,6 +94,14 @@ public interface ProjectService {
      * @param roleType  角色类型（1-项目经理 2-执行人员 3-审核人员）
      */
     void addProjectMember(Long projectId, Long userId, String nickname, Integer roleType);
+
+    /**
+     * 将指定用户加入项目关联的钉钉群（若群不存在则忽略）
+     *
+     * @param projectId 项目ID
+     * @param userIds   系统用户ID列表
+     */
+    void addUsersToProjectGroupChat(Long projectId, List<Long> userIds);
 
     /**
      * 获取项目统计（用于工作台/分析页）
@@ -104,5 +120,24 @@ public interface ProjectService {
      * @return 项目分布
      */
     List<DashboardStatisticsRespVO.PieChartData> getProjectDistribution(Long userId, boolean isAdmin);
+
+    /**
+     * 项目退场
+     * <p>
+     * 将项目状态置为已退场（status=3），发送钉钉群通知，之后项目不可再管理。
+     *
+     * @param id         项目编号
+     * @param exitRemark 退场备注
+     */
+    void exitProject(Long id, String exitRemark);
+
+    /**
+     * 更新项目的合同关联信息（合同签订后调用）
+     *
+     * @param projectId  项目编号
+     * @param contractId 合同编号
+     * @param contractNo 合同编号字符串
+     */
+    void updateProjectContractInfo(Long projectId, Long contractId, String contractNo);
 
 }

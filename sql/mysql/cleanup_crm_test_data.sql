@@ -14,9 +14,6 @@ DELETE FROM crm_contract_product WHERE deleted = 0;
 
 -- 3. 删除商机相关数据
 DELETE FROM crm_business WHERE deleted = 0;
-DELETE FROM crm_business_product WHERE deleted = 0;
-DELETE FROM crm_business_status WHERE deleted = 0;
-DELETE FROM crm_business_status_type WHERE deleted = 0;
 
 -- 4. 删除联系人相关数据
 DELETE FROM crm_contact WHERE deleted = 0;

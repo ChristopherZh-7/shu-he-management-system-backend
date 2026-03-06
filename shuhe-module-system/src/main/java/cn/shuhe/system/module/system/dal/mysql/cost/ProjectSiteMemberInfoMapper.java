@@ -58,18 +58,19 @@ public interface ProjectSiteMemberInfoMapper {
             "  CONCAT(p.customer_name, '-', p.contract_no) as contractName, " +
             "  cc.start_time as contractStartDate, " +
             "  cc.end_time as contractEndDate, " +
-            // 使用视图获取驻场费，避免子查询
-            "  COALESCE(vf.total_onsite_fee, 0) as onsiteFee, " +
-            // 使用视图获取管理费
-            "  COALESCE(vf.total_management_fee, 0) as managementFee, " +
-            // 使用视图获取同类型成员数量
+            // 驻场费：从 project_dept_service.onsite_budget 读取（新数据源）
+            "  COALESCE(pds.onsite_budget, 0) as onsiteFee, " +
+            // 管理费：从 project_dept_service.second_line_budget 读取（新数据源）
+            "  COALESCE(pds.second_line_budget, 0) as managementFee, " +
+            // 同类型成员数量：从视图读取（保持不变）
             "  COALESCE(vc.member_count, 1) as sameMemberTypeCount " +
             "FROM project_site_member psm " +
             "LEFT JOIN project_site ps ON ps.id = psm.site_id AND ps.deleted = 0 " +
             "LEFT JOIN project p ON p.id = psm.project_id AND p.deleted = 0 " +
             "LEFT JOIN crm_contract cc ON cc.id = p.contract_id AND cc.deleted = 0 " +
-            // JOIN费用视图
-            "LEFT JOIN v_contract_allocation_fees vf ON vf.contract_id = p.contract_id AND vf.dept_type = psm.dept_type " +
+            // JOIN project_dept_service 获取新预算字段（按项目ID + 部门类型匹配）
+            "LEFT JOIN project_dept_service pds ON pds.project_id = psm.project_id " +
+            "  AND pds.dept_type = psm.dept_type AND pds.deleted = 0 " +
             // JOIN成员数视图
             "LEFT JOIN v_site_member_type_count vc ON vc.site_id = psm.site_id AND vc.member_type = psm.member_type " +
             "WHERE psm.user_id = #{userId} " +
@@ -79,7 +80,7 @@ public interface ProjectSiteMemberInfoMapper {
             "  AND psm.dept_type = #{deptType} " +
             "</if>" +
             "</script>")
-    List<Map<String, Object>> selectMemberParticipation(@Param("userId") Long userId, 
+    List<Map<String, Object>> selectMemberParticipation(@Param("userId") Long userId,
                                                          @Param("deptType") Integer deptType);
 
     /**
@@ -110,14 +111,15 @@ public interface ProjectSiteMemberInfoMapper {
             "  CONCAT(p.customer_name, '-', p.contract_no) as contractName, " +
             "  cc.start_time as contractStartDate, " +
             "  cc.end_time as contractEndDate, " +
-            "  COALESCE(vf.total_onsite_fee, 0) as onsiteFee, " +
-            "  COALESCE(vf.total_management_fee, 0) as managementFee, " +
+            "  COALESCE(pds.onsite_budget, 0) as onsiteFee, " +
+            "  COALESCE(pds.second_line_budget, 0) as managementFee, " +
             "  COALESCE(vc.member_count, 1) as sameMemberTypeCount " +
             "FROM project_site_member psm " +
             "LEFT JOIN project_site ps ON ps.id = psm.site_id AND ps.deleted = 0 " +
             "LEFT JOIN project p ON p.id = psm.project_id AND p.deleted = 0 " +
             "LEFT JOIN crm_contract cc ON cc.id = p.contract_id AND cc.deleted = 0 " +
-            "LEFT JOIN v_contract_allocation_fees vf ON vf.contract_id = p.contract_id AND vf.dept_type = psm.dept_type " +
+            "LEFT JOIN project_dept_service pds ON pds.project_id = psm.project_id " +
+            "  AND pds.dept_type = psm.dept_type AND pds.deleted = 0 " +
             "LEFT JOIN v_site_member_type_count vc ON vc.site_id = psm.site_id AND vc.member_type = psm.member_type " +
             "WHERE psm.user_id IN " +
             "<foreach collection='userIds' item='uid' open='(' separator=',' close=')'>" +

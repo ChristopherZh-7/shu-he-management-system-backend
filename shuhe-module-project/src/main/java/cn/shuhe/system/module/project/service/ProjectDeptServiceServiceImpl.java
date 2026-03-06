@@ -13,10 +13,11 @@ import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +41,10 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
 
     @Resource
     private DeptApi deptApi;
+
+    @Resource
+    @Lazy
+    private ProjectService projectService;
 
     @Override
     public Long createDeptService(ProjectDeptServiceSaveReqVO createReqVO) {
@@ -148,224 +153,208 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     }
 
     @Override
-    public void setDeptServiceManagers(Long id, List<Long> managerIds, List<String> managerNames) {
-        // 校验存在
-        validateDeptServiceExists(id);
+    public void setDeptServiceManagers(Long id, List<Long> managerIds, List<String> managerNames,
+                                       BigDecimal onsiteBudget, BigDecimal secondLineBudget) {
+        ProjectDeptServiceDO existing = validateDeptServiceExists(id);
+        validateBudgetNotExceeded(existing.getDeptBudget(), onsiteBudget, secondLineBudget);
 
-        // 更新负责人
         ProjectDeptServiceDO updateObj = new ProjectDeptServiceDO();
         updateObj.setId(id);
         updateObj.setManagerIds(managerIds);
         updateObj.setManagerNames(managerNames);
+        if (onsiteBudget != null) updateObj.setOnsiteBudget(onsiteBudget);
+        if (secondLineBudget != null) updateObj.setSecondLineBudget(secondLineBudget);
 
-        // 根据第一个负责人的部门确定实际执行部门
-        if (managerIds != null && !managerIds.isEmpty()) {
-            Long firstManagerId = managerIds.get(0);
-            AdminUserRespDTO firstManager = adminUserApi.getUser(firstManagerId);
-            if (firstManager != null && firstManager.getDeptId() != null) {
-                Long actualDeptId = firstManager.getDeptId();
-                DeptRespDTO actualDept = deptApi.getDept(actualDeptId);
-                if (actualDept != null) {
-                    updateObj.setActualDeptId(actualDeptId);
-                    updateObj.setActualDeptName(actualDept.getName());
-                    log.info("【部门服务单】根据负责人{}确定实际执行部门: id={}, name={}",
-                            firstManagerId, actualDeptId, actualDept.getName());
-                }
-            }
-        }
-
+        resolveActualDept(updateObj, managerIds);
         deptServiceMapper.updateById(updateObj);
+        log.info("【部门服务单】设置负责人，id={}, managerIds={}, onsiteBudget={}, secondLineBudget={}",
+                id, managerIds, onsiteBudget, secondLineBudget);
 
-        log.info("【部门服务单】设置负责人，id={}, managerIds={}", id, managerIds);
+        addManagersToGroupChat(id, managerIds);
     }
 
     @Override
     public void setSecurityServiceManagers(Long id,
                                             List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
-                                            List<Long> secondLineManagerIds, List<String> secondLineManagerNames) {
-        // 校验存在
+                                            List<Long> secondLineManagerIds, List<String> secondLineManagerNames,
+                                            BigDecimal onsiteBudget, BigDecimal secondLineBudget) {
         ProjectDeptServiceDO deptService = validateDeptServiceExists(id);
-
-        // 校验是否为安全服务
         if (deptService.getDeptType() != 1) {
             throw exception(PROJECT_DEPT_SERVICE_NOT_SECURITY_SERVICE);
         }
+        validateBudgetNotExceeded(deptService.getDeptBudget(), onsiteBudget, secondLineBudget);
 
-        // 更新驻场和二线负责人
-        ProjectDeptServiceDO updateObj = new ProjectDeptServiceDO();
-        updateObj.setId(id);
-        updateObj.setOnsiteManagerIds(onsiteManagerIds);
-        updateObj.setOnsiteManagerNames(onsiteManagerNames);
-        updateObj.setSecondLineManagerIds(secondLineManagerIds);
-        updateObj.setSecondLineManagerNames(secondLineManagerNames);
+        ProjectDeptServiceDO updateObj = buildManagerUpdateObj(id,
+                onsiteManagerIds, onsiteManagerNames, secondLineManagerIds, secondLineManagerNames);
+        if (onsiteBudget != null) updateObj.setOnsiteBudget(onsiteBudget);
+        if (secondLineBudget != null) updateObj.setSecondLineBudget(secondLineBudget);
 
-        // 同时更新 managerIds 和 managerNames（合并驻场和二线负责人）用于兼容
-        List<Long> allManagerIds = new ArrayList<>();
-        List<String> allManagerNames = new ArrayList<>();
-        if (onsiteManagerIds != null) {
-            allManagerIds.addAll(onsiteManagerIds);
-        }
-        if (secondLineManagerIds != null) {
-            allManagerIds.addAll(secondLineManagerIds);
-        }
-        if (onsiteManagerNames != null) {
-            allManagerNames.addAll(onsiteManagerNames);
-        }
-        if (secondLineManagerNames != null) {
-            allManagerNames.addAll(secondLineManagerNames);
-        }
-        updateObj.setManagerIds(allManagerIds.isEmpty() ? null : allManagerIds);
-        updateObj.setManagerNames(allManagerNames.isEmpty() ? null : allManagerNames);
-
-        // 根据第一个负责人的部门确定实际执行部门（优先使用驻场负责人）
-        List<Long> firstManagerList = onsiteManagerIds != null && !onsiteManagerIds.isEmpty() 
+        List<Long> firstManagerList = onsiteManagerIds != null && !onsiteManagerIds.isEmpty()
                 ? onsiteManagerIds : secondLineManagerIds;
-        if (firstManagerList != null && !firstManagerList.isEmpty()) {
-            Long firstManagerId = firstManagerList.get(0);
-            AdminUserRespDTO firstManager = adminUserApi.getUser(firstManagerId);
-            if (firstManager != null && firstManager.getDeptId() != null) {
-                Long actualDeptId = firstManager.getDeptId();
-                DeptRespDTO actualDept = deptApi.getDept(actualDeptId);
-                if (actualDept != null) {
-                    updateObj.setActualDeptId(actualDeptId);
-                    updateObj.setActualDeptName(actualDept.getName());
-                    log.info("【部门服务单】根据负责人{}确定实际执行部门: id={}, name={}",
-                            firstManagerId, actualDeptId, actualDept.getName());
-                }
-            }
-        }
+        resolveActualDept(updateObj, firstManagerList);
 
         deptServiceMapper.updateById(updateObj);
+        log.info("【部门服务单】设置安全服务负责人，id={}, onsiteBudget={}, secondLineBudget={}",
+                id, onsiteBudget, secondLineBudget);
 
-        log.info("【部门服务单】设置安全服务负责人，id={}, onsiteManagerIds={}, secondLineManagerIds={}", 
-                id, onsiteManagerIds, secondLineManagerIds);
+        List<Long> allIds = mergeIds(onsiteManagerIds, secondLineManagerIds);
+        addManagersToGroupChat(id, allIds);
     }
 
     @Override
     public void setDataSecurityManagers(Long id,
                                          List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
-                                         List<Long> secondLineManagerIds, List<String> secondLineManagerNames) {
-        // 校验存在
+                                         List<Long> secondLineManagerIds, List<String> secondLineManagerNames,
+                                         BigDecimal onsiteBudget, BigDecimal secondLineBudget) {
         ProjectDeptServiceDO deptService = validateDeptServiceExists(id);
-
-        // 校验是否为数据安全
         if (deptService.getDeptType() != 3) {
             throw exception(PROJECT_DEPT_SERVICE_NOT_DATA_SECURITY);
         }
+        validateBudgetNotExceeded(deptService.getDeptBudget(), onsiteBudget, secondLineBudget);
 
-        // 更新驻场和二线负责人（与安全服务逻辑一致）
-        ProjectDeptServiceDO updateObj = new ProjectDeptServiceDO();
-        updateObj.setId(id);
-        updateObj.setOnsiteManagerIds(onsiteManagerIds);
-        updateObj.setOnsiteManagerNames(onsiteManagerNames);
-        updateObj.setSecondLineManagerIds(secondLineManagerIds);
-        updateObj.setSecondLineManagerNames(secondLineManagerNames);
+        ProjectDeptServiceDO updateObj = buildManagerUpdateObj(id,
+                onsiteManagerIds, onsiteManagerNames, secondLineManagerIds, secondLineManagerNames);
+        if (onsiteBudget != null) updateObj.setOnsiteBudget(onsiteBudget);
+        if (secondLineBudget != null) updateObj.setSecondLineBudget(secondLineBudget);
 
-        // 同时更新 managerIds 和 managerNames（合并驻场和二线负责人）用于兼容
-        List<Long> allManagerIds = new ArrayList<>();
-        List<String> allManagerNames = new ArrayList<>();
-        if (onsiteManagerIds != null) {
-            allManagerIds.addAll(onsiteManagerIds);
-        }
-        if (secondLineManagerIds != null) {
-            allManagerIds.addAll(secondLineManagerIds);
-        }
-        if (onsiteManagerNames != null) {
-            allManagerNames.addAll(onsiteManagerNames);
-        }
-        if (secondLineManagerNames != null) {
-            allManagerNames.addAll(secondLineManagerNames);
-        }
-        updateObj.setManagerIds(allManagerIds.isEmpty() ? null : allManagerIds);
-        updateObj.setManagerNames(allManagerNames.isEmpty() ? null : allManagerNames);
-
-        // 根据第一个负责人的部门确定实际执行部门（优先使用驻场负责人）
-        List<Long> firstManagerList = onsiteManagerIds != null && !onsiteManagerIds.isEmpty() 
+        List<Long> firstManagerList = onsiteManagerIds != null && !onsiteManagerIds.isEmpty()
                 ? onsiteManagerIds : secondLineManagerIds;
-        if (firstManagerList != null && !firstManagerList.isEmpty()) {
-            Long firstManagerId = firstManagerList.get(0);
-            AdminUserRespDTO firstManager = adminUserApi.getUser(firstManagerId);
-            if (firstManager != null && firstManager.getDeptId() != null) {
-                Long actualDeptId = firstManager.getDeptId();
-                DeptRespDTO actualDept = deptApi.getDept(actualDeptId);
-                if (actualDept != null) {
-                    updateObj.setActualDeptId(actualDeptId);
-                    updateObj.setActualDeptName(actualDept.getName());
-                    log.info("【部门服务单】根据负责人{}确定实际执行部门: id={}, name={}",
-                            firstManagerId, actualDeptId, actualDept.getName());
-                }
+        resolveActualDept(updateObj, firstManagerList);
+
+        deptServiceMapper.updateById(updateObj);
+        log.info("【部门服务单】设置数据安全负责人，id={}, onsiteBudget={}, secondLineBudget={}",
+                id, onsiteBudget, secondLineBudget);
+
+        List<Long> allIds = mergeIds(onsiteManagerIds, secondLineManagerIds);
+        addManagersToGroupChat(id, allIds);
+    }
+
+
+    // ========== 私有辅助方法 ==========
+
+    private ProjectDeptServiceDO buildManagerUpdateObj(Long id,
+                                                        List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
+                                                        List<Long> secondLineManagerIds, List<String> secondLineManagerNames) {
+        ProjectDeptServiceDO obj = new ProjectDeptServiceDO();
+        obj.setId(id);
+        obj.setOnsiteManagerIds(onsiteManagerIds);
+        obj.setOnsiteManagerNames(onsiteManagerNames);
+        obj.setSecondLineManagerIds(secondLineManagerIds);
+        obj.setSecondLineManagerNames(secondLineManagerNames);
+        List<Long> allIds = mergeIds(onsiteManagerIds, secondLineManagerIds);
+        List<String> allNames = mergeNames(onsiteManagerNames, secondLineManagerNames);
+        obj.setManagerIds(allIds.isEmpty() ? null : allIds);
+        obj.setManagerNames(allNames.isEmpty() ? null : allNames);
+        return obj;
+    }
+
+    private List<Long> mergeIds(List<Long> a, List<Long> b) {
+        List<Long> result = new ArrayList<>();
+        if (a != null) result.addAll(a);
+        if (b != null) result.addAll(b);
+        return result;
+    }
+
+    private List<String> mergeNames(List<String> a, List<String> b) {
+        List<String> result = new ArrayList<>();
+        if (a != null) result.addAll(a);
+        if (b != null) result.addAll(b);
+        return result;
+    }
+
+    private void resolveActualDept(ProjectDeptServiceDO updateObj, List<Long> managerIds) {
+        if (managerIds == null || managerIds.isEmpty()) return;
+        Long firstManagerId = managerIds.get(0);
+        AdminUserRespDTO firstManager = adminUserApi.getUser(firstManagerId);
+        if (firstManager != null && firstManager.getDeptId() != null) {
+            Long actualDeptId = firstManager.getDeptId();
+            DeptRespDTO actualDept = deptApi.getDept(actualDeptId);
+            if (actualDept != null) {
+                updateObj.setActualDeptId(actualDeptId);
+                updateObj.setActualDeptName(actualDept.getName());
             }
         }
-
-        deptServiceMapper.updateById(updateObj);
-
-        log.info("【部门服务单】设置数据安全负责人，id={}, onsiteManagerIds={}, secondLineManagerIds={}", 
-                id, onsiteManagerIds, secondLineManagerIds);
     }
 
-    @Override
-    @DataPermission(enable = false)
-    public void claimDeptService(Long id, Long deptId, String deptName, Long userId, String userName) {
-        // 校验存在
-        ProjectDeptServiceDO deptService = validateDeptServiceExists(id);
-
-        // 校验是否已领取
-        if (Boolean.TRUE.equals(deptService.getClaimed())) {
-            throw exception(PROJECT_DEPT_SERVICE_ALREADY_CLAIMED);
+    private void addManagersToGroupChat(Long deptServiceId, List<Long> managerIds) {
+        if (managerIds == null || managerIds.isEmpty()) return;
+        ProjectDeptServiceDO saved = deptServiceMapper.selectById(deptServiceId);
+        if (saved != null && saved.getProjectId() != null) {
+            projectService.addUsersToProjectGroupChat(saved.getProjectId(), managerIds);
         }
-
-        // 更新领取信息和状态
-        ProjectDeptServiceDO updateObj = new ProjectDeptServiceDO();
-        updateObj.setId(id);
-        updateObj.setDeptId(deptId);
-        updateObj.setDeptName(deptName);
-        updateObj.setClaimUserId(userId);
-        updateObj.setClaimUserName(userName);
-        updateObj.setClaimTime(LocalDateTime.now());
-        updateObj.setClaimed(true);
-        updateObj.setStatus(1); // 更新状态为待开始（已领取但未设置负责人和开始项目）
-        deptServiceMapper.updateById(updateObj);
-
-        log.info("【部门服务单】领取成功，id={}, deptId={}, userId={}, status=1(待开始)", id, deptId, userId);
     }
 
     @Override
-    @DataPermission(enable = false)
-    @Transactional(rollbackFor = Exception.class)
-    public List<ProjectDeptServiceDO> batchCreateDeptService(Long projectId, Long contractId, String contractNo,
-                                                              Long customerId, String customerName, List<Integer> deptTypes) {
+    public List<ProjectDeptServiceDO> batchCreateDeptServiceForBusiness(Long projectId, Long businessId,
+                                                                         Long customerId, String customerName,
+                                                                         List<Integer> deptTypes,
+                                                                         java.util.Map<Integer, BigDecimal> deptTypeBudgetMap) {
         List<ProjectDeptServiceDO> result = new ArrayList<>();
 
         for (Integer deptType : deptTypes) {
-            // 检查是否已存在
             ProjectDeptServiceDO existing = deptServiceMapper.selectByProjectIdAndDeptType(projectId, deptType);
             if (existing != null) {
-                log.warn("【部门服务单】部门服务单已存在，跳过创建，projectId={}, deptType={}", projectId, deptType);
+                log.warn("【部门服务单-商机】部门服务单已存在，跳过创建，projectId={}, deptType={}", projectId, deptType);
                 result.add(existing);
                 continue;
             }
 
-            // 创建部门服务单
+            BigDecimal deptBudget = deptTypeBudgetMap != null ? deptTypeBudgetMap.get(deptType) : null;
+
             ProjectDeptServiceDO deptService = ProjectDeptServiceDO.builder()
                     .projectId(projectId)
-                    .contractId(contractId)
-                    .contractNo(contractNo)
+                    .businessId(businessId)
                     .customerId(customerId)
                     .customerName(customerName)
                     .deptType(deptType)
-                    .status(0) // 待领取
+                    .status(1) // 待开始（无需领取）
                     .progress(0)
-                    .claimed(false)
+                    .claimed(true) // 跳过领取流程
+                    .deptBudget(deptBudget) // 从合同 deptAllocations 带入预算
                     .build();
 
             deptServiceMapper.insert(deptService);
             result.add(deptService);
 
-            log.info("【部门服务单】批量创建，projectId={}, deptType={}, id={}",
-                    projectId, deptType, deptService.getId());
+            log.info("【部门服务单-商机】批量创建，projectId={}, deptType={}, id={}, deptBudget={}",
+                    projectId, deptType, deptService.getId(), deptBudget);
         }
 
         return result;
+    }
+
+    @Override
+    @DataPermission(enable = false)
+    public void updateDeptBudgetByProjectId(Long projectId, java.util.Map<Integer, BigDecimal> deptTypeBudgetMap) {
+        if (projectId == null || deptTypeBudgetMap == null || deptTypeBudgetMap.isEmpty()) {
+            return;
+        }
+        List<ProjectDeptServiceDO> list = deptServiceMapper.selectListByProjectId(projectId);
+        for (ProjectDeptServiceDO pds : list) {
+            BigDecimal budget = deptTypeBudgetMap.get(pds.getDeptType());
+            if (budget != null) {
+                ProjectDeptServiceDO update = new ProjectDeptServiceDO();
+                update.setId(pds.getId());
+                update.setDeptBudget(budget);
+                deptServiceMapper.updateById(update);
+                log.info("【部门服务单】更新合同预算，id={}, deptType={}, deptBudget={}", pds.getId(), pds.getDeptType(), budget);
+            }
+        }
+    }
+
+    /**
+     * 校验驻场预算 + 二线预算不超过合同总预算。
+     * 仅在 deptBudget 不为 null 时才校验（未设置总预算时不限制）。
+     */
+    private void validateBudgetNotExceeded(BigDecimal deptBudget, BigDecimal onsiteBudget, BigDecimal secondLineBudget) {
+        if (deptBudget == null || deptBudget.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        BigDecimal onsite = onsiteBudget != null ? onsiteBudget : BigDecimal.ZERO;
+        BigDecimal secondLine = secondLineBudget != null ? secondLineBudget : BigDecimal.ZERO;
+        if (onsite.add(secondLine).compareTo(deptBudget) > 0) {
+            throw exception(PROJECT_DEPT_SERVICE_BUDGET_EXCEEDED);
+        }
     }
 
     private ProjectDeptServiceDO validateDeptServiceExists(Long id) {

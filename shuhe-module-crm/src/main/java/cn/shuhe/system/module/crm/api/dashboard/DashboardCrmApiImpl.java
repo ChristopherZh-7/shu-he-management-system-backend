@@ -21,6 +21,8 @@ import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.controller.admin.dashboard.vo.DashboardStatisticsRespVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -39,9 +41,11 @@ import java.util.stream.Collectors;
 /**
  * 仪表板 - CRM 合同/客户/收入统计 API 实现
  * 为工作台/分析页提供真实合同、客户、回款数据
+ * 仅当 CrmContractService 可用时注册，避免循环依赖导致启动失败
  */
 @Slf4j
 @Service
+@ConditionalOnBean(CrmContractService.class)
 public class DashboardCrmApiImpl implements DashboardCrmApi {
 
     private static final String SUPER_ADMIN_ROLE = "super_admin";
@@ -53,6 +57,7 @@ public class DashboardCrmApiImpl implements DashboardCrmApi {
     @Resource
     private CrmContractConfigService contractConfigService;
     @Resource
+    @Lazy
     private CrmContractService contractService;
     @Resource
     private CrmCustomerMapper customerMapper;

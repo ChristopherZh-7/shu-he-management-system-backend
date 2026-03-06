@@ -5,6 +5,7 @@ import cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.shuhe.system.module.system.dal.dataobject.cost.ServiceItemAllocationDO;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -57,6 +58,23 @@ public interface ServiceItemAllocationMapper extends BaseMapperX<ServiceItemAllo
                 .eq(ServiceItemAllocationDO::getContractDeptAllocationId, contractDeptAllocationId)
                 .in(ServiceItemAllocationDO::getAllocationType, allocationTypes)
                 .orderByAsc(ServiceItemAllocationDO::getId));
+    }
+
+    /**
+     * 统计合同部门分配下所有服务项的已分配金额之和（可排除指定服务项，用于校验新增/更新时的预算上限）
+     */
+    default BigDecimal sumAllocatedAmountByDeptAllocationId(Long contractDeptAllocationId, Long excludeServiceItemId) {
+        LambdaQueryWrapperX<ServiceItemAllocationDO> wrapper = new LambdaQueryWrapperX<ServiceItemAllocationDO>()
+                .eq(ServiceItemAllocationDO::getContractDeptAllocationId, contractDeptAllocationId)
+                .eq(ServiceItemAllocationDO::getAllocationType, ServiceItemAllocationDO.ALLOCATION_TYPE_SERVICE_ITEM);
+        if (excludeServiceItemId != null) {
+            wrapper.ne(ServiceItemAllocationDO::getServiceItemId, excludeServiceItemId);
+        }
+        List<ServiceItemAllocationDO> list = selectList(wrapper);
+        return list.stream()
+                .map(ServiceItemAllocationDO::getAllocatedAmount)
+                .filter(a -> a != null)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     /**

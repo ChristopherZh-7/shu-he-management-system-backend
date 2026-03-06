@@ -7,10 +7,10 @@ import cn.shuhe.system.module.crm.framework.operatelog.core.SysAdminUserParseFun
 import com.mzt.logapi.starter.annotation.DiffLogField;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+
+import cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessDO;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -39,6 +39,10 @@ public class CrmContractSaveReqVO {
     @DiffLogField(name = "商机", function = CrmBusinessParseFunction.NAME)
     private Long businessId;
 
+    @Schema(description = "合作商客户编号（可为空）", example = "10300")
+    @DiffLogField(name = "合作商", function = CrmCustomerParseFunction.NAME)
+    private Long intermediaryId;
+
     @Schema(description = "负责人的用户编号", example = "17144")
     @DiffLogField(name = "负责人", function = SysAdminUserParseFunction.NAME)
     private Long ownerUserId; // 初始创建时为空，由后端自动设置为当前用户
@@ -60,10 +64,6 @@ public class CrmContractSaveReqVO {
     @NotNull(message = "合同结束时间不能为空")
     private LocalDateTime endTime;
 
-    @Schema(description = "整单折扣", example = "55.00")
-    @DiffLogField(name = "整单折扣")
-    private BigDecimal discountPercent; // 可选字段
-
     @Schema(description = "合同金额", example = "5617")
     @DiffLogField(name = "合同金额")
     private BigDecimal totalPrice;
@@ -84,34 +84,7 @@ public class CrmContractSaveReqVO {
     @DiffLogField(name = "合同附件")
     private String attachment;
 
-    @Schema(description = "分派部门IDs")
-    private List<Long> assignDeptIds;  // 分派部门在审批流程中选择，新建合同时为可选
-
-    @Schema(description = "产品列表")
-    private List<Product> products;
-
-    @Schema(description = "产品列表")
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class Product {
-
-        @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "20529")
-        @NotNull(message = "产品编号不能为空")
-        private Long productId;
-
-        @Schema(description = "产品单价", requiredMode = Schema.RequiredMode.REQUIRED, example = "123.00")
-        @NotNull(message = "产品单价不能为空")
-        private BigDecimal productPrice;
-
-        @Schema(description = "合同价格", requiredMode = Schema.RequiredMode.REQUIRED, example = "123.00")
-        @NotNull(message = "合同价格不能为空")
-        private BigDecimal contractPrice;
-
-        @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "8911")
-        @NotNull(message = "产品数量不能为空")
-        private Integer count;
-
-    }
+    @Schema(description = "部门金额分配列表，签合同时按部门重新分配合同金额")
+    private List<CrmBusinessDO.DeptAllocation> deptAllocations;
 
 }

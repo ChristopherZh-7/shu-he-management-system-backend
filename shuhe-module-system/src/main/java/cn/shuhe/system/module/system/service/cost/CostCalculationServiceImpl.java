@@ -434,11 +434,10 @@ public class CostCalculationServiceImpl implements CostCalculationService {
         int ytdWorkingDays = 0;
         
         if (CollUtil.isEmpty(histories)) {
-            // 没有职级变更记录，使用当前职级计算整段
+            // 没有职级变更记录，使用当前职级按月累加
             log.info("[成本计算] 用户 {} 无职级变更记录，使用当前职级 {} 计算", user.getNickname(), user.getPositionLevel());
             ytdWorkingDays = calculateWorkingDaysBetween(startDate, endDate);
-            BigDecimal dailyCost = calculateDailyCostForMonth(monthlyCost, startDate.getYear(), startDate.getMonthValue());
-            ytdCost = dailyCost.multiply(new BigDecimal(ytdWorkingDays));
+            ytdCost = calculateCostByMonth(startDate, endDate, monthlyCost);
         } else {
             // 有职级变更记录，分段计算
             // 首先需要确定起始职级（可能是年初之前就有的职级）
@@ -454,22 +453,18 @@ public class CostCalculationServiceImpl implements CostCalculationService {
             // 构建分段列表
             List<CostSegment> segments = buildCostSegments(startDate, endDate, initialLevel, histories);
             
-            // 计算每段的成本
+            // 计算每段的成本（每段内部也按月累加，避免跨月时工作日数不同导致的误差）
             for (CostSegment segment : segments) {
                 int segmentWorkingDays = calculateWorkingDaysBetween(segment.startDate, segment.endDate);
                 ytdWorkingDays += segmentWorkingDays;
                 
-                // 计算该段的日成本
                 BigDecimal segmentBaseSalary = calculateBaseSalary(deptType, segment.positionLevel);
                 BigDecimal segmentMonthlyCost = calculateMonthlyCost(segmentBaseSalary);
-                BigDecimal segmentDailyCost = calculateDailyCostForMonth(segmentMonthlyCost, 
-                        segment.startDate.getYear(), segment.startDate.getMonthValue());
-                
-                BigDecimal segmentCost = segmentDailyCost.multiply(new BigDecimal(segmentWorkingDays));
+                BigDecimal segmentCost = calculateCostByMonth(segment.startDate, segment.endDate, segmentMonthlyCost);
                 ytdCost = ytdCost.add(segmentCost);
                 
-                log.info("[成本分段] {} ~ {}: 职级={}, 工作日={}天, 日成本={}, 成本={}", 
-                        segment.startDate, segment.endDate, segment.positionLevel, segmentWorkingDays, segmentDailyCost, segmentCost);
+                log.info("[成本分段] {} ~ {}: 职级={}, 工作日={}天, 成本={}", 
+                        segment.startDate, segment.endDate, segment.positionLevel, segmentWorkingDays, segmentCost);
             }
         }
         
@@ -545,14 +540,49 @@ public class CostCalculationServiceImpl implements CostCalculationService {
     }
 
     /**
-     * 计算指定月份的日成本
+     * 按月累加计算一段日期范围内的成本。
+     *
+     * <p>每个月单独计算日成本（月成本 ÷ 该月工作日数），再乘以该月内实际工作天数，
+     * 最后各月求和。这样可以正确处理不同月份工作日数不同的情况（如2月只有17天）。</p>
+     *
+     * <pre>
+     * 月贡献 = 月成本 × (该月实际工作天数 / 该月总工作天数)
+     * 总成本 = Σ 月贡献
+     * </pre>
      */
-    private BigDecimal calculateDailyCostForMonth(BigDecimal monthlyCost, int year, int month) {
-        int workingDays = getWorkingDays(year, month);
-        if (workingDays <= 0) {
-            return BigDecimal.ZERO;
+    private BigDecimal calculateCostByMonth(LocalDate startDate, LocalDate endDate, BigDecimal monthlyCost) {
+        BigDecimal totalCost = BigDecimal.ZERO;
+
+        // 从 startDate 所在月的第一天开始，逐月向后推进
+        LocalDate monthFirst = startDate.withDayOfMonth(1);
+
+        while (!monthFirst.isAfter(endDate)) {
+            LocalDate monthLast = monthFirst.withDayOfMonth(monthFirst.lengthOfMonth());
+
+            // 本月在有效范围内的实际起止日
+            LocalDate effectiveStart = monthFirst.isBefore(startDate) ? startDate : monthFirst;
+            LocalDate effectiveEnd   = monthLast.isAfter(endDate)     ? endDate   : monthLast;
+
+            if (!effectiveStart.isAfter(effectiveEnd)) {
+                int workedDays     = calculateWorkingDaysBetween(effectiveStart, effectiveEnd);
+                int totalMonthDays = getWorkingDays(monthFirst.getYear(), monthFirst.getMonthValue());
+
+                if (totalMonthDays > 0 && workedDays > 0) {
+                    // 月成本 × (实际工作天数 / 该月总工作天数)
+                    BigDecimal monthContribution = monthlyCost
+                            .multiply(new BigDecimal(workedDays))
+                            .divide(new BigDecimal(totalMonthDays), 2, RoundingMode.HALF_UP);
+                    totalCost = totalCost.add(monthContribution);
+                    log.debug("[按月成本] {}: 工作日 {}/{} 天, 贡献 {}",
+                            monthFirst.getYear() + "-" + monthFirst.getMonthValue(),
+                            workedDays, totalMonthDays, monthContribution);
+                }
+            }
+
+            monthFirst = monthFirst.plusMonths(1);
         }
-        return monthlyCost.divide(new BigDecimal(workingDays), 2, RoundingMode.HALF_UP);
+
+        return totalCost;
     }
 
     /**

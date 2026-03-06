@@ -6,7 +6,10 @@ import cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemPageReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -186,5 +189,28 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
                 .eq(ServiceItemDO::getDeptServiceId, deptServiceId)
                 .eq(ServiceItemDO::getVisible, 1));
     }
+
+    /**
+     * 汇总指定部门服务单下所有服务项的已分配金额（用于计算资金池使用情况）
+     *
+     * @param deptServiceId 部门服务单ID
+     * @param serviceMode   服务模式过滤：1-驻场 2-二线，null 表示不过滤
+     * @param serviceMemberType 安全运营成员类型过滤：1-驻场人员 2-管理人员，null 表示不过滤
+     * @return 已分配金额之和，为 null 时视为 0
+     */
+    @Select("<script>" +
+            "SELECT COALESCE(SUM(allocated_amount), 0) " +
+            "FROM project_info " +
+            "WHERE dept_service_id = #{deptServiceId} " +
+            "  AND allocated_amount IS NOT NULL " +
+            "  AND deleted = 0 " +
+            "  AND visible = 1 " +
+            "<if test='serviceMode != null'> AND service_mode = #{serviceMode} </if>" +
+            "<if test='serviceMemberType != null'> AND service_member_type = #{serviceMemberType} </if>" +
+            "</script>")
+    BigDecimal sumAllocatedAmountByDeptServiceId(
+            @Param("deptServiceId") Long deptServiceId,
+            @Param("serviceMode") Integer serviceMode,
+            @Param("serviceMemberType") Integer serviceMemberType);
 
 }

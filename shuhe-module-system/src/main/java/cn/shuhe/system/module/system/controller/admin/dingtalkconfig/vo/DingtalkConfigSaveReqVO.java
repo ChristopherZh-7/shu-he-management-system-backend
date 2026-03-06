@@ -52,10 +52,19 @@ public class DingtalkConfigSaveReqVO {
     @Schema(description = "回调基础URL（公网可访问域名）", example = "http://your-domain.com")
     private String callbackBaseUrl;
 
+    @Schema(description = "审批链接baseUrl（前端/网关入口，如 http://localhost:5666，不填用回调URL）", example = "http://localhost:5666")
+    private String approveBaseUrl;
+
     @Schema(description = "钉钉OA外出申请流程编码", example = "PROC-XXXXXX")
     private String outsideProcessCode;
 
     @Schema(description = "默认外出类型", example = "因公外出")
     private String outsideType;
+
+    @Schema(description = "商机审批固定群chatId（配置后不再每个商机建群，所有审批发到此群）", example = "chat1234567890")
+    private String businessAuditChatId;
+
+    @Schema(description = "商机审批场景群模板ID（配置后建群自动带机器人，推荐）", example = "TPL-XXXX")
+    private String businessAuditTemplateId;
 
 }

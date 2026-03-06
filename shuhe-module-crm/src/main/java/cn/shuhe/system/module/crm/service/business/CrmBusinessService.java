@@ -1,17 +1,15 @@
 package cn.shuhe.system.module.crm.service.business;
 
 import cn.shuhe.system.framework.common.pojo.PageResult;
+import cn.shuhe.system.module.crm.controller.admin.business.vo.business.CrmBusinessEarlyInvestmentSubmitReqVO;
 import cn.shuhe.system.module.crm.controller.admin.business.vo.business.CrmBusinessPageReqVO;
 import cn.shuhe.system.module.crm.controller.admin.business.vo.business.CrmBusinessSaveReqVO;
 import cn.shuhe.system.module.crm.controller.admin.business.vo.business.CrmBusinessTransferReqVO;
 import cn.shuhe.system.module.crm.controller.admin.business.vo.business.CrmBusinessUpdateStatusReqVO;
 import cn.shuhe.system.module.crm.controller.admin.statistics.vo.funnel.CrmStatisticsFunnelReqVO;
 import cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessDO;
-import cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessProductDO;
-import cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessStatusDO;
 import cn.shuhe.system.module.crm.dal.dataobject.contact.CrmContactDO;
 import cn.shuhe.system.module.crm.dal.dataobject.customer.CrmCustomerDO;
-import cn.shuhe.system.module.crm.enums.business.CrmBusinessEndStatusEnum;
 import jakarta.validation.Valid;
 
 import java.time.LocalDateTime;
@@ -45,6 +43,69 @@ public interface CrmBusinessService {
     void updateBusiness(@Valid CrmBusinessSaveReqVO updateReqVO);
 
     /**
+     * 提交商机审核（启动逐级 BPM 审批流程）
+     *
+     * @param id     商机编号
+     * @param userId 用户编号（发起人）
+     */
+    void submitBusinessAudit(Long id, Long userId);
+
+    /**
+     * 计算逐级审批链路（从发起人部门向上直到总经办）
+     *
+     * @param userId 发起人用户编号
+     * @return 有序的审批人 ID 列表
+     */
+    List<Long> calculateApprovalChain(Long userId);
+
+    /**
+     * 更新商机审批状态（由 BPM 事件监听器回调）
+     *
+     * @param id        商机编号
+     * @param bpmResult BPM 审批结果（2=通过/3=驳回/4=取消）
+     */
+    void updateBusinessAuditStatus(Long id, Integer bpmResult);
+
+    /**
+     * 提交提前投入审批
+     * 商机审批通过后，可发起提前投入审批，审批通过后自动创建项目
+     *
+     * @param reqVO  提前投入申请表单（人员、费用、工作内容等）
+     * @param userId 发起人用户编号
+     */
+    void submitEarlyInvestment(@jakarta.validation.Valid CrmBusinessEarlyInvestmentSubmitReqVO reqVO, Long userId);
+
+    /**
+     * 更新提前投入审批状态（由 BPM 事件监听器回调）
+     * 审批通过后自动创建项目
+     *
+     * @param businessId 商机编号
+     * @param bpmResult  BPM 审批结果
+     */
+    void updateEarlyInvestmentAuditStatus(Long businessId, Integer bpmResult);
+
+    /**
+     * 根据商机信息创建项目（提前投入审批通过 或 合同签订时调用）
+     *
+     * @param businessId 商机编号
+     * @param contractId 合同编号（可为空，合同签订时传入）
+     * @param contractNo 合同编号字符串（可为空）
+     */
+    void createProjectFromBusiness(Long businessId, Long contractId, String contractNo);
+
+    /**
+     * 将指定的部门金额分配同步写入 contract_dept_allocation 表
+     * 优先使用合同自身的分配，而非商机的分配
+     *
+     * @param contractId   合同ID
+     * @param contractNo   合同编号
+     * @param customerName 客户名称
+     * @param allocations  部门金额分配列表
+     */
+    void syncContractDeptAllocations(Long contractId, String contractNo, String customerName,
+                                     List<cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessDO.DeptAllocation> allocations);
+
+    /**
      * 更新商机相关跟进信息
      *
      * @param id                 编号
@@ -62,7 +123,7 @@ public interface CrmBusinessService {
     void updateBusinessContactNextTime(Collection<Long> ids, LocalDateTime contactNextTime);
 
     /**
-     * 更新商机的状态
+     * 更新商机的结束状态（赢单/输单/无效）
      *
      * @param reqVO 更新请求
      */
@@ -118,14 +179,6 @@ public interface CrmBusinessService {
     }
 
     /**
-     * 获得指定商机编号的产品列表
-     *
-     * @param businessId 商机编号
-     * @return 商机产品列表
-     */
-    List<CrmBusinessProductDO> getBusinessProductListByBusinessId(Long businessId);
-
-    /**
      * 获得商机分页
      *
      * 数据权限：基于 {@link CrmBusinessDO}
@@ -165,28 +218,6 @@ public interface CrmBusinessService {
     Long getBusinessCountByCustomerId(Long customerId);
 
     /**
-     * 获得使用指定商机状态组的商机数量
-     *
-     * @param statusTypeId 商机状态组编号
-     * @return 数量
-     */
-    Long getBusinessCountByStatusTypeId(Long statusTypeId);
-
-    /**
-     * 获得商机状态名称
-     *
-     * @param endStatus 结束状态
-     * @param status    商机状态
-     * @return 商机状态名称
-     */
-    default String getBusinessStatusName(Integer endStatus, CrmBusinessStatusDO status) {
-        if (endStatus != null) {
-            return CrmBusinessEndStatusEnum.fromStatus(endStatus).getName();
-        }
-        return status.getName();
-    }
-
-    /**
      * 获得商机列表
      *
      * @param customerId  客户编号
@@ -202,5 +233,28 @@ public interface CrmBusinessService {
      * @return 商机分页
      */
     PageResult<CrmBusinessDO> getBusinessPageByDate(CrmStatisticsFunnelReqVO pageVO);
+
+    /**
+     * 向商机关联的钉钉群发送纯通知消息（不含审批操作链接）
+     * 用于合同创建、项目进展等事件通知，消息发送到商机审批时建立的群里
+     *
+     * @param businessId 商机ID
+     * @param message    消息正文（Markdown 格式）
+     * @param title      消息标题
+     */
+    void sendBusinessGroupNotification(Long businessId, String message, String title);
+
+    /**
+     * 向商机关联的钉钉群发送带操作按钮的消息
+     * 用于合同确认等需要在群内操作的场景
+     *
+     * @param businessId  商机ID
+     * @param message     消息正文（Markdown 格式，可包含 markdown 链接）
+     * @param title       消息标题
+     * @param actionLabel 操作按钮文字（fallback 工作通知时使用）
+     * @param actionUrl   操作按钮跳转URL（fallback 工作通知时使用）
+     */
+    void sendBusinessGroupNotificationWithAction(Long businessId, String message, String title,
+                                                 String actionLabel, String actionUrl);
 
 }

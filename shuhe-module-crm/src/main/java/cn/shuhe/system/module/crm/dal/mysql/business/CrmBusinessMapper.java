@@ -55,10 +55,6 @@ public interface CrmBusinessMapper extends BaseMapperX<CrmBusinessDO> {
         return selectJoinPage(pageReqVO, CrmBusinessDO.class, query);
     }
 
-    default Long selectCountByStatusTypeId(Long statusTypeId) {
-        return selectCount(CrmBusinessDO::getStatusTypeId, statusTypeId);
-    }
-
     default List<CrmBusinessDO> selectListByCustomerIdOwnerUserId(Long customerId, Long ownerUserId) {
         return selectList(new LambdaQueryWrapperX<CrmBusinessDO>()
                 .eq(CrmBusinessDO::getCustomerId, customerId)

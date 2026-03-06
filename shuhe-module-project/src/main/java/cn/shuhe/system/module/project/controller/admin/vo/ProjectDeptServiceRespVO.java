@@ -3,6 +3,7 @@ package cn.shuhe.system.module.project.controller.admin.vo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -117,6 +118,23 @@ public class ProjectDeptServiceRespVO {
 
     @Schema(description = "服务项数量", example = "3")
     private Integer serviceItemCount;
+
+    // ========== 预算信息（直接从 project_dept_service 读取） ==========
+
+    @Schema(description = "合同分配给本部门的总预算（领取时自动带入）", example = "100000.00")
+    private BigDecimal deptBudget;
+
+    @Schema(description = "驻场费预算（设置负责人时填写）", example = "60000.00")
+    private BigDecimal onsiteBudget;
+
+    @Schema(description = "二线/管理预算（设置负责人时填写）", example = "40000.00")
+    private BigDecimal secondLineBudget;
+
+    @Schema(description = "已分配给服务项的金额之和（驻场+二线合计）", example = "30000.00")
+    private BigDecimal deptUsedAmount;
+
+    @Schema(description = "剩余可分配金额", example = "70000.00")
+    private BigDecimal deptRemainingAmount;
 
     // ========== 通用字段 ==========
 

@@ -15,6 +15,8 @@ public interface ErrorCodeConstants {
     ErrorCode PROJECT_STATUS_ERROR = new ErrorCode(1_030_001_002, "项目状态错误");
     ErrorCode PROJECT_HAS_SERVICE_ITEMS = new ErrorCode(1_030_001_003, "项目下存在服务项，无法删除");
     ErrorCode PROJECT_MANAGER_NOT_SET = new ErrorCode(1_030_001_004, "请先设置项目负责人才能开始项目");
+    ErrorCode PROJECT_ALREADY_EXITED = new ErrorCode(1_030_001_005, "项目已退场，无法再次操作");
+    ErrorCode PROJECT_EXIT_NOT_ALLOWED = new ErrorCode(1_030_001_006, "只有进行中的项目才能退场");
 
     // ========== 服务项模块 1-030-007-000 ==========
     ErrorCode SERVICE_ITEM_NOT_EXISTS = new ErrorCode(1_030_007_000, "服务项不存在");
@@ -23,6 +25,7 @@ public interface ErrorCodeConstants {
     ErrorCode SERVICE_ITEM_DEPT_NOT_SET = new ErrorCode(1_030_007_003, "创建服务项失败：当前用户未设置所属部门");
     ErrorCode SERVICE_ITEM_EXECUTION_LIMIT_EXCEEDED = new ErrorCode(1_030_007_004, "服务项执行次数已达上限，无法继续发起");
     ErrorCode SERVICE_ITEM_CANNOT_START_EXECUTION = new ErrorCode(1_030_007_005, "服务项无法发起执行：已达次数上限或状态异常");
+    ErrorCode SERVICE_ITEM_BUDGET_EXCEEDED = new ErrorCode(1_030_007_006, "分配金额超出部门预算，当前已分配 {} 元，部门预算 {} 元，剩余 {} 元");
 
     // ========== 项目成员 1-030-002-000 ==========
     ErrorCode PROJECT_MEMBER_NOT_EXISTS = new ErrorCode(1_030_002_000, "项目成员不存在");
@@ -94,6 +97,7 @@ public interface ErrorCodeConstants {
     ErrorCode PROJECT_DEPT_SERVICE_MANAGER_NOT_SET = new ErrorCode(1_030_015_003, "请先设置负责人才能开始");
     ErrorCode PROJECT_DEPT_SERVICE_NOT_SECURITY_SERVICE = new ErrorCode(1_030_015_004, "该操作仅适用于安全服务类型的部门服务单");
     ErrorCode PROJECT_DEPT_SERVICE_NOT_DATA_SECURITY = new ErrorCode(1_030_015_005, "该操作仅适用于数据安全类型的部门服务单");
+    ErrorCode PROJECT_DEPT_SERVICE_BUDGET_EXCEEDED = new ErrorCode(1_030_015_006, "驻场预算 + 二线预算不能超过合同总预算");
 
     // ========== 项目驻场点 1-030-016-000 ==========
     ErrorCode PROJECT_SITE_NOT_EXISTS = new ErrorCode(1_030_016_000, "驻场点不存在");

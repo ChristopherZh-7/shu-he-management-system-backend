@@ -5,18 +5,23 @@ import cn.hutool.json.JSONUtil;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemBatchSaveReqVO;
+import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemDeptBudgetRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemImportExcelVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemImportRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemPageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemSaveReqVO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectDeptServiceDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
+import cn.shuhe.system.module.project.dal.mysql.ProjectDeptServiceMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
+import cn.shuhe.system.module.system.service.dept.DeptService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -54,6 +59,12 @@ public class ServiceItemServiceImpl implements ServiceItemService {
     @Resource
     @org.springframework.context.annotation.Lazy // 延迟加载，避免与 ProjectRoundServiceImpl 循环依赖
     private ProjectRoundService projectRoundService;
+
+    @Resource
+    private ProjectDeptServiceMapper projectDeptServiceMapper;
+
+    @Resource
+    private DeptService deptService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -108,6 +119,18 @@ public class ServiceItemServiceImpl implements ServiceItemService {
             serviceItem.setTags(JSONUtil.toJsonStr(createReqVO.getTags()));
         }
 
+        // 7. 校验分配金额不超出对应资金池（新建时无排除ID）
+        if (serviceItem.getAllocatedAmount() != null
+                && serviceItem.getAllocatedAmount().compareTo(BigDecimal.ZERO) > 0
+                && serviceItem.getDeptServiceId() != null) {
+            validateAllocatedAmountNotExceedPool(
+                    serviceItem.getDeptServiceId(),
+                    serviceItem.getServiceMode(),
+                    serviceItem.getServiceMemberType(),
+                    serviceItem.getAllocatedAmount(),
+                    null);
+        }
+
         serviceItemMapper.insert(serviceItem);
         return serviceItem.getId();
     }
@@ -116,11 +139,25 @@ public class ServiceItemServiceImpl implements ServiceItemService {
     @Transactional(rollbackFor = Exception.class)
     public void updateServiceItem(ServiceItemSaveReqVO updateReqVO) {
         // 1. 校验存在
-        validateServiceItemExists(updateReqVO.getId());
+        ServiceItemDO existing = validateServiceItemExists(updateReqVO.getId());
 
-        // 2. 更新
+        // 2. 校验分配金额不超出对应资金池（编辑时排除自身）
+        if (updateReqVO.getAllocatedAmount() != null
+                && updateReqVO.getAllocatedAmount().compareTo(BigDecimal.ZERO) > 0) {
+            Long deptServiceId = existing.getDeptServiceId();
+            Integer serviceMode = updateReqVO.getServiceMode() != null
+                    ? updateReqVO.getServiceMode() : existing.getServiceMode();
+            Integer memberType = updateReqVO.getServiceMemberType() != null
+                    ? updateReqVO.getServiceMemberType() : existing.getServiceMemberType();
+            if (deptServiceId != null) {
+                validateAllocatedAmountNotExceedPool(
+                        deptServiceId, serviceMode, memberType,
+                        updateReqVO.getAllocatedAmount(), existing.getId());
+            }
+        }
+
+        // 3. 更新
         ServiceItemDO updateObj = BeanUtils.toBean(updateReqVO, ServiceItemDO.class);
-        // 处理标签
         if (updateReqVO.getTags() != null) {
             updateObj.setTags(JSONUtil.toJsonStr(updateReqVO.getTags()));
         }
@@ -143,7 +180,7 @@ public class ServiceItemServiceImpl implements ServiceItemService {
             log.info("【删除服务项】服务项 {} 关联的 {} 个轮次已删除", id, rounds.size());
         }
 
-        // 3. 删除服务项
+        // 4. 删除服务项
         serviceItemMapper.deleteById(id);
     }
 
@@ -226,6 +263,65 @@ public class ServiceItemServiceImpl implements ServiceItemService {
             throw exception(SERVICE_ITEM_NOT_EXISTS);
         }
         return serviceItem;
+    }
+
+    /**
+     * 校验分配金额不超出对应资金池（驻场池 or 二线/管理池）。
+     *
+     * @param deptServiceId   部门服务单ID
+     * @param serviceMode     服务模式：1=驻场 2=二线（安全服务/数据安全）
+     * @param memberType      成员类型：1=驻场 2=管理（安全运营）
+     * @param newAmount       本次分配金额
+     * @param excludeItemId   编辑时排除自身的服务项ID，新建传 null
+     */
+    private void validateAllocatedAmountNotExceedPool(Long deptServiceId, Integer serviceMode,
+                                                       Integer memberType, BigDecimal newAmount,
+                                                       Long excludeItemId) {
+        ProjectDeptServiceDO pds = projectDeptServiceMapper.selectById(deptServiceId);
+        if (pds == null) return;
+
+        // 确定适用的资金池
+        BigDecimal pool;
+        Integer filterMode = null;
+        Integer filterMemberType = null;
+        if (serviceMode != null && serviceMode == 1) {
+            pool = pds.getOnsiteBudget();
+            filterMode = 1;
+        } else if (serviceMode != null && serviceMode == 2) {
+            pool = pds.getSecondLineBudget();
+            filterMode = 2;
+        } else if (memberType != null && memberType == 1) {
+            pool = pds.getOnsiteBudget();
+            filterMemberType = 1;
+        } else if (memberType != null && memberType == 2) {
+            pool = pds.getSecondLineBudget();
+            filterMemberType = 2;
+        } else {
+            return; // 未指定服务模式，不校验
+        }
+
+        if (pool == null || pool.compareTo(BigDecimal.ZERO) <= 0) {
+            return; // 资金池未设置，不校验
+        }
+
+        // 该池下已分配金额之和（排除自身）
+        BigDecimal alreadyUsed = serviceItemMapper.sumAllocatedAmountByDeptServiceId(
+                deptServiceId, filterMode, filterMemberType);
+        if (alreadyUsed == null) alreadyUsed = BigDecimal.ZERO;
+
+        // 编辑时减去自身当前已分配金额
+        if (excludeItemId != null) {
+            ServiceItemDO self = serviceItemMapper.selectById(excludeItemId);
+            if (self != null && self.getAllocatedAmount() != null) {
+                alreadyUsed = alreadyUsed.subtract(self.getAllocatedAmount()).max(BigDecimal.ZERO);
+            }
+        }
+
+        if (alreadyUsed.add(newAmount).compareTo(pool) > 0) {
+            BigDecimal remaining = pool.subtract(alreadyUsed).max(BigDecimal.ZERO);
+            throw exception(SERVICE_ITEM_BUDGET_EXCEEDED,
+                    alreadyUsed.toPlainString(), pool.toPlainString(), remaining.toPlainString());
+        }
     }
 
     /**
@@ -457,6 +553,83 @@ public class ServiceItemServiceImpl implements ServiceItemService {
     @Override
     public List<ServiceItemDO> getOutsideServiceItemListByProjectId(Long projectId) {
         return serviceItemMapper.selectOutsideServiceItemListByProjectId(projectId);
+    }
+
+    // ========== 资金池预算查询 ==========
+
+    @Override
+    public ServiceItemDeptBudgetRespVO getDeptBudget(Long contractId, Long deptId) {
+        ServiceItemDeptBudgetRespVO result = new ServiceItemDeptBudgetRespVO();
+        result.setContractId(contractId);
+        result.setDeptId(deptId);
+
+        // 从 project_dept_service 查询预算（新的数据源）
+        ProjectDeptServiceDO deptService = projectDeptServiceMapper.selectByContractIdAndDeptId(contractId, deptId);
+        if (deptService == null || deptService.getDeptBudget() == null
+                || deptService.getDeptBudget().compareTo(BigDecimal.ZERO) == 0) {
+            result.setBudgetSet(false);
+            result.setAllocatedAmount(null);
+            result.setUsedAmount(BigDecimal.ZERO);
+            result.setRemainingAmount(null);
+        } else {
+            BigDecimal budget = deptService.getDeptBudget();
+            BigDecimal used = serviceItemMapper.sumAllocatedAmountByDeptServiceId(deptService.getId(), null, null);
+            if (used == null) used = BigDecimal.ZERO;
+            result.setBudgetSet(true);
+            result.setAllocatedAmount(budget);
+            result.setUsedAmount(used);
+            result.setRemainingAmount(budget.subtract(used).max(BigDecimal.ZERO));
+        }
+        return result;
+    }
+
+    @Override
+    public Map<String, Object> getRemainingBudget(Long deptServiceId, Integer serviceMode, Integer serviceMemberType) {
+        ProjectDeptServiceDO deptService = projectDeptServiceMapper.selectById(deptServiceId);
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        if (deptService == null) {
+            result.put("deptServiceId", deptServiceId);
+            result.put("totalBudget", null);
+            result.put("usedAmount", BigDecimal.ZERO);
+            result.put("remainingAmount", null);
+            return result;
+        }
+
+        // 根据 serviceMode / serviceMemberType 确定池子总额
+        BigDecimal totalBudget;
+        if (serviceMode != null && serviceMode == 1) {
+            // 驻场池
+            totalBudget = deptService.getOnsiteBudget();
+        } else if (serviceMode != null && serviceMode == 2) {
+            // 二线池
+            totalBudget = deptService.getSecondLineBudget();
+        } else if (serviceMemberType != null && serviceMemberType == 1) {
+            // 安全运营驻场人员池
+            totalBudget = deptService.getOnsiteBudget();
+        } else if (serviceMemberType != null && serviceMemberType == 2) {
+            // 安全运营管理人员池
+            totalBudget = deptService.getSecondLineBudget();
+        } else {
+            // 未指定模式，返回总预算
+            totalBudget = deptService.getDeptBudget();
+        }
+
+        BigDecimal usedAmount = serviceItemMapper.sumAllocatedAmountByDeptServiceId(
+                deptServiceId, serviceMode, serviceMemberType);
+        if (usedAmount == null) usedAmount = BigDecimal.ZERO;
+
+        result.put("deptServiceId", deptServiceId);
+        result.put("totalBudget", totalBudget);
+        result.put("usedAmount", usedAmount);
+        result.put("remainingAmount", totalBudget != null ? totalBudget.subtract(usedAmount).max(BigDecimal.ZERO) : null);
+        return result;
+    }
+
+    @Override
+    public BigDecimal getServiceItemAllocatedAmount(Long serviceItemId) {
+        ServiceItemDO item = serviceItemMapper.selectById(serviceItemId);
+        return item != null ? item.getAllocatedAmount() : null;
     }
 
 }

@@ -185,20 +185,8 @@ public interface ServiceItemInfoMapper {
             "  pi.customer_name as customerName, " +
             "  pi.max_count as maxCount, " +
             "  pi.frequency_type as frequencyType, " +
-            // 优先通过服务发起关联到执行部门，再关联到正确的分配记录
-            "  COALESCE(" +
-            "    (SELECT sia2.allocated_amount FROM service_item_allocation sia2 " +
-            "     JOIN contract_dept_allocation cda ON cda.id = sia2.contract_dept_allocation_id AND cda.deleted = 0 " +
-            "     JOIN project_service_launch psl ON COALESCE(psl.actual_execute_dept_id, psl.execute_dept_id) = cda.dept_id " +
-            "     WHERE sia2.service_item_id = pi.id AND sia2.deleted = 0 " +
-            "       AND psl.id = pr.service_launch_id AND psl.deleted = 0 " +
-            "       AND cda.contract_id = pi.contract_id " +
-            "     LIMIT 1), " +
-            // 兜底：取该服务项所有分配金额的总和
-            "    (SELECT SUM(sia3.allocated_amount) FROM service_item_allocation sia3 " +
-            "     WHERE sia3.service_item_id = pi.id AND sia3.deleted = 0), " +
-            "    0" +
-            "  ) as allocatedAmount " +
+            // 直接从 project_info.allocated_amount 读取分配金额（新数据源）
+            "  COALESCE(pi.allocated_amount, 0) as allocatedAmount " +
             "FROM project_round pr " +
             "JOIN project_info pi ON pi.id = pr.service_item_id " +
             "WHERE pr.deleted = 0 " +
@@ -231,18 +219,8 @@ public interface ServiceItemInfoMapper {
             "  pi.customer_name as customerName, " +
             "  pi.max_count as maxCount, " +
             "  pi.frequency_type as frequencyType, " +
-            "  COALESCE(" +
-            "    (SELECT sia2.allocated_amount FROM service_item_allocation sia2 " +
-            "     JOIN contract_dept_allocation cda ON cda.id = sia2.contract_dept_allocation_id AND cda.deleted = 0 " +
-            "     JOIN project_service_launch psl ON COALESCE(psl.actual_execute_dept_id, psl.execute_dept_id) = cda.dept_id " +
-            "     WHERE sia2.service_item_id = pi.id AND sia2.deleted = 0 " +
-            "       AND psl.id = pr.service_launch_id AND psl.deleted = 0 " +
-            "       AND cda.contract_id = pi.contract_id " +
-            "     LIMIT 1), " +
-            "    (SELECT SUM(sia3.allocated_amount) FROM service_item_allocation sia3 " +
-            "     WHERE sia3.service_item_id = pi.id AND sia3.deleted = 0), " +
-            "    0" +
-            "  ) as allocatedAmount " +
+            // 直接从 project_info.allocated_amount 读取（新数据源）
+            "  COALESCE(pi.allocated_amount, 0) as allocatedAmount " +
             "FROM project_round pr " +
             "JOIN project_info pi ON pi.id = pr.service_item_id " +
             "WHERE pr.deleted = 0 " +
@@ -255,5 +233,25 @@ public interface ServiceItemInfoMapper {
     List<Map<String, Object>> selectCompletedRoundsByExecutorBatch(
             @Param("year") int year,
             @Param("cutoffDate") LocalDateTime cutoffDate);
+
+    /**
+     * 查询执行人的二线/管理服务项收入总和（新数据源）
+     * 用于替代旧的轮次计算，改为直接读取服务项的分配金额
+     */
+    @Select("SELECT " +
+            "  pi.id as serviceItemId, " +
+            "  pi.name as serviceItemName, " +
+            "  pi.customer_name as customerName, " +
+            "  pi.allocated_amount as allocatedAmount, " +
+            "  pi.dept_type as deptType " +
+            "FROM project_info pi " +
+            "WHERE pi.executor_id = #{userId} " +
+            "  AND pi.allocated_amount IS NOT NULL " +
+            "  AND pi.allocated_amount > 0 " +
+            "  AND pi.status = 3 " +  // 已完成
+            "  AND pi.visible = 1 " +
+            "  AND pi.deleted = 0 " +
+            "  AND pi.dept_type IN (1, 2, 3)")
+    List<Map<String, Object>> selectCompletedServiceItemsByExecutor(@Param("userId") Long userId);
 
 }

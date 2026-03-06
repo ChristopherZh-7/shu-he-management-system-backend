@@ -333,6 +333,252 @@ public class DingtalkApiService {
         private Integer employeeStatus;
     }
 
+    // ==================== 群聊管理 ====================
+
+    private static final String DINGTALK_CHAT_CREATE_URL = "https://oapi.dingtalk.com/chat/create";
+
+    /**
+     * 创建钉钉群聊
+     *
+     * @param accessToken access_token
+     * @param name        群名称
+     * @param ownerUserId 群主的钉钉用户ID
+     * @param userIdList  群成员的钉钉用户ID列表（至少2人，含群主）
+     * @return 群会话ID（chatId），失败返回null
+     */
+    public String createGroupChat(String accessToken, String name, String ownerUserId, List<String> userIdList) {
+        String url = DINGTALK_CHAT_CREATE_URL + "?access_token=" + accessToken;
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("name", name);
+        params.put("owner", ownerUserId);
+        params.put("useridlist", userIdList);
+        params.put("showHistoryType", 0); // 新成员不可查看历史消息
+        params.put("searchable", 1); // 群可搜索
+        params.put("validationType", 0); // 加群无需验证
+
+        try {
+            String result = HttpUtil.post(url, JSONUtil.toJsonStr(params));
+            log.info("钉钉创建群聊API返回: {}", result);
+            JSONObject json = JSONUtil.parseObj(result);
+
+            int errcode = json.getInt("errcode", -1);
+            if (errcode != 0) {
+                String errmsg = json.getStr("errmsg", "未知错误");
+                log.error("创建钉钉群聊失败: errcode={}, errmsg={}", errcode, errmsg);
+                return null;
+            }
+
+            String chatId = json.getStr("chatid");
+            log.info("创建钉钉群聊成功: chatId={}, name={}", chatId, name);
+            return chatId;
+        } catch (Exception e) {
+            log.error("创建钉钉群聊异常", e);
+            return null;
+        }
+    }
+
+    private static final String DINGTALK_SCENEGROUP_CREATE_URL = "https://oapi.dingtalk.com/topapi/im/chat/scenegroup/create";
+
+    /**
+     * 创建场景群（机器人自动进群）
+     * <p>
+     * 需在钉钉开发者后台配置群模板并绑定机器人，使用 template_id 建群时机器人自动安装。
+     *
+     * @param accessToken access_token
+     * @param templateId  群模板ID（必填）
+     * @param title       群名称
+     * @param ownerUserId 群主的钉钉用户ID
+     * @param userIdList  群成员的钉钉用户ID列表（至少2人，含群主）
+     * @return 群 chat_id，失败返回 null
+     */
+    public String createSceneGroup(String accessToken, String templateId, String title,
+                                   String ownerUserId, List<String> userIdList) {
+        if (StrUtil.isEmpty(templateId)) {
+            log.warn("创建场景群失败：templateId 为空");
+            return null;
+        }
+        String url = DINGTALK_SCENEGROUP_CREATE_URL + "?access_token=" + accessToken;
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("template_id", templateId);
+        params.put("title", title);
+        params.put("owner_user_id", ownerUserId);
+        params.put("user_ids", userIdList != null ? String.join(",", userIdList) : "");
+        params.put("show_history_type", 0); // 新成员不可查看历史消息
+        params.put("validation_type", 0);
+        params.put("searchable", 1);
+
+        try {
+            String result = HttpUtil.post(url, JSONUtil.toJsonStr(params));
+            log.info("钉钉创建场景群API返回: {}", result);
+            JSONObject json = JSONUtil.parseObj(result);
+
+            int errcode = json.getInt("errcode", -1);
+            if (errcode != 0) {
+                String errmsg = json.getStr("errmsg", "未知错误");
+                log.error("创建场景群失败: errcode={}, errmsg={}", errcode, errmsg);
+                return null;
+            }
+
+            JSONObject resultObj = json.getJSONObject("result");
+            String chatId = resultObj != null ? resultObj.getStr("chat_id") : null;
+            if (StrUtil.isEmpty(chatId) && resultObj != null) {
+                chatId = resultObj.getStr("open_conversation_id");
+            }
+            log.info("创建场景群成功: chatId={}, title={}", chatId, title);
+            return chatId;
+        } catch (Exception e) {
+            log.error("创建场景群异常", e);
+            return null;
+        }
+    }
+
+    private static final String DINGTALK_CHAT_UPDATE_URL = "https://oapi.dingtalk.com/chat/update";
+
+    /**
+     * 向钉钉群添加成员
+     *
+     * @param accessToken    access_token
+     * @param chatId         群会话ID
+     * @param addUserIdList  要加入群的钉钉用户ID列表
+     * @return 是否成功
+     */
+    public boolean addGroupChatMembers(String accessToken, String chatId, List<String> addUserIdList) {
+        if (StrUtil.isEmpty(chatId) || addUserIdList == null || addUserIdList.isEmpty()) {
+            log.warn("加群成员失败：chatId 或 addUserIdList 为空");
+            return false;
+        }
+        String url = DINGTALK_CHAT_UPDATE_URL + "?access_token=" + accessToken;
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("chatid", chatId);
+        params.put("add_useridlist", addUserIdList);
+
+        try {
+            String result = HttpUtil.post(url, JSONUtil.toJsonStr(params));
+            log.info("钉钉加群成员API返回: chatId={}, result={}", chatId, result);
+            JSONObject json = JSONUtil.parseObj(result);
+            int errcode = json.getInt("errcode", -1);
+            if (errcode == 0) {
+                log.info("钉钉加群成员成功: chatId={}, users={}", chatId, addUserIdList);
+                return true;
+            } else {
+                log.error("钉钉加群成员失败: errcode={}, errmsg={}", errcode, json.getStr("errmsg"));
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("钉钉加群成员异常", e);
+            return false;
+        }
+    }
+
+    private static final String DINGTALK_CHAT_SEND_URL = "https://oapi.dingtalk.com/chat/send";
+
+    /**
+     * 向钉钉群发送消息（应用机器人需已加入该群）
+     * <p>
+     * 使用企业内部应用的 accessToken，向指定 chatId 的群发送消息。
+     * 注意：应用的机器人需要已加入该群，否则会报错（如 88000）。
+     * 可通过钉钉客户端手动将应用机器人加入群，或使用支持自动加群的创建方式。
+     *
+     * @param accessToken access_token
+     * @param chatId     群会话ID
+     * @param title      消息标题（markdown 时使用）
+     * @param content    消息内容（支持 markdown）
+     * @return 是否发送成功
+     */
+    public boolean sendChatMessage(String accessToken, String chatId, String title, String content) {
+        if (StrUtil.isEmpty(chatId) || StrUtil.isEmpty(content)) {
+            log.warn("发送群消息失败：chatId 或 content 为空");
+            return false;
+        }
+        String url = DINGTALK_CHAT_SEND_URL + "?access_token=" + accessToken;
+
+        Map<String, Object> msg = new HashMap<>();
+        msg.put("msgtype", "markdown");
+        Map<String, Object> markdown = new HashMap<>();
+        markdown.put("title", StrUtil.isEmpty(title) ? "通知" : title);
+        markdown.put("text", content);
+        msg.put("markdown", markdown);
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("chatid", chatId);
+        params.put("msg", msg);
+
+        try {
+            String result = HttpUtil.post(url, JSONUtil.toJsonStr(params));
+            log.debug("钉钉发送群消息API返回: {}", result);
+            JSONObject json = JSONUtil.parseObj(result);
+            int errcode = json.getInt("errcode", -1);
+            if (errcode == 0) {
+                log.info("钉钉发送群消息成功: chatId={}", chatId);
+                return true;
+            }
+            String errmsg = json.getStr("errmsg", "未知错误");
+            log.warn("钉钉发送群消息失败: errcode={}, errmsg={}, chatId={}", errcode, errmsg, chatId);
+            return false;
+        } catch (Exception e) {
+            log.error("钉钉发送群消息异常: chatId=" + chatId, e);
+            return false;
+        }
+    }
+
+    /**
+     * 向钉钉群发送互动卡片消息（带可点击按钮）
+     * <p>
+     * 注意：企业内部应用的 chat/send 接口可能返回 errcode=34004（无效的会话消息类型），
+     * 即不支持 actionCard。若需互动按钮，请使用工作通知 {@link #sendActionCardMessage}。
+     *
+     * @param accessToken access_token
+     * @param chatId      群会话ID
+     * @param title       卡片标题
+     * @param content     卡片内容（markdown 格式）
+     * @param buttonTitle 按钮文字
+     * @param buttonUrl   按钮跳转 URL（点击后回调）
+     * @return 是否发送成功
+     */
+    public boolean sendChatActionCardMessage(String accessToken, String chatId, String title, String content,
+                                             String buttonTitle, String buttonUrl) {
+        if (StrUtil.isEmpty(chatId) || StrUtil.isEmpty(content)) {
+            log.warn("发送群互动卡片失败：chatId 或 content 为空");
+            return false;
+        }
+        String url = DINGTALK_CHAT_SEND_URL + "?access_token=" + accessToken;
+
+        Map<String, Object> msg = new HashMap<>();
+        msg.put("msgtype", "actionCard");
+        Map<String, Object> actionCard = new HashMap<>();
+        actionCard.put("title", StrUtil.isEmpty(title) ? "通知" : title);
+        actionCard.put("text", content);
+        if (StrUtil.isNotEmpty(buttonTitle) && StrUtil.isNotEmpty(buttonUrl)) {
+            actionCard.put("singleTitle", buttonTitle);
+            actionCard.put("singleURL", buttonUrl);
+        }
+        msg.put("actionCard", actionCard);
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("chatid", chatId);
+        params.put("msg", msg);
+
+        try {
+            String result = HttpUtil.post(url, JSONUtil.toJsonStr(params));
+            log.debug("钉钉发送群互动卡片API返回: {}", result);
+            JSONObject json = JSONUtil.parseObj(result);
+            int errcode = json.getInt("errcode", -1);
+            if (errcode == 0) {
+                log.info("钉钉发送群互动卡片成功: chatId={}", chatId);
+                return true;
+            }
+            String errmsg = json.getStr("errmsg", "未知错误");
+            log.warn("钉钉发送群互动卡片失败: errcode={}, errmsg={}, chatId={}", errcode, errmsg, chatId);
+            return false;
+        } catch (Exception e) {
+            log.error("钉钉发送群互动卡片异常: chatId=" + chatId, e);
+            return false;
+        }
+    }
+
     // ==================== 智能人事API ====================
 
     /**

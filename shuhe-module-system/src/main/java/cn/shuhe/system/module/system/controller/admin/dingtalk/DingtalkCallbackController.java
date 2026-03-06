@@ -1,8 +1,11 @@
 package cn.shuhe.system.module.system.controller.admin.dingtalk;
 
+import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
 import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.module.system.dal.dataobject.dingtalkconfig.DingtalkConfigDO;
 import cn.shuhe.system.module.system.service.dingtalk.ServiceLaunchConfirmService;
+import cn.shuhe.system.module.infra.event.dingtalk.DingtalkRobotMessageEvent;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkApiService;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkConfigService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,6 +15,7 @@ import jakarta.annotation.Resource;
 import jakarta.annotation.security.PermitAll;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -34,10 +38,10 @@ public class DingtalkCallbackController {
 
     @Resource
     private ServiceLaunchConfirmService serviceLaunchConfirmService;
-    
+    @Resource
+    private ApplicationEventPublisher applicationEventPublisher;
     @Resource
     private DingtalkApiService dingtalkApiService;
-    
     @Resource
     private DingtalkConfigService dingtalkConfigService;
 
@@ -171,6 +175,39 @@ public class DingtalkCallbackController {
                 "    </div>\n" +
                 "</body>\n" +
                 "</html>";
+    }
+
+    // ==================== 钉钉机器人消息回调 ====================
+
+    /**
+     * 钉钉机器人消息回调
+     * 当用户在群里@机器人发消息时，钉钉会将消息POST到此接口
+     * 需要在钉钉开放平台配置消息接收地址为: {域名}/admin-api/system/dingtalk/callback/robot-message
+     */
+    @PostMapping("/robot-message")
+    @PermitAll
+    @Operation(summary = "钉钉机器人消息回调", description = "处理群内@机器人的消息")
+    public CommonResult<String> handleRobotMessage(@RequestBody String body) {
+        log.info("[handleRobotMessage] 收到钉钉机器人回调: {}", body);
+        try {
+            JSONObject json = cn.hutool.json.JSONUtil.parseObj(body);
+            String chatId = json.getStr("conversationId");
+            String senderUserId = json.getStr("senderStaffId");
+            // 消息内容（去掉@机器人的部分）
+            JSONObject text = json.getJSONObject("text");
+            String content = text != null ? text.getStr("content", "").trim() : "";
+
+            if (StrUtil.isEmpty(chatId) || StrUtil.isEmpty(content)) {
+                return success("ignored");
+            }
+
+            applicationEventPublisher.publishEvent(
+                    new DingtalkRobotMessageEvent(this, chatId, senderUserId, content));
+            return success("ok");
+        } catch (Exception e) {
+            log.error("[handleRobotMessage] 处理机器人消息失败", e);
+            return success("error");
+        }
     }
 
     // ==================== 测试接口（调试完成后可删除）====================

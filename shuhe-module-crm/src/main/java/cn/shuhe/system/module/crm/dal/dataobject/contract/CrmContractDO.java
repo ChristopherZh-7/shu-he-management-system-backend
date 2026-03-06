@@ -4,21 +4,24 @@ import cn.shuhe.system.framework.mybatis.core.dataobject.BaseDO;
 import cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessDO;
 import cn.shuhe.system.module.crm.dal.dataobject.contact.CrmContactDO;
 import cn.shuhe.system.module.crm.dal.dataobject.customer.CrmCustomerDO;
+import cn.shuhe.system.module.crm.dal.typehandler.DeptAllocationListTypeHandler;
 import cn.shuhe.system.module.crm.enums.common.CrmAuditStatusEnum;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * CRM 合同 DO
  *
  * @author dhb52
  */
-@TableName("crm_contract")
+@TableName(value = "crm_contract", autoResultMap = true)
 @KeySequence("crm_contract_seq") // 用于 Oracle、PostgreSQL、Kingbase、DB2、H2 数据库的主键自增。如果是 MySQL 等数据库，可不写。
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -53,6 +56,14 @@ public class CrmContractDO extends BaseDO {
      * 关联 {@link CrmBusinessDO#getId()}
      */
     private Long businessId;
+
+    /**
+     * 合作商客户编号（可为空）
+     * 从商机带入，模式一时（合作商介绍、合同签给最终客户）填合作商
+     *
+     * 关联 {@link CrmCustomerDO#getId()}
+     */
+    private Long intermediaryId;
 
     /**
      * 最后跟进时间
@@ -92,15 +103,7 @@ public class CrmContractDO extends BaseDO {
      */
     private LocalDateTime endTime;
     /**
-     * 产品总金额，单位：元
-     */
-    private BigDecimal totalProductPrice;
-    /**
-     * 整单折扣
-     */
-    private BigDecimal discountPercent;
-    /**
-     * 合同总金额，单位：分
+     * 合同总金额，单位：元
      */
     private BigDecimal totalPrice;
     /**
@@ -126,23 +129,10 @@ public class CrmContractDO extends BaseDO {
     private String attachment;
 
     /**
-     * 分派部门IDs（JSON数组）
+     * 部门金额分配列表（JSON），签合同时按部门重新分配合同金额
+     * 格式: [{"deptId":119,"deptName":"安全服务部","amount":500000}, ...]
      */
-    private String assignDeptIds;
-
-    /**
-     * 领取状态：0=待领取，1=已领取
-     */
-    private Integer claimStatus;
-
-    /**
-     * 领取人用户ID
-     */
-    private Long claimUserId;
-
-    /**
-     * 领取时间
-     */
-    private LocalDateTime claimTime;
+    @TableField(typeHandler = DeptAllocationListTypeHandler.class)
+    private List<CrmBusinessDO.DeptAllocation> deptAllocations;
 
 }

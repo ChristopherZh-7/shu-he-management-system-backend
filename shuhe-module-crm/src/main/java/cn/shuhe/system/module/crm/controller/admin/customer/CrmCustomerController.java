@@ -222,13 +222,18 @@ public class CrmCustomerController {
     }
 
     @GetMapping(value = "/simple-list")
-    @Operation(summary = "获取客户精简信息列表", description = "只包含有读权限的客户，主要用于前端的下拉选项")
-    public CommonResult<List<CrmCustomerRespVO>> getCustomerSimpleList() {
+    @Operation(summary = "获取客户精简信息列表", description = "只包含有读权限的客户，主要用于前端的下拉选项。可用 type 过滤：1=最终客户，2=合作商")
+    public CommonResult<List<CrmCustomerRespVO>> getCustomerSimpleList(
+            @RequestParam(required = false) Integer type) {
         CrmCustomerPageReqVO reqVO = new CrmCustomerPageReqVO();
         reqVO.setPageSize(PAGE_SIZE_NONE); // 不分页
         List<CrmCustomerDO> list = customerService.getCustomerPage(reqVO, getLoginUserId()).getList();
-        return success(convertList(list, customer -> // 只返回 id、name 精简字段
-                new CrmCustomerRespVO().setId(customer.getId()).setName(customer.getName())));
+        // 按 type 过滤（null 时返回全部）
+        if (type != null) {
+            list = list.stream().filter(c -> type.equals(c.getType())).toList();
+        }
+        return success(convertList(list, customer ->
+                new CrmCustomerRespVO().setId(customer.getId()).setName(customer.getName()).setType(customer.getType())));
     }
 
     @GetMapping("/export-excel")

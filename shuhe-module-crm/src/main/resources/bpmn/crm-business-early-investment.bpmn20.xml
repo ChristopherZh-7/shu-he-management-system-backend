@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://flowable.org/bpmn">
+
+  <!--
+    商机提前投入审批流程（动态逐级审批）
+    流程 Key: crm-business-early-investment
+
+    工作原理与 crm-business-audit 相同，使用相同的顺序多实例模式。
+    审批通过后：CrmBusinessEarlyInvestmentStatusListener 回调 → 自动创建项目
+
+    导入方式：在流程设计器中新建流程（Key = crm-business-early-investment），点击「导入」，选择此文件
+  -->
+
+  <process id="crm-business-early-investment" name="商机提前投入审批" isExecutable="true">
+
+    <startEvent id="startEvent" name="开始"/>
+
+    <sequenceFlow id="flow_start_to_approval" sourceRef="startEvent" targetRef="approvalTask"/>
+
+    <userTask id="approvalTask" name="逐级审批（提前投入）"
+              flowable:assignee="${approver}"
+              flowable:formKey="bpm/processInstance/detail/modules/business-extensions/business-extension">
+      <multiInstanceLoopCharacteristics isSequential="true"
+                                         flowable:collection="approvalChain"
+                                         flowable:elementVariable="approver">
+        <completionCondition>${nrOfCompletedInstances == nrOfInstances}</completionCondition>
+      </multiInstanceLoopCharacteristics>
+    </userTask>
+
+    <sequenceFlow id="flow_approval_to_end" sourceRef="approvalTask" targetRef="endEvent"/>
+
+    <endEvent id="endEvent" name="结束"/>
+
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_crm-business-early-investment">
+    <bpmndi:BPMNPlane id="BPMNPlane_crm-business-early-investment" bpmnElement="crm-business-early-investment">
+      <bpmndi:BPMNShape id="startEvent_di" bpmnElement="startEvent">
+        <omgdc:Bounds x="152" y="82" width="36" height="36"/>
+        <bpmndi:BPMNLabel><omgdc:Bounds x="158" y="125" width="24" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="approvalTask_di" bpmnElement="approvalTask">
+        <omgdc:Bounds x="250" y="60" width="220" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="endEvent_di" bpmnElement="endEvent">
+        <omgdc:Bounds x="532" y="82" width="36" height="36"/>
+        <bpmndi:BPMNLabel><omgdc:Bounds x="538" y="125" width="24" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="flow_start_to_approval_di" bpmnElement="flow_start_to_approval">
+        <omgdi:waypoint x="188" y="100"/>
+        <omgdi:waypoint x="250" y="100"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_approval_to_end_di" bpmnElement="flow_approval_to_end">
+        <omgdi:waypoint x="470" y="100"/>
+        <omgdi:waypoint x="532" y="100"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+</definitions>

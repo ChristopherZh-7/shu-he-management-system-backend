@@ -1,6 +1,7 @@
 package cn.shuhe.system.module.system.api.dingtalk;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
@@ -10,6 +11,7 @@ import cn.shuhe.system.module.system.dal.dataobject.dingtalkmapping.DingtalkMapp
 import cn.shuhe.system.module.system.dal.mysql.dingtalkmapping.DingtalkMappingMapper;
 import cn.shuhe.system.module.system.service.dept.DeptService;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkApiService;
+import org.springframework.beans.factory.annotation.Value;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkConfigService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +36,10 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
 
     @Resource
     private DingtalkApiService dingtalkApiService;
+
+    /** 本地/环境配置：审批链接 baseUrl，钉钉配置为空时使用。如 http://localhost:5666 */
+    @Value("${shuhe.dingtalk.business-audit.approve-base-url:}")
+    private String approveBaseUrlFromConfig;
 
     @Resource
     private DingtalkMappingMapper dingtalkMappingMapper;
@@ -184,6 +190,234 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
                 .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public String createGroupChat(String chatName, Long ownerUserId, List<Long> memberUserIds) {
+        // 1. 获取启用的钉钉配置
+        List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
+        if (CollUtil.isEmpty(configs)) {
+            log.warn("创建钉钉群聊失败：没有启用的钉钉配置");
+            return null;
+        }
+        DingtalkConfigDO config = configs.get(0);
+
+        // 2. 转换群主钉钉用户ID（若指定群主无映射，则从成员中选取第一个有映射的作为群主）
+        String dingtalkOwnerUserId = getDingtalkUserIdByLocalUserId(ownerUserId);
+        if (dingtalkOwnerUserId == null) {
+            log.warn("创建钉钉群聊：群主用户 {} 没有钉钉映射，尝试从成员中选取群主", ownerUserId);
+            for (Long uid : memberUserIds) {
+                String did = getDingtalkUserIdByLocalUserId(uid);
+                if (did != null) {
+                    dingtalkOwnerUserId = did;
+                    log.info("创建钉钉群聊：使用用户 {} 作为群主", uid);
+                    break;
+                }
+            }
+            if (dingtalkOwnerUserId == null) {
+                log.warn("创建钉钉群聊失败：成员中无人有钉钉用户映射");
+                return null;
+            }
+        }
+
+        // 3. 转换群成员钉钉用户ID
+        List<String> dingtalkUserIds = new ArrayList<>();
+        dingtalkUserIds.add(dingtalkOwnerUserId);
+        for (Long userId : memberUserIds) {
+            String dingtalkUserId = getDingtalkUserIdByLocalUserId(userId);
+            if (dingtalkUserId != null && !dingtalkUserIds.contains(dingtalkUserId)) {
+                dingtalkUserIds.add(dingtalkUserId);
+            }
+        }
+
+        if (dingtalkUserIds.size() < 2) {
+            log.warn("创建钉钉群聊失败：群成员不足2人");
+            return null;
+        }
+
+        // 4. 调用钉钉API创建群聊
+        try {
+            String accessToken = dingtalkApiService.getAccessToken(config);
+            return dingtalkApiService.createGroupChat(accessToken, chatName, dingtalkOwnerUserId, dingtalkUserIds);
+        } catch (Exception e) {
+            log.error("创建钉钉群聊异常", e);
+            return null;
+        }
+    }
+
+    @Override
+    public String createBusinessAuditGroupChat(String chatName, Long ownerUserId, List<Long> memberUserIds) {
+        String templateId = getBusinessAuditTemplateId();
+        if (StrUtil.isNotEmpty(templateId)) {
+            return createSceneGroupInternal(chatName, ownerUserId, memberUserIds, templateId);
+        }
+        return createGroupChat(chatName, ownerUserId, memberUserIds);
+    }
+
+    private String createSceneGroupInternal(String chatName, Long ownerUserId, List<Long> memberUserIds, String templateId) {
+        List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
+        if (CollUtil.isEmpty(configs)) {
+            log.warn("创建场景群失败：没有启用的钉钉配置");
+            return null;
+        }
+        DingtalkConfigDO config = configs.get(0);
+
+        String dingtalkOwnerUserId = getDingtalkUserIdByLocalUserId(ownerUserId);
+        if (dingtalkOwnerUserId == null) {
+            log.warn("创建场景群：群主 {} 无钉钉映射，尝试从成员选取", ownerUserId);
+            for (Long uid : memberUserIds) {
+                String did = getDingtalkUserIdByLocalUserId(uid);
+                if (did != null) {
+                    dingtalkOwnerUserId = did;
+                    break;
+                }
+            }
+            if (dingtalkOwnerUserId == null) {
+                log.warn("创建场景群失败：成员中无人有钉钉映射");
+                return null;
+            }
+        }
+
+        List<String> dingtalkUserIds = new ArrayList<>();
+        dingtalkUserIds.add(dingtalkOwnerUserId);
+        for (Long userId : memberUserIds) {
+            String did = getDingtalkUserIdByLocalUserId(userId);
+            if (did != null && !dingtalkUserIds.contains(did)) {
+                dingtalkUserIds.add(did);
+            }
+        }
+        if (dingtalkUserIds.size() < 2) {
+            log.warn("创建场景群失败：群成员不足2人");
+            return null;
+        }
+
+        try {
+            String accessToken = dingtalkApiService.getAccessToken(config);
+            return dingtalkApiService.createSceneGroup(accessToken, templateId, chatName, dingtalkOwnerUserId, dingtalkUserIds);
+        } catch (Exception e) {
+            log.error("创建场景群异常", e);
+            return null;
+        }
+    }
+
+    @Override
+    public String getCallbackBaseUrl() {
+        List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
+        if (CollUtil.isEmpty(configs) || StrUtil.isEmpty(configs.get(0).getCallbackBaseUrl())) {
+            return null;
+        }
+        String url = configs.get(0).getCallbackBaseUrl();
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    }
+
+    @Override
+    public String getApproveBaseUrl() {
+        String url = null;
+        List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
+        if (CollUtil.isNotEmpty(configs)) {
+            DingtalkConfigDO config = configs.get(0);
+            if (StrUtil.isNotEmpty(config.getApproveBaseUrl())) {
+                url = config.getApproveBaseUrl();
+            } else if (StrUtil.isNotEmpty(approveBaseUrlFromConfig)) {
+                url = approveBaseUrlFromConfig;  // 钉钉配置未填时用 yaml
+            } else {
+                url = config.getCallbackBaseUrl();
+            }
+        } else if (StrUtil.isNotEmpty(approveBaseUrlFromConfig)) {
+            url = approveBaseUrlFromConfig;
+        }
+        if (StrUtil.isEmpty(url)) return null;
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    }
+
+    @Override
+    public String getBusinessAuditChatId() {
+        List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
+        if (CollUtil.isEmpty(configs) || StrUtil.isEmpty(configs.get(0).getBusinessAuditChatId())) {
+            return null;
+        }
+        return configs.get(0).getBusinessAuditChatId();
+    }
+
+    @Override
+    public String getBusinessAuditTemplateId() {
+        List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
+        if (CollUtil.isEmpty(configs) || StrUtil.isEmpty(configs.get(0).getBusinessAuditTemplateId())) {
+            return null;
+        }
+        return configs.get(0).getBusinessAuditTemplateId();
+    }
+
+    @Override
+    public boolean sendMessageToChat(String chatId, String title, String content) {
+        if (chatId == null || chatId.isEmpty()) {
+            log.warn("发送群消息失败：chatId 为空");
+            return false;
+        }
+        List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
+        if (CollUtil.isEmpty(configs)) {
+            log.warn("发送群消息失败：没有启用的钉钉配置");
+            return false;
+        }
+        try {
+            String accessToken = dingtalkApiService.getAccessToken(configs.get(0));
+            return dingtalkApiService.sendChatMessage(accessToken, chatId, title, content);
+        } catch (Exception e) {
+            log.error("发送群消息异常: chatId={}", chatId, e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean addMembersToGroupChat(String chatId, List<Long> memberUserIds) {
+        if (chatId == null || chatId.isEmpty() || CollUtil.isEmpty(memberUserIds)) {
+            log.warn("加群成员失败：chatId 或 memberUserIds 为空");
+            return false;
+        }
+        List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
+        if (CollUtil.isEmpty(configs)) {
+            log.warn("加群成员失败：没有启用的钉钉配置");
+            return false;
+        }
+        try {
+            String accessToken = dingtalkApiService.getAccessToken(configs.get(0));
+            // 将系统用户ID批量转成钉钉用户ID，过滤掉找不到的
+            List<String> dingtalkUserIds = memberUserIds.stream()
+                    .map(this::getDingtalkUserIdByLocalUserId)
+                    .filter(id -> id != null && !id.isEmpty())
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (dingtalkUserIds.isEmpty()) {
+                log.warn("加群成员失败：所有用户均未找到对应钉钉ID, memberUserIds={}", memberUserIds);
+                return false;
+            }
+            return dingtalkApiService.addGroupChatMembers(accessToken, chatId, dingtalkUserIds);
+        } catch (Exception e) {
+            log.error("加群成员异常: chatId={}", chatId, e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean sendActionCardToChat(String chatId, String title, String content,
+                                       String buttonTitle, String buttonUrl) {
+        if (chatId == null || chatId.isEmpty()) {
+            log.warn("发送群互动卡片失败：chatId 为空");
+            return false;
+        }
+        List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
+        if (CollUtil.isEmpty(configs)) {
+            log.warn("发送群互动卡片失败：没有启用的钉钉配置");
+            return false;
+        }
+        try {
+            String accessToken = dingtalkApiService.getAccessToken(configs.get(0));
+            return dingtalkApiService.sendChatActionCardMessage(
+                    accessToken, chatId, title, content, buttonTitle, buttonUrl);
+        } catch (Exception e) {
+            log.error("发送群互动卡片异常: chatId={}", chatId, e);
+            return false;
+        }
     }
 
     @Override

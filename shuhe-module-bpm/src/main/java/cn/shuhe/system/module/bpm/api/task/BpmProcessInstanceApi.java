@@ -3,6 +3,8 @@ package cn.shuhe.system.module.bpm.api.task;
 import cn.shuhe.system.module.bpm.api.task.dto.BpmProcessInstanceCreateReqDTO;
 import jakarta.validation.Valid;
 
+import java.util.List;
+
 /**
  * 流程实例 Api 接口
  *
@@ -28,5 +30,14 @@ public interface BpmProcessInstanceApi {
      * @return 是否是审批人（当前或曾经）
      */
     boolean isTaskAssignee(Long userId, String processInstanceId);
+
+    /**
+     * 获取流程实例首个任务的审批人用户ID列表
+     * 用于：提交审批时创建钉钉群聊等场景
+     *
+     * @param processInstanceId 流程实例编号
+     * @return 审批人用户ID列表，无任务或任务无 assignee 时返回空列表
+     */
+    List<Long> getFirstTaskAssignees(String processInstanceId);
 
 }

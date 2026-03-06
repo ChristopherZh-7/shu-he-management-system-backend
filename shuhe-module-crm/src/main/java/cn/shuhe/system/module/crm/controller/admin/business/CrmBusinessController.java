@@ -9,16 +9,11 @@ import cn.shuhe.system.framework.common.util.number.NumberUtils;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.framework.excel.core.util.ExcelUtils;
 import cn.shuhe.system.module.crm.controller.admin.business.vo.business.*;
+import cn.shuhe.system.module.crm.controller.admin.business.vo.business.CrmBusinessEarlyInvestmentSubmitReqVO;
 import cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessDO;
-import cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessProductDO;
-import cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessStatusDO;
-import cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessStatusTypeDO;
 import cn.shuhe.system.module.crm.dal.dataobject.customer.CrmCustomerDO;
-import cn.shuhe.system.module.crm.dal.dataobject.product.CrmProductDO;
 import cn.shuhe.system.module.crm.service.business.CrmBusinessService;
-import cn.shuhe.system.module.crm.service.business.CrmBusinessStatusService;
 import cn.shuhe.system.module.crm.service.customer.CrmCustomerService;
-import cn.shuhe.system.module.crm.service.product.CrmProductService;
 import cn.shuhe.system.module.system.api.dept.DeptApi;
 import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
@@ -37,6 +32,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static cn.shuhe.system.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
@@ -57,12 +53,6 @@ public class CrmBusinessController {
     private CrmBusinessService businessService;
     @Resource
     private CrmCustomerService customerService;
-    @Resource
-    private CrmBusinessStatusService businessStatusTypeService;
-    @Resource
-    private CrmBusinessStatusService businessStatusService;
-    @Resource
-    private CrmProductService productService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -81,6 +71,24 @@ public class CrmBusinessController {
     @PreAuthorize("@ss.hasPermission('crm:business:update')")
     public CommonResult<Boolean> updateBusiness(@Valid @RequestBody CrmBusinessSaveReqVO updateReqVO) {
         businessService.updateBusiness(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit-audit")
+    @Operation(summary = "提交商机审核")
+    @Parameter(name = "id", description = "商机编号", required = true)
+    @PreAuthorize("@ss.hasPermission('crm:business:update')")
+    public CommonResult<Boolean> submitBusinessAudit(@RequestParam("id") Long id) {
+        businessService.submitBusinessAudit(id, getLoginUserId());
+        return success(true);
+    }
+
+    @PutMapping("/submit-early-investment")
+    @Operation(summary = "提交提前投入审批（填写申请详情后发起，审批通过后自动创建项目）")
+    @PreAuthorize("@ss.hasPermission('crm:business:update')")
+    public CommonResult<Boolean> submitEarlyInvestment(
+            @Valid @RequestBody CrmBusinessEarlyInvestmentSubmitReqVO reqVO) {
+        businessService.submitEarlyInvestment(reqVO, getLoginUserId());
         return success(true);
     }
 
@@ -114,16 +122,7 @@ public class CrmBusinessController {
         if (business == null) {
             return null;
         }
-        CrmBusinessRespVO businessVO = buildBusinessDetailList(Collections.singletonList(business)).get(0);
-        // 拼接产品项
-        List<CrmBusinessProductDO> businessProducts = businessService.getBusinessProductListByBusinessId(businessVO.getId());
-        Map<Long, CrmProductDO> productMap = productService.getProductMap(
-                convertSet(businessProducts, CrmBusinessProductDO::getProductId));
-        businessVO.setProducts(BeanUtils.toBean(businessProducts, CrmBusinessRespVO.Product.class, businessProductVO ->
-                MapUtils.findAndThen(productMap, businessProductVO.getProductId(),
-                        product -> businessProductVO.setProductName(product.getName())
-                                .setProductNo(product.getNo()).setProductUnit(product.getUnit()))));
-        return businessVO;
+        return buildBusinessDetailList(Collections.singletonList(business)).get(0);
     }
 
     @GetMapping("/simple-all-list")
@@ -181,34 +180,69 @@ public class CrmBusinessController {
         if (CollUtil.isEmpty(list)) {
             return Collections.emptyList();
         }
-        // 1.1 获取客户列表
-        Map<Long, CrmCustomerDO> customerMap = customerService.getCustomerMap(
-                convertSet(list, CrmBusinessDO::getCustomerId));
+        // 1.1 获取最终客户 + 合作商（合并为一次查询）
+        Set<Long> allCustomerIds = new java.util.HashSet<>();
+        list.forEach(b -> {
+            if (b.getCustomerId() != null) allCustomerIds.add(b.getCustomerId());
+            if (b.getIntermediaryId() != null) allCustomerIds.add(b.getIntermediaryId());
+        });
+        Map<Long, CrmCustomerDO> customerMap = customerService.getCustomerMap(allCustomerIds);
         // 1.2 获取创建人、负责人列表
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(list,
                 contact -> Stream.of(NumberUtils.parseLong(contact.getCreator()), contact.getOwnerUserId())));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(userMap.values(), AdminUserRespDTO::getDeptId));
-        // 1.3 获得商机状态组
-        Map<Long, CrmBusinessStatusTypeDO> statusTypeMap = businessStatusTypeService.getBusinessStatusTypeMap(
-                convertSet(list, CrmBusinessDO::getStatusTypeId));
-        Map<Long, CrmBusinessStatusDO> statusMap = businessStatusService.getBusinessStatusMap(
-                convertSet(list, CrmBusinessDO::getStatusId));
-        // 2. 拼接数据
-        return BeanUtils.toBean(list, CrmBusinessRespVO.class, businessVO -> {
-            // 2.1 设置客户名称
+        // 1.3 收集所有部门分配中的部门 ID，批量查询部门及其负责人
+        Set<Long> allAllocDeptIds = new java.util.HashSet<>();
+        list.forEach(b -> {
+            if (b.getDeptAllocations() != null) {
+                b.getDeptAllocations().forEach(a -> { if (a.getDeptId() != null) allAllocDeptIds.add(a.getDeptId()); });
+            }
+        });
+        Map<Long, DeptRespDTO> allocDeptMap = CollUtil.isEmpty(allAllocDeptIds)
+                ? Collections.emptyMap() : deptApi.getDeptMap(allAllocDeptIds);
+        Set<Long> allocLeaderIds = convertSet(allocDeptMap.values(),
+                d -> d.getLeaderUserId() != null ? d.getLeaderUserId() : null);
+        allocLeaderIds.remove(null);
+        Map<Long, AdminUserRespDTO> allocLeaderMap = CollUtil.isEmpty(allocLeaderIds)
+                ? Collections.emptyMap() : adminUserApi.getUserMap(allocLeaderIds);
+        // 2. 转换并拼接数据
+        List<CrmBusinessRespVO> voList = BeanUtils.toBean(list, CrmBusinessRespVO.class);
+        for (int i = 0; i < list.size(); i++) {
+            CrmBusinessDO business = list.get(i);
+            CrmBusinessRespVO businessVO = voList.get(i);
+            // 2.1 设置最终客户名称
             MapUtils.findAndThen(customerMap, businessVO.getCustomerId(), customer -> businessVO.setCustomerName(customer.getName()));
-            // 2.2 设置创建人、负责人名称
+            // 2.2 设置合作商名称
+            MapUtils.findAndThen(customerMap, businessVO.getIntermediaryId(), intermediary -> businessVO.setIntermediaryName(intermediary.getName()));
+            // 2.3 设置创建人、负责人名称
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(businessVO.getCreator()),
                     user -> businessVO.setCreatorName(user.getNickname()));
             MapUtils.findAndThen(userMap, businessVO.getOwnerUserId(), user -> {
                 businessVO.setOwnerUserName(user.getNickname());
                 MapUtils.findAndThen(deptMap, user.getDeptId(), dept -> businessVO.setOwnerUserDeptName(dept.getName()));
             });
-            // 2.3 设置商机状态
-            MapUtils.findAndThen(statusTypeMap, businessVO.getStatusTypeId(), statusType -> businessVO.setStatusTypeName(statusType.getName()));
-            MapUtils.findAndThen(statusMap, businessVO.getStatusId(), status -> businessVO.setStatusName(
-                    businessService.getBusinessStatusName(businessVO.getEndStatus(), status)));
-        });
+            // 2.4 将部门分配列表转换为 DeptAllocationVO（含部门负责人姓名）
+            if (business.getDeptAllocations() != null) {
+                List<CrmBusinessRespVO.DeptAllocationVO> allocVOs = convertList(business.getDeptAllocations(), alloc -> {
+                    CrmBusinessRespVO.DeptAllocationVO vo = new CrmBusinessRespVO.DeptAllocationVO();
+                    vo.setDeptId(alloc.getDeptId());
+                    vo.setDeptName(alloc.getDeptName());
+                    vo.setAmount(alloc.getAmount());
+                    if (alloc.getDeptId() != null) {
+                        DeptRespDTO allocDept = allocDeptMap.get(alloc.getDeptId());
+                        if (allocDept != null && allocDept.getLeaderUserId() != null) {
+                            AdminUserRespDTO leader = allocLeaderMap.get(allocDept.getLeaderUserId());
+                            if (leader != null) {
+                                vo.setDeptLeaderName(leader.getNickname());
+                            }
+                        }
+                    }
+                    return vo;
+                });
+                businessVO.setDeptAllocations(allocVOs);
+            }
+        }
+        return voList;
     }
 
     @PutMapping("/transfer")

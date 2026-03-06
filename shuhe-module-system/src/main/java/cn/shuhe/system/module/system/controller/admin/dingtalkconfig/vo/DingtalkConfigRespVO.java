@@ -60,6 +60,9 @@ public class DingtalkConfigRespVO {
     @ExcelProperty("回调基础URL")
     private String callbackBaseUrl;
 
+    @Schema(description = "审批链接baseUrl（前端/网关入口）", example = "http://localhost:5666")
+    private String approveBaseUrl;
+
     @Schema(description = "钉钉OA外出申请流程编码", example = "PROC-XXXXXX")
     @ExcelProperty("OA流程编码")
     private String outsideProcessCode;
@@ -67,6 +70,12 @@ public class DingtalkConfigRespVO {
     @Schema(description = "默认外出类型", example = "因公外出")
     @ExcelProperty("默认外出类型")
     private String outsideType;
+
+    @Schema(description = "商机审批固定群chatId（配置后所有商机审批发到此群）", example = "chat1234567890")
+    private String businessAuditChatId;
+
+    @Schema(description = "商机审批场景群模板ID（配置后建群自动带机器人）", example = "TPL-XXXX")
+    private String businessAuditTemplateId;
 
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")

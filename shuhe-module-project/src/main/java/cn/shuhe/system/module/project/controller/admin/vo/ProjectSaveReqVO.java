@@ -30,6 +30,9 @@ public class ProjectSaveReqVO {
     @Schema(description = "客户名称", example = "某银行")
     private String customerName;
 
+    @Schema(description = "CRM商机ID", example = "1")
+    private Long businessId;
+
     @Schema(description = "CRM合同ID", example = "1")
     private Long contractId;
 
@@ -46,10 +49,16 @@ public class ProjectSaveReqVO {
 
     // ========== 状态 ==========
 
-    @Schema(description = "项目状态：0草稿 1进行中 2已完成", example = "0")
+    @Schema(description = "项目状态：0草稿 1进行中 2已完成 3已退场", example = "0")
     private Integer status;
 
     @Schema(description = "项目描述", example = "某银行安全测试项目描述")
     private String description;
+
+    @Schema(description = "关联商机的钉钉群会话ID（创建时从商机复制，退场通知使用）")
+    private String dingtalkChatId;
+
+    @Schema(description = "退场备注")
+    private String exitRemark;
 
 }

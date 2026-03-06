@@ -60,7 +60,12 @@ public class ProjectDO extends BaseDO {
     private String customerName;
 
     /**
-     * CRM 合同 ID
+     * CRM 商机 ID（商机审批通过后自动关联）
+     */
+    private Long businessId;
+
+    /**
+     * CRM 合同 ID（签合同后关联，可为空）
      */
     private Long contractId;
 
@@ -87,7 +92,7 @@ public class ProjectDO extends BaseDO {
 
     /**
      * 项目状态
-     * 0-草稿 1-进行中 2-已完成
+     * 0-草稿 1-进行中 2-已完成 3-已退场
      */
     private Integer status;
 
@@ -95,5 +100,18 @@ public class ProjectDO extends BaseDO {
      * 项目描述
      */
     private String description;
+
+    // ========== 退场相关 ==========
+
+    /**
+     * 关联商机的钉钉群会话ID
+     * 商机审批通过创建项目时从商机复制，退场通知时使用
+     */
+    private String dingtalkChatId;
+
+    /**
+     * 退场备注
+     */
+    private String exitRemark;
 
 }

@@ -10,6 +10,7 @@ import cn.shuhe.system.module.project.dal.mysql.ProjectSiteMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectSiteMemberMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
@@ -34,6 +35,10 @@ public class ProjectSiteMemberServiceImpl implements ProjectSiteMemberService {
 
     @Resource
     private ProjectSiteMapper siteMapper;
+
+    @Resource
+    @Lazy
+    private ProjectService projectService;
 
     @Override
     public Long createMember(ProjectSiteMemberSaveReqVO createReqVO) {
@@ -66,9 +71,14 @@ public class ProjectSiteMemberServiceImpl implements ProjectSiteMemberService {
         }
 
         memberMapper.insert(member);
-
         log.info("[createMember][创建驻场人员成功，id={}，siteId={}，userId={}，userName={}]",
                 member.getId(), member.getSiteId(), member.getUserId(), member.getUserName());
+
+        // 将驻场人员加入项目钉钉群
+        if (member.getProjectId() != null && member.getUserId() != null) {
+            projectService.addUsersToProjectGroupChat(member.getProjectId(), List.of(member.getUserId()));
+        }
+
         return member.getId();
     }
 

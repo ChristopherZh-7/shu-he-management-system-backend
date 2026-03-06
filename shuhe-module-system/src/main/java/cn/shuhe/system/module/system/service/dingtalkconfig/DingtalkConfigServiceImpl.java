@@ -253,6 +253,21 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                         deptMapper.updateById(existingDept);
                         dingtalkIdToLocalId.put(dingtalkDept.getDeptId(), existingDept.getId());
                         updateCount++;
+                    } else {
+                        // 映射存在但本地部门已删除（如总经办被误删），重新创建并更新映射
+                        DeptDO newDept = new DeptDO();
+                        newDept.setName(dingtalkDept.getName());
+                        newDept.setParentId(localParentId);
+                        newDept.setSort(dingtalkDept.getOrder());
+                        newDept.setDeptType(deptType);
+                        newDept.setLeaderUserId(leaderUserId);
+                        newDept.setStatus(CommonStatusEnum.ENABLE.getStatus());
+                        deptMapper.insert(newDept);
+                        mapping.setLocalId(newDept.getId());
+                        dingtalkMappingMapper.updateById(mapping);
+                        dingtalkIdToLocalId.put(dingtalkDept.getDeptId(), newDept.getId());
+                        createCount++;
+                        log.info("部门 {} 已删除，重新创建: localId={}", dingtalkDept.getName(), newDept.getId());
                     }
                 } else {
                     // 创建新部门

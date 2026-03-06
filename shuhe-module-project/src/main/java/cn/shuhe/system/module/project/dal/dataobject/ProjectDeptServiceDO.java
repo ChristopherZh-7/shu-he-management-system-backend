@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -44,7 +45,12 @@ public class ProjectDeptServiceDO extends BaseDO {
     private Long projectId;
 
     /**
-     * CRM合同ID
+     * CRM商机ID（商机审批通过后创建时关联）
+     */
+    private Long businessId;
+
+    /**
+     * CRM合同ID（签合同后关联，可为空）
      */
     private Long contractId;
 
@@ -210,5 +216,22 @@ public class ProjectDeptServiceDO extends BaseDO {
      * 实际执行部门名称
      */
     private String actualDeptName;
+
+    // ========== 预算字段（资金池重构） ==========
+
+    /**
+     * 合同分配给本部门的总预算（领取时从 crm_contract.deptAllocations 自动带入）
+     */
+    private BigDecimal deptBudget;
+
+    /**
+     * 驻场费预算（设置负责人时填写，用于驻场服务项资金池）
+     */
+    private BigDecimal onsiteBudget;
+
+    /**
+     * 二线/管理预算（设置负责人时填写，用于二线/管理服务项资金池）
+     */
+    private BigDecimal secondLineBudget;
 
 }

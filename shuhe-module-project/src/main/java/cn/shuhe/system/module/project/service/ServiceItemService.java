@@ -2,6 +2,7 @@ package cn.shuhe.system.module.project.service;
 
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemBatchSaveReqVO;
+import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemDeptBudgetRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemImportExcelVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemImportRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemPageReqVO;
@@ -9,6 +10,7 @@ import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import jakarta.validation.Valid;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -210,5 +212,34 @@ public interface ServiceItemService {
      * @return 外出服务项列表
      */
     List<ServiceItemDO> getOutsideServiceItemListByProjectId(Long projectId);
+
+    // ========== 收入分配 ==========
+
+    /**
+     * 获取服务项的合同收入分配金额
+     *
+     * @param serviceItemId 服务项ID
+     * @return 分配金额，如果未分配则返回 null
+     */
+    BigDecimal getServiceItemAllocatedAmount(Long serviceItemId);
+
+    /**
+     * 查询某合同+部门的预算使用情况
+     *
+     * @param contractId 合同ID
+     * @param deptId     部门ID
+     * @return 预算概况（总预算/已用/剩余）
+     */
+    ServiceItemDeptBudgetRespVO getDeptBudget(Long contractId, Long deptId);
+
+    /**
+     * 查询资金池剩余预算（按部门服务单 + 服务模式）
+     *
+     * @param deptServiceId     部门服务单ID
+     * @param serviceMode       服务模式：1-驻场 2-二线（安全服务/数据安全）
+     * @param serviceMemberType 成员类型：1-驻场人员 2-管理人员（安全运营）
+     * @return 包含 totalBudget / usedAmount / remainingAmount 的 Map
+     */
+    java.util.Map<String, Object> getRemainingBudget(Long deptServiceId, Integer serviceMode, Integer serviceMemberType);
 
 }

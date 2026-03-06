@@ -14,7 +14,10 @@ import org.flowable.task.api.history.HistoricTaskInstance;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Flowable 流程实例 Api 实现类
@@ -66,6 +69,36 @@ public class BpmProcessInstanceApiImpl implements BpmProcessInstanceApi {
         }
         
         return false;
+    }
+
+    @Override
+    public List<Long> getFirstTaskAssignees(String processInstanceId) {
+        if (StrUtil.isEmpty(processInstanceId)) {
+            return List.of();
+        }
+        List<Task> runningTasks = taskService.getRunningTaskListByProcessInstanceId(processInstanceId, true, null);
+        if (CollUtil.isEmpty(runningTasks)) {
+            List<HistoricTaskInstance> historicTasks = taskService.getTaskListByProcessInstanceId(processInstanceId, true);
+            if (CollUtil.isEmpty(historicTasks)) {
+                return List.of();
+            }
+            Set<Long> assignees = new LinkedHashSet<>();
+            for (HistoricTaskInstance task : historicTasks) {
+                Long assignee = NumberUtil.parseLong(task.getAssignee(), null);
+                if (assignee != null) {
+                    assignees.add(assignee);
+                }
+            }
+            return new ArrayList<>(assignees);
+        }
+        Set<Long> assignees = new LinkedHashSet<>();
+        for (Task task : runningTasks) {
+            Long assignee = NumberUtil.parseLong(task.getAssignee(), null);
+            if (assignee != null) {
+                assignees.add(assignee);
+            }
+        }
+        return new ArrayList<>(assignees);
     }
 
 }

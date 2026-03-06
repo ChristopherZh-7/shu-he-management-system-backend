@@ -286,6 +286,7 @@ public class ServiceLaunchStatusListener extends BpmProcessInstanceStatusEventLi
         }
 
         // 创建执行人记录
+        List<Long> newMemberUserIds = new ArrayList<>();
         for (AdminUserRespDTO user : users) {
             try {
                 // 获取部门信息
@@ -307,6 +308,7 @@ public class ServiceLaunchStatusListener extends BpmProcessInstanceStatusEventLi
                         .finishStatus(0)  // 未完成
                         .build();
                 serviceLaunchMemberMapper.insert(member);
+                newMemberUserIds.add(user.getId());
 
                 // 发送带确认按钮的钉钉通知
                 sendActionCardNotifyToMember(launch, member, processVariables);
@@ -316,6 +318,18 @@ public class ServiceLaunchStatusListener extends BpmProcessInstanceStatusEventLi
             } catch (Exception e) {
                 log.error("【服务发起监听】创建执行人记录失败。launchId={}, userId={}, error={}",
                         launch.getId(), user.getId(), e.getMessage(), e);
+            }
+        }
+
+        // 将所有新分配的执行人加入项目钉钉群
+        if (!newMemberUserIds.isEmpty() && launch.getServiceItemId() != null) {
+            try {
+                ServiceItemDO serviceItem = serviceItemService.getServiceItem(launch.getServiceItemId());
+                if (serviceItem != null && serviceItem.getProjectId() != null) {
+                    projectService.addUsersToProjectGroupChat(serviceItem.getProjectId(), newMemberUserIds);
+                }
+            } catch (Exception e) {
+                log.warn("【服务发起监听】将执行人加入项目群失败: {}", e.getMessage());
             }
         }
     }

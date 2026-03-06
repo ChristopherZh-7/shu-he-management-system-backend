@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -147,7 +148,7 @@ public class ServiceItemDO extends BaseDO {
 
     /**
      * 频次类型
-     * 0-按需（不限制）1-按月 2-按季 3-按年 4-按周
+     * 0-按需（不限制）1-按月 2-按季 3-按年 4-按周 5-合同内（整个合同期内固定次数）
      */
     private Integer frequencyType;
 
@@ -201,6 +202,25 @@ public class ServiceItemDO extends BaseDO {
      * 安全服务(deptType=1)使用 serviceMode 区分驻场/二线
      */
     private Integer serviceMemberType;
+
+    // ========== 资金池分配字段 ==========
+
+    /**
+     * 分配给该服务项的金额（二线/管理服务项创建时从资金池中分配）
+     * 驻场服务项的收入按工作日比例从 onsite_budget 计算，此字段不适用
+     */
+    private BigDecimal allocatedAmount;
+
+    /**
+     * 执行人用户ID（二线/管理服务项指定固定执行人，驻场服务项无需指定）
+     * 该执行人将获得 allocatedAmount 作为该服务项的收入
+     */
+    private Long executorId;
+
+    /**
+     * 执行人姓名（冗余存储，避免关联查询）
+     */
+    private String executorName;
 
     // ========== 服务归属人员类型常量（安全运营专用） ==========
 

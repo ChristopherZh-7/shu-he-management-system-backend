@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://flowable.org/bpmn">
+
+  <!--
+    商机审批流程（动态逐级审批）
+    流程 Key: crm-business-audit
+
+    工作原理：
+    1. 后端在提交审批时，预先计算审批链路列表 approvalChain（List<Long> 用户ID）
+       从发起人直属上级开始，逐级向上直到总经办
+    2. 本流程使用顺序多实例（sequential multi-instance）用户任务
+       Flowable 会依次为 approvalChain 中每个用户分配一个审批任务
+    3. 每个任务分配时，BPM 消息服务自动推送钉钉工作通知
+    4. 所有人审批通过后，流程结束 → CrmBusinessStatusListener 回调 → 创建钉钉群
+
+    导入方式：在流程设计器中点击「导入」，选择此文件即可
+  -->
+
+  <process id="crm-business-audit" name="商机审批流程" isExecutable="true">
+
+    <startEvent id="startEvent" name="开始"/>
+
+    <sequenceFlow id="flow_start_to_approval" sourceRef="startEvent" targetRef="approvalTask"/>
+
+    <!--
+      顺序多实例审批任务
+      - flowable:collection="approvalChain" : 从流程变量中读取审批人ID列表
+      - flowable:elementVariable="approver"  : 当前迭代的审批人ID（Long）
+      - flowable:assignee="${approver}"       : 将任务分配给当前审批人
+      - isSequential="true"                   : 顺序执行（一个审批完才到下一个）
+    -->
+    <userTask id="approvalTask" name="逐级审批"
+              flowable:assignee="${approver}"
+              flowable:formKey="bpm/processInstance/detail/modules/business-extensions/business-extension">
+      <multiInstanceLoopCharacteristics isSequential="true"
+                                         flowable:collection="approvalChain"
+                                         flowable:elementVariable="approver">
+        <completionCondition>${nrOfCompletedInstances == nrOfInstances}</completionCondition>
+      </multiInstanceLoopCharacteristics>
+    </userTask>
+
+    <sequenceFlow id="flow_approval_to_end" sourceRef="approvalTask" targetRef="endEvent"/>
+
+    <endEvent id="endEvent" name="结束"/>
+
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_crm-business-audit">
+    <bpmndi:BPMNPlane id="BPMNPlane_crm-business-audit" bpmnElement="crm-business-audit">
+      <bpmndi:BPMNShape id="startEvent_di" bpmnElement="startEvent">
+        <omgdc:Bounds x="152" y="82" width="36" height="36"/>
+        <bpmndi:BPMNLabel><omgdc:Bounds x="158" y="125" width="24" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="approvalTask_di" bpmnElement="approvalTask">
+        <omgdc:Bounds x="250" y="60" width="200" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="endEvent_di" bpmnElement="endEvent">
+        <omgdc:Bounds x="512" y="82" width="36" height="36"/>
+        <bpmndi:BPMNLabel><omgdc:Bounds x="518" y="125" width="24" height="14"/></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="flow_start_to_approval_di" bpmnElement="flow_start_to_approval">
+        <omgdi:waypoint x="188" y="100"/>
+        <omgdi:waypoint x="250" y="100"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow_approval_to_end_di" bpmnElement="flow_approval_to_end">
+        <omgdi:waypoint x="450" y="100"/>
+        <omgdi:waypoint x="512" y="100"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+</definitions>

@@ -6,6 +6,7 @@ import cn.shuhe.system.module.project.controller.admin.vo.ProjectDeptServiceSave
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDeptServiceDO;
 import jakarta.validation.Valid;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -102,58 +103,35 @@ public interface ProjectDeptServiceService {
      * @param managerIds   负责人ID列表
      * @param managerNames 负责人姓名列表
      */
-    void setDeptServiceManagers(Long id, List<Long> managerIds, List<String> managerNames);
+    void setDeptServiceManagers(Long id, List<Long> managerIds, List<String> managerNames,
+                                BigDecimal onsiteBudget, BigDecimal secondLineBudget);
 
-    /**
-     * 设置安全服务的驻场和二线负责人（仅安全服务 deptType=1 使用）
-     *
-     * @param id                    部门服务单ID
-     * @param onsiteManagerIds      驻场负责人ID列表
-     * @param onsiteManagerNames    驻场负责人姓名列表
-     * @param secondLineManagerIds  二线负责人ID列表
-     * @param secondLineManagerNames 二线负责人姓名列表
-     */
-    void setSecurityServiceManagers(Long id, 
+    void setSecurityServiceManagers(Long id,
                                      List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
-                                     List<Long> secondLineManagerIds, List<String> secondLineManagerNames);
+                                     List<Long> secondLineManagerIds, List<String> secondLineManagerNames,
+                                     BigDecimal onsiteBudget, BigDecimal secondLineBudget);
 
-    /**
-     * 设置数据安全的驻场和二线负责人（仅数据安全 deptType=3 使用）
-     * 逻辑与安全服务一致，同样区分驻场和二线负责人
-     *
-     * @param id                    部门服务单ID
-     * @param onsiteManagerIds      驻场负责人ID列表
-     * @param onsiteManagerNames    驻场负责人姓名列表
-     * @param secondLineManagerIds  二线负责人ID列表
-     * @param secondLineManagerNames 二线负责人姓名列表
-     */
     void setDataSecurityManagers(Long id,
                                   List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
-                                  List<Long> secondLineManagerIds, List<String> secondLineManagerNames);
+                                  List<Long> secondLineManagerIds, List<String> secondLineManagerNames,
+                                  BigDecimal onsiteBudget, BigDecimal secondLineBudget);
 
     /**
-     * 领取部门服务单
+     * 批量创建部门服务单（商机/合同审批通过时使用，直接进入待开始状态）
      *
-     * @param id       部门服务单ID
-     * @param deptId   部门ID
-     * @param deptName 部门名称
-     * @param userId   领取人ID
-     * @param userName 领取人姓名
+     * @param deptTypeBudgetMap deptType -> 该部门的合同预算（来自商机 deptAllocations），可为 null
      */
-    void claimDeptService(Long id, Long deptId, String deptName, Long userId, String userName);
+    List<ProjectDeptServiceDO> batchCreateDeptServiceForBusiness(Long projectId, Long businessId,
+                                                                  Long customerId, String customerName,
+                                                                  List<Integer> deptTypes,
+                                                                  java.util.Map<Integer, java.math.BigDecimal> deptTypeBudgetMap);
 
     /**
-     * 批量创建部门服务单（合同审批通过时使用）
+     * 提前投入转合同时，更新已存在项目的各部门服务单预算
      *
-     * @param projectId    项目ID
-     * @param contractId   合同ID
-     * @param contractNo   合同编号
-     * @param customerId   客户ID
-     * @param customerName 客户名称
-     * @param deptTypes    部门类型列表
-     * @return 创建的部门服务单列表
+     * @param projectId         项目ID
+     * @param deptTypeBudgetMap deptType -> 合同预算
      */
-    List<ProjectDeptServiceDO> batchCreateDeptService(Long projectId, Long contractId, String contractNo,
-                                                       Long customerId, String customerName, List<Integer> deptTypes);
+    void updateDeptBudgetByProjectId(Long projectId, java.util.Map<Integer, java.math.BigDecimal> deptTypeBudgetMap);
 
 }

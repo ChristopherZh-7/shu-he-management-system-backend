@@ -107,4 +107,15 @@ public class ProjectController {
         return success(true);
     }
 
+    @PutMapping("/exit")
+    @Operation(summary = "项目退场", description = "将项目置为已退场状态，发送钉钉群通知，退场后不可再管理")
+    @Parameter(name = "id", description = "项目编号", required = true)
+    @Parameter(name = "exitRemark", description = "退场备注")
+    @PreAuthorize("@ss.hasPermission('project:project:update')")
+    public CommonResult<Boolean> exitProject(@RequestParam("id") Long id,
+            @RequestParam(value = "exitRemark", required = false) String exitRemark) {
+        projectService.exitProject(id, exitRemark);
+        return success(true);
+    }
+
 }

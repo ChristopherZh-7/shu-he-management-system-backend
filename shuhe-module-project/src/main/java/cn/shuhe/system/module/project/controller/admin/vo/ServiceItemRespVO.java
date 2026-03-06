@@ -3,6 +3,7 @@ package cn.shuhe.system.module.project.controller.admin.vo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -109,5 +110,10 @@ public class ServiceItemRespVO {
 
     @Schema(description = "服务项归属人员类型（安全运营专用）：1-驻场人员 2-管理人员", example = "1")
     private Integer serviceMemberType;
+
+    // ========== 收入分配 ==========
+
+    @Schema(description = "合同收入分配金额（元），来自 service_item_allocation 表", example = "50000.00")
+    private BigDecimal allocatedAmount;
 
 }

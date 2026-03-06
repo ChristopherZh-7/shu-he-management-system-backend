@@ -67,6 +67,10 @@ public interface ProjectMapper extends BaseMapperX<ProjectDO> {
         return selectOne(ProjectDO::getContractId, contractId);
     }
 
+    default ProjectDO selectByBusinessId(Long businessId) {
+        return selectOne(ProjectDO::getBusinessId, businessId);
+    }
+
     default PageResult<ProjectDO> selectPageByIds(ProjectPageReqVO reqVO, List<Long> projectIds) {
         return selectPage(reqVO, new LambdaQueryWrapperX<ProjectDO>()
                 .in(ProjectDO::getId, projectIds)

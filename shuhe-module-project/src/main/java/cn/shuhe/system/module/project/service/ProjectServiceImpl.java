@@ -8,19 +8,28 @@ import cn.shuhe.system.module.project.controller.admin.vo.ProjectPageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectMemberDO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectDeptServiceDO;
+import cn.shuhe.system.module.project.dal.mysql.ProjectDeptServiceMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMemberMapper;
+import cn.shuhe.system.module.system.api.dingtalk.DingtalkNotifyApi;
 import cn.shuhe.system.module.system.api.permission.PermissionApi;
+import cn.shuhe.system.module.system.controller.admin.cost.vo.UserCostRespVO;
 import cn.shuhe.system.module.system.controller.admin.dashboard.vo.DashboardStatisticsRespVO;
+import cn.shuhe.system.module.system.service.cost.CostCalculationService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoField;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -43,6 +52,9 @@ public class ProjectServiceImpl implements ProjectService {
     private ProjectMemberMapper projectMemberMapper;
 
     @Resource
+    private ProjectDeptServiceMapper projectDeptServiceMapper;
+
+    @Resource
     private cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper serviceItemMapper;
 
     @Resource
@@ -51,6 +63,12 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Resource
     private PermissionApi permissionApi;
+
+    @Resource
+    private DingtalkNotifyApi dingtalkNotifyApi;
+
+    @Resource
+    private CostCalculationService costCalculationService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -73,11 +91,22 @@ public class ProjectServiceImpl implements ProjectService {
     @Transactional(rollbackFor = Exception.class)
     public void updateProject(ProjectSaveReqVO updateReqVO) {
         // 1. 校验存在
-        validateProjectExists(updateReqVO.getId());
+        ProjectDO existing = validateProjectExists(updateReqVO.getId());
 
         // 2. 更新
         ProjectDO updateObj = BeanUtils.toBean(updateReqVO, ProjectDO.class);
         projectMapper.updateById(updateObj);
+
+        // 3. 检测新增的负责人，加入钉钉群
+        if (updateReqVO.getManagerIds() != null && !updateReqVO.getManagerIds().isEmpty()) {
+            List<Long> oldManagerIds = existing.getManagerIds() != null ? existing.getManagerIds() : List.of();
+            List<Long> newManagerIds = updateReqVO.getManagerIds().stream()
+                    .filter(id -> !oldManagerIds.contains(id))
+                    .toList();
+            if (!newManagerIds.isEmpty()) {
+                addUsersToProjectGroupChat(updateReqVO.getId(), newManagerIds);
+            }
+        }
     }
 
     @Override
@@ -204,6 +233,11 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
+    public ProjectDO getProjectByBusinessId(Long businessId) {
+        return projectMapper.selectByBusinessId(businessId);
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void addProjectMember(Long projectId, Long userId, String nickname, Integer roleType) {
         // 检查是否已经是成员
@@ -223,6 +257,30 @@ public class ProjectServiceImpl implements ProjectService {
                 .build();
         projectMemberMapper.insert(member);
         log.info("【项目成员】已将用户 {} ({}) 添加为项目 {} 的成员，角色类型={}", userId, nickname, projectId, roleType);
+
+        // 将新成员加入项目钉钉群
+        addUsersToProjectGroupChat(projectId, List.of(userId));
+    }
+
+    @Override
+    public void addUsersToProjectGroupChat(Long projectId, List<Long> userIds) {
+        if (projectId == null || userIds == null || userIds.isEmpty()) {
+            return;
+        }
+        try {
+            ProjectDO project = projectMapper.selectById(projectId);
+            if (project == null || StrUtil.isBlank(project.getDingtalkChatId())) {
+                return;
+            }
+            boolean ok = dingtalkNotifyApi.addMembersToGroupChat(project.getDingtalkChatId(), userIds);
+            if (ok) {
+                log.info("【项目群】已将用户 {} 加入项目 {} 的钉钉群 {}", userIds, projectId, project.getDingtalkChatId());
+            } else {
+                log.warn("【项目群】加群失败，projectId={}, userIds={}", projectId, userIds);
+            }
+        } catch (Exception e) {
+            log.warn("【项目群】加群异常，projectId={}, userIds={}: {}", projectId, userIds, e.getMessage());
+        }
     }
 
     @Override
@@ -269,6 +327,130 @@ public class ProjectServiceImpl implements ProjectService {
             list.add(DashboardStatisticsRespVO.PieChartData.builder().name("草稿").value((int) draft).color("#fac858").build());
         }
         return list;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void exitProject(Long id, String exitRemark) {
+        // 1. 校验项目存在
+        ProjectDO project = validateProjectExists(id);
+
+        // 2. 只有非退场状态的项目才能退场
+        if (Integer.valueOf(3).equals(project.getStatus())) {
+            throw exception(PROJECT_ALREADY_EXITED);
+        }
+
+        // 3. 更新状态为已退场，记录退场备注
+        ProjectDO updateObj = new ProjectDO();
+        updateObj.setId(id);
+        updateObj.setStatus(3);
+        updateObj.setExitRemark(exitRemark);
+        projectMapper.updateById(updateObj);
+        log.info("【项目退场】项目 {} ({}) 已退场，备注：{}", id, project.getName(), exitRemark);
+
+        // 3.1 同步将关联的部门服务单状态设为已退场（status=5）
+        List<ProjectDeptServiceDO> deptServices = projectDeptServiceMapper.selectListByProjectId(id);
+        for (ProjectDeptServiceDO ds : deptServices) {
+            if (!Integer.valueOf(5).equals(ds.getStatus())) {
+                ProjectDeptServiceDO dsUpdate = new ProjectDeptServiceDO();
+                dsUpdate.setId(ds.getId());
+                dsUpdate.setStatus(5);
+                projectDeptServiceMapper.updateById(dsUpdate);
+            }
+        }
+
+        // 4. 发送钉钉群退场通知
+        if (StrUtil.isNotBlank(project.getDingtalkChatId())) {
+            try {
+                String content = buildExitNotificationContent(project, exitRemark);
+                boolean sent = dingtalkNotifyApi.sendMessageToChat(project.getDingtalkChatId(), "项目退场通知", content);
+                if (!sent) {
+                    log.warn("【项目退场】钉钉群通知发送失败，项目 {} chatId={}", id, project.getDingtalkChatId());
+                }
+            } catch (Exception e) {
+                log.error("【项目退场】发送钉钉群通知异常，项目 {}，异常信息：{}", id, e.getMessage(), e);
+            }
+        } else {
+            log.info("【项目退场】项目 {} 未关联钉钉群，跳过退场通知", id);
+        }
+    }
+
+    /**
+     * 构建退场钉钉通知内容，含服务时长和成员成本消耗估算
+     */
+    private String buildExitNotificationContent(ProjectDO project, String exitRemark) {
+        LocalDate today = LocalDate.now();
+        LocalDate projectStart = project.getCreateTime() != null
+                ? project.getCreateTime().toLocalDate() : today;
+        long totalDays = ChronoUnit.DAYS.between(projectStart, today);
+
+        StringBuilder msg = new StringBuilder();
+        // 标题
+        msg.append("## 🚪 项目退场通知\n\n");
+        msg.append("**项目名称：** ").append(project.getName()).append("\n\n");
+        msg.append("**服务时长：** ").append(totalDays).append(" 天")
+                .append("（").append(projectStart).append(" ~ ").append(today).append("）\n\n");
+        msg.append("**退场备注：** ").append(StrUtil.blankToDefault(exitRemark, "无")).append("\n\n");
+        msg.append("---\n\n");
+
+        // 成员成本估算
+        try {
+            List<ProjectMemberDO> members = projectMemberMapper.selectListByProjectId(project.getId());
+            if (CollUtil.isNotEmpty(members)) {
+                msg.append("**💰 成本消耗估算**\n\n");
+                BigDecimal totalCost = BigDecimal.ZERO;
+                int year = today.getYear();
+                int month = today.getMonthValue();
+
+                for (ProjectMemberDO member : members) {
+                    try {
+                        UserCostRespVO costVO = costCalculationService.getUserCost(member.getUserId(), year, month);
+                        if (costVO == null || costVO.getDailyCost() == null) {
+                            continue;
+                        }
+                        // 成员在项目中的天数：从 joinTime 或项目创建日，取较晚的那天
+                        LocalDate memberJoinDate = member.getJoinTime() != null
+                                ? member.getJoinTime().toLocalDate() : projectStart;
+                        LocalDate startDate = memberJoinDate.isAfter(projectStart) ? memberJoinDate : projectStart;
+                        long memberDays = ChronoUnit.DAYS.between(startDate, today);
+                        if (memberDays <= 0) {
+                            continue;
+                        }
+                        BigDecimal memberCost = costVO.getDailyCost()
+                                .multiply(BigDecimal.valueOf(memberDays))
+                                .setScale(2, RoundingMode.HALF_UP);
+                        totalCost = totalCost.add(memberCost);
+
+                        msg.append("- **").append(member.getNickname()).append("**")
+                                .append("（").append(memberDays).append(" 天 × ¥")
+                                .append(costVO.getDailyCost().setScale(0, RoundingMode.HALF_UP))
+                                .append("/天）= **¥").append(memberCost.toPlainString()).append("**\n");
+                    } catch (Exception e) {
+                        log.warn("【项目退场】获取成员 {} 成本失败，跳过", member.getNickname(), e);
+                        msg.append("- ").append(member.getNickname()).append("（成本数据不可用）\n");
+                    }
+                }
+
+                msg.append("\n**合计预计成本：¥").append(totalCost.toPlainString()).append("**\n\n");
+                msg.append("> 成本 = 日成本（月成本÷当月工作日数）× 实际在项天数，仅供参考。\n\n");
+            }
+        } catch (Exception e) {
+            log.warn("【项目退场】成本估算失败，跳过成本部分", e);
+        }
+
+        msg.append("---\n\n");
+        msg.append("> 该项目已终止，不再继续提供服务。");
+        return msg.toString();
+    }
+
+    @Override
+    public void updateProjectContractInfo(Long projectId, Long contractId, String contractNo) {
+        ProjectDO updateObj = new ProjectDO();
+        updateObj.setId(projectId);
+        updateObj.setContractId(contractId);
+        updateObj.setContractNo(contractNo);
+        projectMapper.updateById(updateObj);
+        log.info("[updateProjectContractInfo] 项目 {} 关联合同 {} ({})", projectId, contractId, contractNo);
     }
 
     /**

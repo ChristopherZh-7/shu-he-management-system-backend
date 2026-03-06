@@ -77,4 +77,13 @@ public interface ProjectDeptServiceMapper extends BaseMapperX<ProjectDeptService
         return selectList(ProjectDeptServiceDO::getDeptId, deptId);
     }
 
+    /**
+     * 根据合同ID和部门ID查询（用于预算查询，领取后 deptId 才有值）
+     */
+    default ProjectDeptServiceDO selectByContractIdAndDeptId(Long contractId, Long deptId) {
+        return selectOne(new LambdaQueryWrapperX<ProjectDeptServiceDO>()
+                .eq(ProjectDeptServiceDO::getContractId, contractId)
+                .eq(ProjectDeptServiceDO::getDeptId, deptId));
+    }
+
 }

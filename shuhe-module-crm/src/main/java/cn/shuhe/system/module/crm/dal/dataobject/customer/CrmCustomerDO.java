@@ -35,6 +35,12 @@ public class CrmCustomerDO extends BaseDO {
     private String name;
 
     /**
+     * 客户类型
+     * 1-最终客户 2-合作商
+     */
+    private Integer type;
+
+    /**
      * 跟进状态
      */
     private Boolean followUpStatus;
