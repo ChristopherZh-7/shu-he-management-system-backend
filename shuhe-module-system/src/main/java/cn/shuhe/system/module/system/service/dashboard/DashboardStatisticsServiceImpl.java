@@ -29,11 +29,11 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
@@ -116,30 +116,59 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
 
     @Override
     public DashboardStatisticsRespVO getStatistics(Long userId, String pageType) {
-        DashboardStatisticsRespVO.DashboardStatisticsRespVOBuilder builder = DashboardStatisticsRespVO.builder();
-
         boolean admin = isAdmin(userId);
         log.debug("获取仪表板统计数据, userId={}, isAdmin={}, pageType={}", userId, admin, pageType);
 
-        // 统计卡片数据
-        builder.projectStats(getProjectStats(userId));
-        builder.contractStats(getContractStats(userId));
-        builder.customerStats(getCustomerStats(userId));
-        builder.taskStats(getTaskStats(userId));
-        builder.revenueStats(getRevenueStats(userId));
+        long startTime = System.currentTimeMillis();
 
-        // 图表数据（管理员看全局，普通用户看个人/部门）
-        builder.trendData(getTrendData(userId, admin));
-        builder.projectDistribution(getProjectDistribution(userId, admin));
-        builder.taskDistribution(getTaskDistribution(userId, admin));
-        builder.deptRanking(getDeptRanking(userId, admin));
+        // 【性能优化】所有子查询并行执行，总耗时从「各查询之和」降为「最慢的单个查询」
+        CompletableFuture<ProjectStats> projectStatsFuture =
+                CompletableFuture.supplyAsync(() -> getProjectStats(userId));
+        CompletableFuture<ContractStats> contractStatsFuture =
+                CompletableFuture.supplyAsync(() -> getContractStats(userId));
+        CompletableFuture<CustomerStats> customerStatsFuture =
+                CompletableFuture.supplyAsync(() -> getCustomerStats(userId));
+        CompletableFuture<TaskStats> taskStatsFuture =
+                CompletableFuture.supplyAsync(() -> getTaskStats(userId));
+        CompletableFuture<RevenueStats> revenueStatsFuture =
+                CompletableFuture.supplyAsync(() -> getRevenueStats(userId));
+        CompletableFuture<List<TrendData>> trendDataFuture =
+                CompletableFuture.supplyAsync(() -> getTrendData(userId, admin));
+        CompletableFuture<List<PieChartData>> projectDistFuture =
+                CompletableFuture.supplyAsync(() -> getProjectDistribution(userId, admin));
+        CompletableFuture<List<PieChartData>> taskDistFuture =
+                CompletableFuture.supplyAsync(() -> getTaskDistribution(userId, admin));
+        CompletableFuture<List<RankData>> deptRankingFuture =
+                CompletableFuture.supplyAsync(() -> getDeptRanking(userId, admin));
+        CompletableFuture<List<TodoItem>> todoListFuture =
+                CompletableFuture.supplyAsync(() -> getTodoList(userId));
+        CompletableFuture<List<ActivityItem>> recentActivitiesFuture =
+                CompletableFuture.supplyAsync(() -> getRecentActivities(userId, admin));
+        CompletableFuture<List<ContractRemindItem>> contractRemindersFuture =
+                CompletableFuture.supplyAsync(() -> getContractReminders(userId, admin));
 
-        // 列表数据（待办来自 BPM 真实数据）
-        builder.todoList(getTodoList(userId));
-        builder.recentActivities(getRecentActivities(userId, admin));
-        builder.contractReminders(getContractReminders(userId, admin));
+        CompletableFuture.allOf(
+                projectStatsFuture, contractStatsFuture, customerStatsFuture, taskStatsFuture,
+                revenueStatsFuture, trendDataFuture, projectDistFuture, taskDistFuture,
+                deptRankingFuture, todoListFuture, recentActivitiesFuture, contractRemindersFuture
+        ).join();
 
-        return builder.build();
+        log.info("仪表板统计数据并行查询完成，总耗时={}ms", System.currentTimeMillis() - startTime);
+
+        return DashboardStatisticsRespVO.builder()
+                .projectStats(projectStatsFuture.join())
+                .contractStats(contractStatsFuture.join())
+                .customerStats(customerStatsFuture.join())
+                .taskStats(taskStatsFuture.join())
+                .revenueStats(revenueStatsFuture.join())
+                .trendData(trendDataFuture.join())
+                .projectDistribution(projectDistFuture.join())
+                .taskDistribution(taskDistFuture.join())
+                .deptRanking(deptRankingFuture.join())
+                .todoList(todoListFuture.join())
+                .recentActivities(recentActivitiesFuture.join())
+                .contractReminders(contractRemindersFuture.join())
+                .build();
     }
 
     @Override
@@ -376,8 +405,25 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
     }
 
     /**
+     * 获取经营分析数据（优先使用缓存服务）
+     */
+    private BusinessAnalysisRespVO fetchBusinessAnalysis(int year, LocalDate cutoffDate, Long userId) {
+        if (businessAnalysisCacheService != null) {
+            return businessAnalysisCacheService.getBusinessAnalysis(year, cutoffDate, userId);
+        }
+        BusinessAnalysisReqVO reqVO = new BusinessAnalysisReqVO();
+        reqVO.setYear(year);
+        reqVO.setCutoffDate(cutoffDate);
+        reqVO.setLevel(1);
+        reqVO.setIncludeEmployees(false);
+        return businessAnalysisService.getBusinessAnalysis(reqVO, userId);
+    }
+
+    /**
      * 获取经营趋势数据（最近12个月）
      * 优先从经营分析服务获取，保持与部门利润排行数据源一致
+     * 
+     * 【性能优化】使用 CompletableFuture 并行查询 13 个月的数据 + Redis 缓存
      * 
      * @param userId 用户ID
      * @param isAdmin 是否管理员
@@ -387,55 +433,47 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
         LocalDate now = LocalDate.now();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy年M月");
         
-        // 优先从经营分析服务获取真实数据（与部门利润排行数据源一致）
-        if (businessAnalysisService != null) {
+        if (businessAnalysisCacheService != null || businessAnalysisService != null) {
             try {
-                // 存储每个月末的累计数据，用于计算月度增量
-                BigDecimal[] cumulativeRevenues = new BigDecimal[13]; // 0为上月末基准
+                BigDecimal[] cumulativeRevenues = new BigDecimal[13];
                 BigDecimal[] cumulativeCosts = new BigDecimal[13];
                 BigDecimal[] cumulativeProfits = new BigDecimal[13];
                 
-                // 获取12个月前的月末累计作为基准
+                // 【性能优化】并行查询 13 个月的经营分析数据（利用 Redis 缓存 + CompletableFuture）
+                @SuppressWarnings("unchecked")
+                CompletableFuture<BusinessAnalysisRespVO>[] futures = new CompletableFuture[13];
+                
                 LocalDate baseMonth = now.minusMonths(12);
                 LocalDate baseMonthEnd = baseMonth.withDayOfMonth(baseMonth.lengthOfMonth());
-                BusinessAnalysisReqVO baseReq = new BusinessAnalysisReqVO();
-                baseReq.setYear(baseMonthEnd.getYear());
-                baseReq.setCutoffDate(baseMonthEnd);
-                baseReq.setLevel(1);
-                baseReq.setIncludeEmployees(false);
+                futures[0] = CompletableFuture.supplyAsync(() ->
+                        fetchBusinessAnalysis(baseMonthEnd.getYear(), baseMonthEnd, userId));
                 
-                BusinessAnalysisRespVO baseData = businessAnalysisService.getBusinessAnalysis(baseReq, userId);
-                if (baseData != null && baseData.getTotal() != null) {
-                    cumulativeRevenues[0] = baseData.getTotal().getTotalIncome() != null ? baseData.getTotal().getTotalIncome() : BigDecimal.ZERO;
-                    cumulativeCosts[0] = baseData.getTotal().getTotalExpense() != null ? baseData.getTotal().getTotalExpense() : BigDecimal.ZERO;
-                    cumulativeProfits[0] = baseData.getTotal().getNetProfit() != null ? baseData.getTotal().getNetProfit() : BigDecimal.ZERO;
-                } else {
-                    cumulativeRevenues[0] = BigDecimal.ZERO;
-                    cumulativeCosts[0] = BigDecimal.ZERO;
-                    cumulativeProfits[0] = BigDecimal.ZERO;
-                }
-                
-                // 获取最近12个月每个月末的累计数据
                 for (int i = 11; i >= 0; i--) {
                     LocalDate month = now.minusMonths(i);
                     LocalDate monthEnd = (i == 0) ? now : month.withDayOfMonth(month.lengthOfMonth());
-                    int idx = 12 - i; // 1~12
-                    
-                    BusinessAnalysisReqVO reqVO = new BusinessAnalysisReqVO();
-                    reqVO.setYear(monthEnd.getYear());
-                    reqVO.setCutoffDate(monthEnd);
-                    reqVO.setLevel(1);
-                    reqVO.setIncludeEmployees(false);
-                    
-                    BusinessAnalysisRespVO data = businessAnalysisService.getBusinessAnalysis(reqVO, userId);
+                    int idx = 12 - i;
+                    final int year = monthEnd.getYear();
+                    final LocalDate cutoff = monthEnd;
+                    futures[idx] = CompletableFuture.supplyAsync(() ->
+                            fetchBusinessAnalysis(year, cutoff, userId));
+                }
+                
+                CompletableFuture.allOf(futures).join();
+                
+                for (int idx = 0; idx < 13; idx++) {
+                    BusinessAnalysisRespVO data = futures[idx].join();
                     if (data != null && data.getTotal() != null) {
                         cumulativeRevenues[idx] = data.getTotal().getTotalIncome() != null ? data.getTotal().getTotalIncome() : BigDecimal.ZERO;
                         cumulativeCosts[idx] = data.getTotal().getTotalExpense() != null ? data.getTotal().getTotalExpense() : BigDecimal.ZERO;
                         cumulativeProfits[idx] = data.getTotal().getNetProfit() != null ? data.getTotal().getNetProfit() : BigDecimal.ZERO;
-                    } else {
+                    } else if (idx > 0) {
                         cumulativeRevenues[idx] = cumulativeRevenues[idx - 1];
                         cumulativeCosts[idx] = cumulativeCosts[idx - 1];
                         cumulativeProfits[idx] = cumulativeProfits[idx - 1];
+                    } else {
+                        cumulativeRevenues[idx] = BigDecimal.ZERO;
+                        cumulativeCosts[idx] = BigDecimal.ZERO;
+                        cumulativeProfits[idx] = BigDecimal.ZERO;
                     }
                 }
                 

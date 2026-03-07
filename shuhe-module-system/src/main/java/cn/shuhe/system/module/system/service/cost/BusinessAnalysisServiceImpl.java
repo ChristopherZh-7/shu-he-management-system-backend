@@ -202,7 +202,7 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
         int month = cutoffDate.getMonthValue();
         Set<Long> allUserIds = allEmployees.stream().map(AdminUserDO::getId).collect(Collectors.toSet());
         Map<Long, BigDecimal> employeeCostCache = new ConcurrentHashMap<>(
-                costCalculationService.batchGetUserYearToDateCost(allUserIds, year, month));
+                costCalculationService.batchGetUserYearToDateCost(allUserIds, year, month, cutoffDate));
 
         Map<Long, BigDecimal> operationIncomeCache = new ConcurrentHashMap<>();
         Map<Long, BigDecimal> serviceIncomeCache = new ConcurrentHashMap<>();

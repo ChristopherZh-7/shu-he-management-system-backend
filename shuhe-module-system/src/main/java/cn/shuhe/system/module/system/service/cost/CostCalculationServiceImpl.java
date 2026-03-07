@@ -333,9 +333,12 @@ public class CostCalculationServiceImpl implements CostCalculationService {
     }
 
     /**
-     * 转换用户信息为成本VO（计算年度累计成本）
+     * 转换用户信息为成本VO（截至指定日期的年度累计成本）
      */
-    private UserCostRespVO convertToUserCostVO(AdminUserDO user, Map<Long, DeptDO> deptMap, int year) {
+    /**
+     * 设置用户基础信息和工资，不计算年度累计成本
+     */
+    private UserCostRespVO prepareUserCostVO(AdminUserDO user, Map<Long, DeptDO> deptMap, int year) {
         UserCostRespVO vo = new UserCostRespVO();
         vo.setUserId(user.getId());
         vo.setNickname(user.getNickname());
@@ -345,7 +348,6 @@ public class CostCalculationServiceImpl implements CostCalculationService {
         vo.setHireDate(user.getHireDate());
         vo.setYear(year);
 
-        // 获取部门信息
         Integer deptType = null;
         String deptName = null;
         if (user.getDeptId() != null && deptMap != null) {
@@ -354,12 +356,11 @@ public class CostCalculationServiceImpl implements CostCalculationService {
                 deptName = dept.getName();
                 vo.setDeptName(deptName);
                 deptType = dept.getDeptType();
-                
-                // 如果部门没有设置类型，根据部门名称自动推断
+
                 if (deptType == null && StrUtil.isNotEmpty(deptName)) {
                     deptType = inferDeptTypeFromName(deptName);
                 }
-                
+
                 vo.setDeptType(deptType);
                 if (deptType != null) {
                     vo.setDeptTypeName(DEPT_TYPE_NAMES.get(deptType));
@@ -367,16 +368,30 @@ public class CostCalculationServiceImpl implements CostCalculationService {
             }
         }
 
-        // 计算基础工资和成本
         BigDecimal baseSalary = calculateBaseSalary(deptType, user.getPositionLevel());
         BigDecimal monthlyCost = calculateMonthlyCost(baseSalary);
-        
         vo.setBaseSalary(baseSalary);
         vo.setMonthlyCost(monthlyCost);
 
-        // 计算年度累计成本
-        calculateYearToDateCost(vo, user, year, monthlyCost);
+        return vo;
+    }
 
+    /**
+     * 转换用户信息为成本VO（截至指定日期的年度累计成本）
+     */
+    private UserCostRespVO convertToUserCostVO(AdminUserDO user, Map<Long, DeptDO> deptMap,
+                                                int year, LocalDate cutoffDate) {
+        UserCostRespVO vo = prepareUserCostVO(user, deptMap, year);
+        calculateYearToDateCost(vo, user, year, vo.getMonthlyCost(), cutoffDate);
+        return vo;
+    }
+
+    /**
+     * 转换用户信息为成本VO（计算年度累计成本，使用当前日期）
+     */
+    private UserCostRespVO convertToUserCostVO(AdminUserDO user, Map<Long, DeptDO> deptMap, int year) {
+        UserCostRespVO vo = prepareUserCostVO(user, deptMap, year);
+        calculateYearToDateCost(vo, user, year, vo.getMonthlyCost());
         return vo;
     }
 
@@ -385,7 +400,17 @@ public class CostCalculationServiceImpl implements CostCalculationService {
      * 支持分段计算：如果员工中途升职，按不同职级分段计算成本
      */
     private void calculateYearToDateCost(UserCostRespVO vo, AdminUserDO user, int year, BigDecimal monthlyCost) {
-        LocalDate today = LocalDate.now();
+        calculateYearToDateCost(vo, user, year, monthlyCost, null);
+    }
+
+    /**
+     * 计算截至指定日期的年度累计成本
+     *
+     * @param cutoffDate 截止日期，为 null 时使用 LocalDate.now()
+     */
+    private void calculateYearToDateCost(UserCostRespVO vo, AdminUserDO user, int year,
+                                         BigDecimal monthlyCost, LocalDate cutoffDate) {
+        LocalDate today = cutoffDate != null ? cutoffDate : LocalDate.now();
         LocalDate yearStart = LocalDate.of(year, 1, 1);
         LocalDate yearEnd = LocalDate.of(year, 12, 31);
         
@@ -750,6 +775,61 @@ public class CostCalculationServiceImpl implements CostCalculationService {
         }
 
         log.info("[批量成本计算] 完成，耗时={}ms", System.currentTimeMillis() - startTime);
+        return result;
+    }
+
+    @Override
+    public Map<Long, BigDecimal> batchGetUserYearToDateCost(Collection<Long> userIds, int year,
+                                                             int month, LocalDate cutoffDate) {
+        if (cutoffDate == null) {
+            return batchGetUserYearToDateCost(userIds, year, month);
+        }
+        if (CollUtil.isEmpty(userIds)) {
+            return Collections.emptyMap();
+        }
+
+        log.info("[批量成本计算] 开始计算 {} 个用户截至 {} 的年度累计成本", userIds.size(), cutoffDate);
+        long startTime = System.currentTimeMillis();
+
+        List<AdminUserDO> users = adminUserMapper.selectBatchIds(userIds);
+        if (CollUtil.isEmpty(users)) {
+            return Collections.emptyMap();
+        }
+
+        Set<Long> deptIds = users.stream()
+                .map(AdminUserDO::getDeptId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, DeptDO> deptMap = new HashMap<>();
+        if (CollUtil.isNotEmpty(deptIds)) {
+            List<DeptDO> depts = deptService.getDeptList(
+                    new cn.shuhe.system.module.system.controller.admin.dept.vo.dept.DeptListReqVO());
+            for (DeptDO dept : depts) {
+                if (deptIds.contains(dept.getId())) {
+                    deptMap.put(dept.getId(), dept);
+                }
+            }
+        }
+
+        holidayService.getHolidaysByYear(year);
+        if (month <= 2) {
+            holidayService.getHolidaysByYear(year - 1);
+        }
+
+        Map<Long, BigDecimal> result = new HashMap<>();
+        for (AdminUserDO user : users) {
+            try {
+                UserCostRespVO costVO = convertToUserCostVO(user, deptMap, year, cutoffDate);
+                BigDecimal cost = costVO != null && costVO.getYearToDateCost() != null
+                        ? costVO.getYearToDateCost() : BigDecimal.ZERO;
+                result.put(user.getId(), cost);
+            } catch (Exception e) {
+                log.warn("[批量成本计算] 用户 {} 成本计算失败: {}", user.getId(), e.getMessage());
+                result.put(user.getId(), BigDecimal.ZERO);
+            }
+        }
+
+        log.info("[批量成本计算] 截至 {} 完成，耗时={}ms", cutoffDate, System.currentTimeMillis() - startTime);
         return result;
     }
 

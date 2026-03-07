@@ -6,6 +6,7 @@ import cn.shuhe.system.module.system.controller.admin.cost.vo.UserCostRespVO;
 import cn.shuhe.system.module.system.controller.admin.cost.vo.WorkingDaysRespVO;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Map;
 
@@ -96,5 +97,17 @@ public interface CostCalculationService {
      * @return 用户ID -> 年度累计成本 的映射
      */
     Map<Long, BigDecimal> batchGetUserYearToDateCost(Collection<Long> userIds, int year, int month);
+
+    /**
+     * 批量获取用户截至指定日期的年度累计成本
+     * 用于经营分析趋势图等需要按截止日期计算历史成本的场景
+     *
+     * @param userIds    用户ID集合
+     * @param year       年份
+     * @param month      截止月份
+     * @param cutoffDate 截止日期（替代 LocalDate.now()）
+     * @return 用户ID -> 年度累计成本 的映射
+     */
+    Map<Long, BigDecimal> batchGetUserYearToDateCost(Collection<Long> userIds, int year, int month, LocalDate cutoffDate);
 
 }
