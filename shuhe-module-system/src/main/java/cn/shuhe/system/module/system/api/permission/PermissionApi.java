@@ -20,4 +20,12 @@ public interface PermissionApi extends PermissionCommonApi {
      */
     Set<Long> getUserRoleIdListByRoleIds(Collection<Long> roleIds);
 
+    /**
+     * 获得用户拥有的角色编号集合
+     *
+     * @param userId 用户编号
+     * @return 角色编号集合
+     */
+    Set<Long> getUserRoleIdListByUserId(Long userId);
+
 }

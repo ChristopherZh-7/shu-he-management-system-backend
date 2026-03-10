@@ -104,17 +104,17 @@ public interface ProjectDeptServiceService {
      * @param managerNames 负责人姓名列表
      */
     void setDeptServiceManagers(Long id, List<Long> managerIds, List<String> managerNames,
-                                BigDecimal onsiteBudget, BigDecimal secondLineBudget);
+                                BigDecimal deptBudget, BigDecimal onsiteBudget, BigDecimal secondLineBudget);
 
     void setSecurityServiceManagers(Long id,
                                      List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
                                      List<Long> secondLineManagerIds, List<String> secondLineManagerNames,
-                                     BigDecimal onsiteBudget, BigDecimal secondLineBudget);
+                                     BigDecimal deptBudget, BigDecimal onsiteBudget, BigDecimal secondLineBudget);
 
     void setDataSecurityManagers(Long id,
                                   List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
                                   List<Long> secondLineManagerIds, List<String> secondLineManagerNames,
-                                  BigDecimal onsiteBudget, BigDecimal secondLineBudget);
+                                  BigDecimal deptBudget, BigDecimal onsiteBudget, BigDecimal secondLineBudget);
 
     /**
      * 批量创建部门服务单（商机/合同审批通过时使用，直接进入待开始状态）

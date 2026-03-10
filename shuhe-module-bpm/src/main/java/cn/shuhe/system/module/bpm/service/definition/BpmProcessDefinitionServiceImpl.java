@@ -12,6 +12,7 @@ import cn.shuhe.system.module.bpm.dal.dataobject.definition.BpmProcessDefinition
 import cn.shuhe.system.module.bpm.dal.mysql.definition.BpmProcessDefinitionInfoMapper;
 import cn.shuhe.system.module.bpm.framework.flowable.core.enums.BpmnModelConstants;
 import cn.shuhe.system.module.bpm.framework.flowable.core.util.FlowableUtils;
+import cn.shuhe.system.module.system.api.permission.PermissionApi;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import jakarta.annotation.Resource;
@@ -54,6 +55,9 @@ public class BpmProcessDefinitionServiceImpl implements BpmProcessDefinitionServ
 
     @Resource
     private AdminUserApi adminUserApi;
+
+    @Resource
+    private PermissionApi permissionApi;
 
     @Override
     public ProcessDefinition getProcessDefinition(String id) {
@@ -107,8 +111,44 @@ public class BpmProcessDefinitionServiceImpl implements BpmProcessDefinitionServ
                     && processDefinition.getStartDeptIds().contains(user.getDeptId());
         }
 
+        // 校验用户是否拥有允许发起的角色
+        if (CollUtil.isNotEmpty(processDefinition.getStartRoleIds())) {
+            Set<Long> userRoleIds = permissionApi.getUserRoleIdListByUserId(userId);
+            if (userRoleIds != null && CollUtil.containsAny(processDefinition.getStartRoleIds(), userRoleIds)) {
+                return true;
+            }
+            return false;
+        }
+
+        // 校验用户是否拥有允许发起的岗位
+        if (CollUtil.isNotEmpty(processDefinition.getStartPostIds())) {
+            AdminUserRespDTO user = adminUserApi.getUser(userId);
+            return user != null
+                    && user.getPostIds() != null
+                    && CollUtil.containsAny(processDefinition.getStartPostIds(), user.getPostIds());
+        }
+
         // 都为空，则所有人都可以发起
         return true;
+    }
+
+    @Override
+    public Long getFirstManagerUserId(BpmProcessDefinitionInfoDO processDefinition) {
+        if (processDefinition == null) {
+            return null;
+        }
+        if (CollUtil.isNotEmpty(processDefinition.getManagerUserIds())) {
+            return processDefinition.getManagerUserIds().get(0);
+        }
+        if (CollUtil.isNotEmpty(processDefinition.getManagerRoleIds())) {
+            Set<Long> userIds = permissionApi.getUserRoleIdListByRoleIds(processDefinition.getManagerRoleIds());
+            return CollUtil.isNotEmpty(userIds) ? CollUtil.getFirst(userIds) : null;
+        }
+        if (CollUtil.isNotEmpty(processDefinition.getManagerPostIds())) {
+            List<AdminUserRespDTO> users = adminUserApi.getUserListByPostIds(processDefinition.getManagerPostIds());
+            return CollUtil.isNotEmpty(users) ? users.get(0).getId() : null;
+        }
+        return null;
     }
 
     @Override

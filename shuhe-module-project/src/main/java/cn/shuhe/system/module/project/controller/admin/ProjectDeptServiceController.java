@@ -125,6 +125,7 @@ public class ProjectDeptServiceController {
             @RequestParam("id") Long id,
             @RequestParam(value = "onsiteManagerIds", required = false) List<Long> onsiteManagerIds,
             @RequestParam(value = "secondLineManagerIds", required = false) List<Long> secondLineManagerIds,
+            @RequestParam(value = "deptBudget", required = false) BigDecimal deptBudget,
             @RequestParam(value = "onsiteBudget", required = false) BigDecimal onsiteBudget,
             @RequestParam(value = "secondLineBudget", required = false) BigDecimal secondLineBudget) {
 
@@ -134,7 +135,7 @@ public class ProjectDeptServiceController {
         deptServiceService.setSecurityServiceManagers(id,
                 onsiteManagerIds, onsiteManagerNames,
                 secondLineManagerIds, secondLineManagerNames,
-                onsiteBudget, secondLineBudget);
+                deptBudget, onsiteBudget, secondLineBudget);
         return success(true);
     }
 
@@ -145,6 +146,7 @@ public class ProjectDeptServiceController {
             @RequestParam("id") Long id,
             @RequestParam(value = "onsiteManagerIds", required = false) List<Long> onsiteManagerIds,
             @RequestParam(value = "secondLineManagerIds", required = false) List<Long> secondLineManagerIds,
+            @RequestParam(value = "deptBudget", required = false) BigDecimal deptBudget,
             @RequestParam(value = "onsiteBudget", required = false) BigDecimal onsiteBudget,
             @RequestParam(value = "secondLineBudget", required = false) BigDecimal secondLineBudget) {
 
@@ -154,7 +156,7 @@ public class ProjectDeptServiceController {
         deptServiceService.setDataSecurityManagers(id,
                 onsiteManagerIds, onsiteManagerNames,
                 secondLineManagerIds, secondLineManagerNames,
-                onsiteBudget, secondLineBudget);
+                deptBudget, onsiteBudget, secondLineBudget);
         return success(true);
     }
 
@@ -164,11 +166,12 @@ public class ProjectDeptServiceController {
     public CommonResult<Boolean> setDeptServiceManagers(
             @RequestParam("id") Long id,
             @RequestParam("managerIds") List<Long> managerIds,
+            @RequestParam(value = "deptBudget", required = false) BigDecimal deptBudget,
             @RequestParam(value = "onsiteBudget", required = false) BigDecimal onsiteBudget,
             @RequestParam(value = "secondLineBudget", required = false) BigDecimal secondLineBudget) {
 
         List<String> managerNames = resolveUserNames(managerIds);
-        deptServiceService.setDeptServiceManagers(id, managerIds, managerNames, onsiteBudget, secondLineBudget);
+        deptServiceService.setDeptServiceManagers(id, managerIds, managerNames, deptBudget, onsiteBudget, secondLineBudget);
         return success(true);
     }
 

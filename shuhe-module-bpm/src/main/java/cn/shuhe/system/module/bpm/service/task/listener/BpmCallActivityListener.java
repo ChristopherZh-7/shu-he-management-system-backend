@@ -70,15 +70,23 @@ public class BpmCallActivityListener implements ExecutionListener {
                 // 2.1.2 来自子流程管理员
                 if (startUserSetting.getEmptyType().equals(BpmChildProcessStartUserEmptyTypeEnum.CHILD_PROCESS_ADMIN.getType())) {
                     BpmProcessDefinitionInfoDO processDefinition = processDefinitionService.getProcessDefinitionInfo(execution.getProcessDefinitionId());
-                    List<Long> managerUserIds = processDefinition.getManagerUserIds();
-                    FlowableUtils.setAuthenticatedUserId(managerUserIds.get(0));
+                    Long managerUserId = processDefinitionService.getFirstManagerUserId(processDefinition);
+                    if (managerUserId != null) {
+                        FlowableUtils.setAuthenticatedUserId(managerUserId);
+                    } else {
+                        FlowableUtils.setAuthenticatedUserId(Long.parseLong(processInstance.getStartUserId()));
+                    }
                     return;
                 }
                 // 2.1.3 来自主流程管理员
                 if (startUserSetting.getEmptyType().equals(BpmChildProcessStartUserEmptyTypeEnum.MAIN_PROCESS_ADMIN.getType())) {
                     BpmProcessDefinitionInfoDO processDefinition = processDefinitionService.getProcessDefinitionInfo(processInstance.getProcessDefinitionId());
-                    List<Long> managerUserIds = processDefinition.getManagerUserIds();
-                    FlowableUtils.setAuthenticatedUserId(managerUserIds.get(0));
+                    Long managerUserId = processDefinitionService.getFirstManagerUserId(processDefinition);
+                    if (managerUserId != null) {
+                        FlowableUtils.setAuthenticatedUserId(managerUserId);
+                    } else {
+                        FlowableUtils.setAuthenticatedUserId(Long.parseLong(processInstance.getStartUserId()));
+                    }
                     return;
                 }
             }

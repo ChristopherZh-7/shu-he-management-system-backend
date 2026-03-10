@@ -153,6 +153,15 @@ public interface BpmProcessDefinitionService {
     boolean canUserStartProcessDefinition(BpmProcessDefinitionInfoDO processDefinition, Long userId);
 
     /**
+     * 获得流程定义的第一个管理员用户编号
+     * 按优先级：指定用户 > 指定角色 > 指定岗位
+     *
+     * @param processDefinition 流程定义信息
+     * @return 管理员用户编号，若无则返回 null
+     */
+    Long getFirstManagerUserId(BpmProcessDefinitionInfoDO processDefinition);
+
+    /**
      * 获得 ids 对应的 Deployment Map
      *
      * @param ids 部署编号的数组

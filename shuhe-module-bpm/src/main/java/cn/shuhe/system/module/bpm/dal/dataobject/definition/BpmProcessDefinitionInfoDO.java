@@ -160,12 +160,40 @@ public class BpmProcessDefinitionInfoDO extends BaseDO {
     private List<Long> startDeptIds;
 
     /**
+     * 可发起角色编号数组
+     *
+     * 关联 {@link cn.shuhe.system.module.system.dal.dataobject.permission.RoleDO#getId()} 字段的数组
+     */
+    @TableField(typeHandler = LongListTypeHandler.class)
+    private List<Long> startRoleIds;
+
+    /**
+     * 可发起岗位编号数组
+     *
+     * 关联 {@link cn.shuhe.system.module.system.dal.dataobject.dept.PostDO#getId()} 字段的数组
+     */
+    @TableField(typeHandler = LongListTypeHandler.class)
+    private List<Long> startPostIds;
+
+    /**
      * 可管理用户编号数组
      *
      * 关联 {@link AdminUserRespDTO#getId()} 字段的数组
      */
     @TableField(typeHandler = LongListTypeHandler.class) // 为了可以使用 find_in_set 进行过滤
     private List<Long> managerUserIds;
+
+    /**
+     * 可管理角色编号数组
+     */
+    @TableField(typeHandler = LongListTypeHandler.class)
+    private List<Long> managerRoleIds;
+
+    /**
+     * 可管理岗位编号数组
+     */
+    @TableField(typeHandler = LongListTypeHandler.class)
+    private List<Long> managerPostIds;
 
     /**
      * 是否允许撤销审批中的申请

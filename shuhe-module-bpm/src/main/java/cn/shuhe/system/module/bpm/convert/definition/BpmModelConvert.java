@@ -119,8 +119,20 @@ public interface BpmModelConvert {
         if (vo.getManagerUserIds() == null) {
             vo.setManagerUserIds(Collections.emptyList());
         }
+        if (vo.getManagerRoleIds() == null) {
+            vo.setManagerRoleIds(Collections.emptyList());
+        }
+        if (vo.getManagerPostIds() == null) {
+            vo.setManagerPostIds(Collections.emptyList());
+        }
         if (vo.getStartUserIds() == null) {
             vo.setStartUserIds(Collections.emptyList());
+        }
+        if (vo.getStartRoleIds() == null) {
+            vo.setStartRoleIds(Collections.emptyList());
+        }
+        if (vo.getStartPostIds() == null) {
+            vo.setStartPostIds(Collections.emptyList());
         }
         // 如果为空，兜底处理，使用 createTime 创建时间
         if (vo.getSort() == null) {

@@ -21,6 +21,9 @@ import cn.shuhe.system.module.bpm.framework.flowable.core.util.BpmnModelUtils;
 import cn.shuhe.system.module.bpm.framework.flowable.core.util.FlowableUtils;
 import cn.shuhe.system.module.bpm.framework.flowable.core.util.SimpleModelUtils;
 import cn.shuhe.system.module.bpm.service.task.BpmProcessInstanceCopyService;
+import cn.shuhe.system.module.system.api.permission.PermissionApi;
+import cn.shuhe.system.module.system.api.user.AdminUserApi;
+import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
@@ -77,6 +80,12 @@ public class BpmModelServiceImpl implements BpmModelService {
     private TaskService taskService;
     @Resource
     private BpmProcessInstanceCopyService processInstanceCopyService;
+
+    @Resource
+    private PermissionApi permissionApi;
+
+    @Resource
+    private AdminUserApi adminUserApi;
 
     @Override
     public List<Model> getModelList(String name) {
@@ -204,10 +213,27 @@ public class BpmModelServiceImpl implements BpmModelService {
     private Model validateModelManager(String id, Long userId) {
         Model model = validateModelExists(id);
         BpmModelMetaInfoVO metaInfo = BpmModelConvert.INSTANCE.parseMetaInfo(model);
-        if (metaInfo == null || !CollUtil.contains(metaInfo.getManagerUserIds(), userId)) {
+        if (metaInfo == null) {
             throw exception(MODEL_UPDATE_FAIL_NOT_MANAGER, model.getName());
         }
-        return model;
+        // 校验用户是否为流程管理员：指定用户、指定角色、指定岗位满足其一即可
+        if (CollUtil.contains(metaInfo.getManagerUserIds(), userId)) {
+            return model;
+        }
+        if (CollUtil.isNotEmpty(metaInfo.getManagerRoleIds())) {
+            java.util.Set<Long> userRoleIds = permissionApi.getUserRoleIdListByUserId(userId);
+            if (userRoleIds != null && CollUtil.containsAny(metaInfo.getManagerRoleIds(), userRoleIds)) {
+                return model;
+            }
+        }
+        if (CollUtil.isNotEmpty(metaInfo.getManagerPostIds())) {
+            AdminUserRespDTO user = adminUserApi.getUser(userId);
+            if (user != null && user.getPostIds() != null
+                    && CollUtil.containsAny(metaInfo.getManagerPostIds(), user.getPostIds())) {
+                return model;
+            }
+        }
+        throw exception(MODEL_UPDATE_FAIL_NOT_MANAGER, model.getName());
     }
 
     @Override

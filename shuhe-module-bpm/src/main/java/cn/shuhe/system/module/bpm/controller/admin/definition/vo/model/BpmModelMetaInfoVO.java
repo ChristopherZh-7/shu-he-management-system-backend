@@ -8,10 +8,13 @@ import cn.shuhe.system.module.bpm.enums.definition.BpmModelFormTypeEnum;
 import cn.shuhe.system.module.bpm.enums.definition.BpmModelTypeEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import org.hibernate.validator.constraints.URL;
+
+import cn.hutool.core.collection.CollUtil;
 
 import java.util.List;
 
@@ -62,9 +65,27 @@ public class BpmModelMetaInfoVO {
     @Schema(description = "可发起部门编号数组", example = "[2,4,6]")
     private List<Long> startDeptIds;
 
-    @Schema(description = "可管理用户编号数组", requiredMode = Schema.RequiredMode.REQUIRED, example = "[2,4,6]")
-    @NotEmpty(message = "可管理用户编号数组不能为空")
+    @Schema(description = "可发起角色编号数组", example = "[1,2,3]")
+    private List<Long> startRoleIds;
+
+    @Schema(description = "可发起岗位编号数组", example = "[1,2,3]")
+    private List<Long> startPostIds;
+
+    @Schema(description = "可管理用户编号数组", example = "[2,4,6]")
     private List<Long> managerUserIds;
+
+    @Schema(description = "可管理角色编号数组", example = "[1,2,3]")
+    private List<Long> managerRoleIds;
+
+    @Schema(description = "可管理岗位编号数组", example = "[1,2,3]")
+    private List<Long> managerPostIds;
+
+    @AssertTrue(message = "流程管理员不能为空，请至少选择指定人员、指定角色或指定岗位之一")
+    public boolean isManagerConfigValid() {
+        return CollUtil.isNotEmpty(getManagerUserIds())
+                || CollUtil.isNotEmpty(getManagerRoleIds())
+                || CollUtil.isNotEmpty(getManagerPostIds());
+    }
 
     @Schema(description = "排序", example = "1")
     private Long sort; // 创建时，后端自动生成
