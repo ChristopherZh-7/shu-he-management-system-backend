@@ -14,11 +14,12 @@ public class InEnumValidator implements ConstraintValidator<InEnum, Object> {
 
     @Override
     public void initialize(InEnum annotation) {
-        ArrayValuable<?>[] values = annotation.value().getEnumConstants();
-        if (values.length == 0) {
+        ArrayValuable<?>[] enumConstants = annotation.value().getEnumConstants();
+        if (enumConstants == null || enumConstants.length == 0) {
             this.values = Collections.emptyList();
         } else {
-            this.values = Arrays.asList(values[0].array());
+            Object[] array = enumConstants[0].array();
+            this.values = (array == null) ? Collections.emptyList() : Arrays.asList(array);
         }
     }
 

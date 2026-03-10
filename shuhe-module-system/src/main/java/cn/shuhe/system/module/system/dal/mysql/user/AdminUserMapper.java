@@ -1,5 +1,6 @@
 package cn.shuhe.system.module.system.dal.mysql.user;
 
+import cn.hutool.core.util.StrUtil;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.mybatis.core.mapper.BaseMapperX;
 import cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -26,17 +27,22 @@ public interface AdminUserMapper extends BaseMapperX<AdminUserDO> {
     }
 
     default PageResult<AdminUserDO> selectPage(UserPageReqVO reqVO, Collection<Long> deptIds, Collection<Long> userIds) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<AdminUserDO>()
-                .likeIfPresent(AdminUserDO::getUsername, reqVO.getUsername())
-                .likeIfPresent(AdminUserDO::getMobile, reqVO.getMobile())
+        LambdaQueryWrapperX<AdminUserDO> wrapper = new LambdaQueryWrapperX<>();
+        wrapper.likeIfPresent(AdminUserDO::getMobile, reqVO.getMobile())
                 .eqIfPresent(AdminUserDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(AdminUserDO::getEmployeeStatus, reqVO.getEmployeeStatus())
                 .betweenIfPresent(AdminUserDO::getCreateTime, reqVO.getCreateTime())
                 .inIfPresent(AdminUserDO::getDeptId, deptIds)
                 .inIfPresent(AdminUserDO::getId, userIds)
-                // 先按在职状态排序（在职=1/null在前，离职=2在后），再按ID升序
+                // 先按在职状态排序（在职=1/null在前，离职=2在后），再按职级排序，最后按ID升序
                 .orderByAsc(AdminUserDO::getEmployeeStatus)
-                .orderByAsc(AdminUserDO::getId));
+                .orderByAsc(AdminUserDO::getPositionLevel)
+                .orderByAsc(AdminUserDO::getId);
+        if (StrUtil.isNotEmpty(reqVO.getUsername())) {
+            wrapper.and(w -> w.like(AdminUserDO::getUsername, reqVO.getUsername())
+                    .or().like(AdminUserDO::getNickname, reqVO.getUsername()));
+        }
+        return selectPage(reqVO, wrapper);
     }
 
     default List<AdminUserDO> selectListByNickname(String nickname) {

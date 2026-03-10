@@ -20,9 +20,16 @@ import java.time.LocalDateTime;
 public class CrmNoRedisDAO {
 
     /**
-     * 合同 {@link cn.shuhe.system.module.crm.dal.dataobject.contract.CrmContractDO}
+     * A类合同前缀：有合作商的合同
+     * 格式：A + yyyyMMdd + 6位序号，如 A20250101000001
      */
-    public static final String CONTRACT_NO_PREFIX = "HT";
+    public static final String CONTRACT_NO_PREFIX_A = "A";
+
+    /**
+     * B类合同前缀：无合作商的合同
+     * 格式：B + yyyyMMdd + 6位序号，如 B20250101000001
+     */
+    public static final String CONTRACT_NO_PREFIX_B = "B";
 
     /**
      * 回款 {@link cn.shuhe.system.module.crm.dal.dataobject.receivable.CrmReceivablePlanDO}

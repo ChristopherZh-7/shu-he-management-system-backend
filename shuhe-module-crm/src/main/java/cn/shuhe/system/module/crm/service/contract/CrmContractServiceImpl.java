@@ -121,8 +121,12 @@ public class CrmContractServiceImpl implements CrmContractService {
     public Long createContract(CrmContractSaveReqVO createReqVO, Long userId) {
         // 1.1 校验关联字段
         validateRelationDataExists(createReqVO);
-        // 1.2 生成序号
-        String no = noRedisDAO.generate(CrmNoRedisDAO.CONTRACT_NO_PREFIX);
+        // 1.2 生成合同编号：有合作商(intermediaryId)为A类，无合作商为B类
+        // 格式：A/B + yyyyMMdd + 6位当日序号，如 A20250101000001、B20250101000001
+        String contractPrefix = createReqVO.getIntermediaryId() != null
+                ? CrmNoRedisDAO.CONTRACT_NO_PREFIX_A
+                : CrmNoRedisDAO.CONTRACT_NO_PREFIX_B;
+        String no = noRedisDAO.generate(contractPrefix);
         if (contractMapper.selectByNo(no) != null) {
             throw exception(CONTRACT_NO_EXISTS);
         }

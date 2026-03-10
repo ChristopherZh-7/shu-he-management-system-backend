@@ -28,12 +28,15 @@ import cn.shuhe.system.module.system.dal.mysql.dingtalkconfig.DingtalkConfigMapp
 import cn.shuhe.system.module.system.dal.mysql.dept.DeptMapper;
 import cn.shuhe.system.module.system.dal.mysql.dept.PostMapper;
 import cn.shuhe.system.module.system.dal.mysql.dingtalkmapping.DingtalkMappingMapper;
+import cn.shuhe.system.module.system.dal.mysql.permission.RoleMapper;
 import cn.shuhe.system.module.system.dal.mysql.user.AdminUserMapper;
 import cn.shuhe.system.module.system.dal.mysql.dept.UserPostMapper;
 import cn.shuhe.system.module.system.dal.dataobject.user.AdminUserDO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.PostDO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.UserPostDO;
+import cn.shuhe.system.module.system.dal.dataobject.permission.RoleDO;
 import cn.shuhe.system.module.system.service.cost.PositionLevelHistoryService;
+import cn.shuhe.system.module.system.service.permission.PermissionService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -107,6 +110,12 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
     
     @Resource
     private PositionLevelHistoryService positionLevelHistoryService;
+
+    @Resource
+    private PermissionService permissionService;
+
+    @Resource
+    private RoleMapper roleMapper;
 
     @Override
     public Long createDingtalkConfig(DingtalkConfigSaveReqVO createReqVO) {
@@ -312,6 +321,51 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
     }
 
     /**
+     * 根据部门类型和职位推断角色编码
+     * 角色编码：sh_boss(总经理), af_mg/af_tl/af_emp(安全服务), ay_mg/ay_tl/ay_emp(安全运营), sh_mg/sh_tl/sh_emp(数据安全)
+     *
+     * @param deptType 部门类型 1-安全服务 2-安全运营 3-数据安全
+     * @param title    钉钉职位
+     * @return 角色编码，无法匹配时返回 null
+     */
+    private String resolveRoleCodeByDeptAndTitle(Integer deptType, String title) {
+        // 总经理 -> sh_boss（公司级角色，不依赖部门类型）
+        if (StrUtil.isNotEmpty(title) && (title.contains("总经理") || title.contains("总负责人"))) {
+            return "sh_boss";
+        }
+        if (deptType == null) {
+            return null;
+        }
+        String prefix;
+        switch (deptType) {
+            case 1:
+                prefix = "af"; // 安全服务
+                break;
+            case 2:
+                prefix = "ay"; // 安全运营
+                break;
+            case 3:
+                prefix = "sh"; // 数据安全
+                break;
+            default:
+                return null;
+        }
+        String suffix;
+        if (StrUtil.isNotEmpty(title)) {
+            if (title.contains("主管") || title.contains("经理") || title.contains("总监")) {
+                suffix = "mg";
+            } else if (title.contains("组长")) {
+                suffix = "tl";
+            } else {
+                suffix = "emp"; // 工程师、专员等
+            }
+        } else {
+            suffix = "emp";
+        }
+        return prefix + "_" + suffix;
+    }
+
+    /**
      * 根据部门名称推断部门类型
      * 1-安全服务 2-安全运营 3-数据安全
      */
@@ -418,7 +472,17 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                         String firstDeptId = String.valueOf(dingtalkUser.getDeptIdList().get(0));
                         localDeptId = deptIdMapping.get(firstDeptId);
                     }
-                    
+                    // 部门类型：优先从用户所属部门获取，否则从当前遍历的部门推断
+                    Integer deptTypeForRole = null;
+                    if (localDeptId != null) {
+                        DeptDO userDept = deptMapper.selectById(localDeptId);
+                        if (userDept != null && userDept.getDeptType() != null) {
+                            deptTypeForRole = userDept.getDeptType();
+                        }
+                    }
+                    if (deptTypeForRole == null) {
+                        deptTypeForRole = guessDeptTypeByName(dept.getName());
+                    }
                     // 根据职位查找或创建岗位
                     Set<Long> postIds = getOrCreatePostByTitle(dingtalkUser.getTitle());
                     
@@ -440,6 +504,8 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                             adminUserMapper.updateById(existingUser);
                             // 同步岗位关联表 system_user_post
                             syncUserPosts(existingUser.getId(), postIds);
+                            // 根据部门+职位自动分配角色
+                            assignAutoRoleIfNeeded(existingUser.getId(), deptTypeForRole, dingtalkUser.getTitle());
                             updateCount++;
                         } else {
                             // 映射存在但用户被删除了，重新创建用户
@@ -470,7 +536,8 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                             adminUserMapper.insert(newUser);
                             // 同步岗位关联表 system_user_post
                             syncUserPosts(newUser.getId(), postIds);
-                            
+                            // 根据部门+职位自动分配角色
+                            assignAutoRoleIfNeeded(newUser.getId(), deptTypeForRole, dingtalkUser.getTitle());
                             // 更新映射关系
                             mapping.setLocalId(newUser.getId());
                             dingtalkMappingMapper.updateById(mapping);
@@ -506,7 +573,8 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                         adminUserMapper.insert(newUser);
                         // 同步岗位关联表 system_user_post
                         syncUserPosts(newUser.getId(), postIds);
-                        
+                        // 根据部门+职位自动分配角色
+                        assignAutoRoleIfNeeded(newUser.getId(), deptTypeForRole, dingtalkUser.getTitle());
                         // 创建映射关系
                         DingtalkMappingDO newMapping = DingtalkMappingDO.builder()
                                 .configId(configId)
@@ -805,6 +873,34 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
         }
     }
     
+    /**
+     * 根据部门类型和职位自动分配角色（在职用户）
+     * 将自动推断的角色与用户已有角色合并，避免覆盖手动分配的角色
+     *
+     * @param userId   用户ID
+     * @param deptType 部门类型 1-安全服务 2-安全运营 3-数据安全
+     * @param title    钉钉职位
+     */
+    private void assignAutoRoleIfNeeded(Long userId, Integer deptType, String title) {
+        if (userId == null) {
+            return;
+        }
+        String roleCode = resolveRoleCodeByDeptAndTitle(deptType, title);
+        if (StrUtil.isEmpty(roleCode)) {
+            return;
+        }
+        RoleDO role = roleMapper.selectByCode(roleCode);
+        if (role == null) {
+            log.debug("角色编码 {} 不存在，跳过自动分配", roleCode);
+            return;
+        }
+        Set<Long> existingRoleIds = permissionService.getUserRoleIdListByUserId(userId);
+        Set<Long> newRoleIds = new HashSet<>(CollUtil.emptyIfNull(existingRoleIds));
+        newRoleIds.add(role.getId());
+        permissionService.assignUserRole(userId, newRoleIds);
+        log.debug("自动分配角色: userId={}, roleCode={}, roleId={}", userId, roleCode, role.getId());
+    }
+
     /**
      * 同步用户岗位关联表
      * @param userId 用户ID
