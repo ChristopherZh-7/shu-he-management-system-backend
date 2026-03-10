@@ -53,6 +53,15 @@ public interface AdminUserMapper extends BaseMapperX<AdminUserDO> {
         return selectList(AdminUserDO::getStatus, status);
     }
 
+    /**
+     * 根据在职状态查询用户列表（用于离职交接等场景）
+     *
+     * @param employeeStatus 在职状态：1-在职，2-离职
+     */
+    default List<AdminUserDO> selectListByEmployeeStatus(Integer employeeStatus) {
+        return selectList(AdminUserDO::getEmployeeStatus, employeeStatus);
+    }
+
     default List<AdminUserDO> selectListByDeptIds(Collection<Long> deptIds) {
         return selectList(AdminUserDO::getDeptId, deptIds);
     }

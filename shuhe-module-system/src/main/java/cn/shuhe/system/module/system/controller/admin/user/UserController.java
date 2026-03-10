@@ -139,6 +139,17 @@ public class UserController {
         return success(UserConvert.INSTANCE.convertSimpleList(list, deptMap));
     }
 
+    @GetMapping("/simple-list-resigned")
+    @Operation(summary = "获取离职用户精简信息列表", description = "只包含在职状态为离职的用户，用于离职交接选择离职人")
+    @PreAuthorize("@ss.hasPermission('system:resignation-handover:query')")
+    public CommonResult<List<UserSimpleRespVO>> getResignedUserSimpleList() {
+        // 在职状态：2-离职
+        List<AdminUserDO> list = userService.getUserListByEmployeeStatus(2);
+        Map<Long, DeptDO> deptMap = deptService.getDeptMap(
+                convertList(list, AdminUserDO::getDeptId));
+        return success(UserConvert.INSTANCE.convertSimpleList(list, deptMap));
+    }
+
     @GetMapping("/get")
     @Operation(summary = "获得用户详情")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")

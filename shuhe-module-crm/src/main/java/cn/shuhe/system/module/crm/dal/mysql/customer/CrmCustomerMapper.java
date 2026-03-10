@@ -48,6 +48,13 @@ public interface CrmCustomerMapper extends BaseMapperX<CrmCustomerDO> {
                 .set(CrmCustomerDO::getOwnerUserId, ownerUserId));
     }
 
+    /**
+     * 根据负责人查询客户列表（用于离职交接）
+     */
+    default List<CrmCustomerDO> selectListByOwnerUserId(Long ownerUserId) {
+        return selectList(CrmCustomerDO::getOwnerUserId, ownerUserId);
+    }
+
     default PageResult<CrmCustomerDO> selectPage(CrmCustomerPageReqVO pageReqVO, Long ownerUserId) {
         MPJLambdaWrapperX<CrmCustomerDO> query = new MPJLambdaWrapperX<>();
         // 拼接数据权限的查询条件

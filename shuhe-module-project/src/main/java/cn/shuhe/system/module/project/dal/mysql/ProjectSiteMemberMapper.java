@@ -145,4 +145,16 @@ public interface ProjectSiteMemberMapper extends BaseMapperX<ProjectSiteMemberDO
                 .eq(ProjectSiteMemberDO::getStatus, ProjectSiteMemberDO.STATUS_ACTIVE));
     }
 
+    /**
+     * 查询用户作为负责人的驻场记录（is_leader=1）
+     *
+     * @param userId 用户ID
+     * @return 驻场负责人列表
+     */
+    default List<ProjectSiteMemberDO> selectListByUserIdAndIsLeader(Long userId, Integer isLeader) {
+        return selectList(new LambdaQueryWrapperX<ProjectSiteMemberDO>()
+                .eq(ProjectSiteMemberDO::getUserId, userId)
+                .eq(ProjectSiteMemberDO::getIsLeader, isLeader));
+    }
+
 }

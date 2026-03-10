@@ -208,4 +208,11 @@ public interface CrmContractMapper extends BaseMapperX<CrmContractDO> {
                 .eq(CrmContractDO::getOwnerUserId, ownerUserId));
     }
 
+    /**
+     * 根据负责人查询合同列表（用于离职交接）
+     */
+    default List<CrmContractDO> selectListByOwnerUserId(Long ownerUserId) {
+        return selectList(CrmContractDO::getOwnerUserId, ownerUserId);
+    }
+
 }

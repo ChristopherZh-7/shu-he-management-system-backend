@@ -221,9 +221,10 @@ echo "[deploy] Started PID `$!"
 
     Write-Host "  Health check" -NoNewline
     $healthy = $false
+    # curl --connect-timeout 5 --max-time 10 prevents hanging when backend not ready
     for ($i = 0; $i -lt $CFG.HealthTimeout; $i += 2) {
         Start-Sleep -Seconds 2
-        $code = Invoke-Remote "curl -s -o /dev/null -w '%{http_code}' http://localhost:48080/actuator/health 2>/dev/null || echo 000"
+        $code = Invoke-Remote "curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 10 http://localhost:48080/actuator/health 2>/dev/null || echo 000"
         if ($code.Trim() -eq "200") { $healthy = $true; break }
         Write-Host "." -NoNewline
     }

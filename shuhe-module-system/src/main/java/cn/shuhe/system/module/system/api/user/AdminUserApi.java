@@ -86,4 +86,11 @@ public interface AdminUserApi {
      */
     void validateUserList(Collection<Long> ids);
 
+    /**
+     * 校验用户们是否存在（不校验是否禁用，用于离职交接等场景）
+     *
+     * @param ids 用户编号数组
+     */
+    void validateUserListExists(Collection<Long> ids);
+
 }

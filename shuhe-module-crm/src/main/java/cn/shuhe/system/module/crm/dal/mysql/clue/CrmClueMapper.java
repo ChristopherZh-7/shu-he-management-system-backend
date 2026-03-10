@@ -10,6 +10,8 @@ import cn.shuhe.system.module.crm.enums.common.CrmSceneTypeEnum;
 import cn.shuhe.system.module.crm.util.CrmPermissionUtils;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.util.List;
+
 /**
  * 线索 Mapper
  *
@@ -47,6 +49,13 @@ public interface CrmClueMapper extends BaseMapperX<CrmClueDO> {
         query.eq(CrmClueDO::getFollowUpStatus, false)
                 .eq(CrmClueDO::getTransformStatus, false);
         return selectCount(query);
+    }
+
+    /**
+     * 根据负责人查询线索列表（用于离职交接）
+     */
+    default List<CrmClueDO> selectListByOwnerUserId(Long ownerUserId) {
+        return selectList(CrmClueDO::getOwnerUserId, ownerUserId);
     }
 
 }

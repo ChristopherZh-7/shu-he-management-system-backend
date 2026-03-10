@@ -341,6 +341,20 @@ public class AdminUserServiceImpl implements AdminUserService {
     }
 
     @Override
+    public void validateUserListExists(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return;
+        }
+        List<AdminUserDO> users = userMapper.selectByIds(ids);
+        Map<Long, AdminUserDO> userMap = CollectionUtils.convertMap(users, AdminUserDO::getId);
+        ids.forEach(id -> {
+            if (!userMap.containsKey(id)) {
+                throw exception(USER_NOT_EXISTS);
+            }
+        });
+    }
+
+    @Override
     public List<AdminUserDO> getUserListByNickname(String nickname) {
         return userMapper.selectListByNickname(nickname);
     }
@@ -519,6 +533,11 @@ public class AdminUserServiceImpl implements AdminUserService {
     @Override
     public List<AdminUserDO> getUserListByStatus(Integer status) {
         return userMapper.selectListByStatus(status);
+    }
+
+    @Override
+    public List<AdminUserDO> getUserListByEmployeeStatus(Integer employeeStatus) {
+        return userMapper.selectListByEmployeeStatus(employeeStatus);
     }
 
     @Override

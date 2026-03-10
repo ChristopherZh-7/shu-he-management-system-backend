@@ -61,6 +61,13 @@ public interface CrmBusinessMapper extends BaseMapperX<CrmBusinessDO> {
                 .eq(CrmBusinessDO::getOwnerUserId, ownerUserId));
     }
 
+    /**
+     * 根据负责人查询商机列表（用于离职交接）
+     */
+    default List<CrmBusinessDO> selectListByOwnerUserId(Long ownerUserId) {
+        return selectList(CrmBusinessDO::getOwnerUserId, ownerUserId);
+    }
+
     default PageResult<CrmBusinessDO> selectPage(CrmStatisticsFunnelReqVO pageVO) {
         return selectPage(pageVO, new LambdaQueryWrapperX<CrmBusinessDO>()
                 .in(CrmBusinessDO::getOwnerUserId, pageVO.getUserIds())

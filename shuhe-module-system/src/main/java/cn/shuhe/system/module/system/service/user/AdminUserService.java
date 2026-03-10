@@ -178,6 +178,13 @@ public interface AdminUserService {
     void validateUserList(Collection<Long> ids);
 
     /**
+     * 校验用户们是否存在（不校验是否禁用，用于离职交接等场景，离职用户通常已被禁用）
+     *
+     * @param ids 用户编号数组
+     */
+    void validateUserListExists(Collection<Long> ids);
+
+    /**
      * 获得用户 Map
      *
      * @param ids 用户编号数组
@@ -214,6 +221,14 @@ public interface AdminUserService {
      * @return 用户们
      */
     List<AdminUserDO> getUserListByStatus(Integer status);
+
+    /**
+     * 获得指定在职状态的用户们
+     *
+     * @param employeeStatus 在职状态：1-在职，2-离职
+     * @return 用户们
+     */
+    List<AdminUserDO> getUserListByEmployeeStatus(Integer employeeStatus);
 
     /**
      * 判断密码是否匹配

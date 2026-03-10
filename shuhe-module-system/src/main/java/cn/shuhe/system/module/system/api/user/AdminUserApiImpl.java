@@ -83,4 +83,9 @@ public class AdminUserApiImpl implements AdminUserApi {
         userService.validateUserList(ids);
     }
 
+    @Override
+    public void validateUserListExists(Collection<Long> ids) {
+        userService.validateUserListExists(ids);
+    }
+
 }
