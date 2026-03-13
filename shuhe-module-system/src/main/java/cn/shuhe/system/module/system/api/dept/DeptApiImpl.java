@@ -1,14 +1,17 @@
 package cn.shuhe.system.module.system.api.dept;
 
+import cn.shuhe.system.framework.common.enums.CommonStatusEnum;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
 import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
+import cn.shuhe.system.module.system.controller.admin.dept.vo.dept.DeptListReqVO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.DeptDO;
 import cn.shuhe.system.module.system.service.dept.DeptService;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -56,6 +59,17 @@ public class DeptApiImpl implements DeptApi {
     public List<DeptRespDTO> getDeptListByDeptType(Integer deptType) {
         List<DeptDO> deptList = deptService.getDeptListByDeptType(deptType);
         return BeanUtils.toBean(deptList, DeptRespDTO.class);
+    }
+
+    @Override
+    @DataPermission(enable = false)
+    public List<DeptRespDTO> getDeptListByNameKeyword(String name) {
+        if (name == null || name.isBlank()) {
+            return Collections.emptyList();
+        }
+        List<DeptDO> list = deptService.getDeptList(
+                new DeptListReqVO().setName(name).setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        return BeanUtils.toBean(list, DeptRespDTO.class);
     }
 
     @Override

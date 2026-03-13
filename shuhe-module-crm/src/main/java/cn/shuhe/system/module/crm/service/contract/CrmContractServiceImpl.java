@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.util.ObjUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.framework.common.util.object.ObjectUtils;
@@ -29,6 +30,9 @@ import cn.shuhe.system.module.crm.service.permission.bo.CrmPermissionCreateReqBO
 import cn.shuhe.system.module.crm.service.permission.bo.CrmPermissionTransferReqBO;
 import cn.shuhe.system.module.crm.service.receivable.CrmReceivableService;
 import cn.shuhe.system.module.system.api.dept.DeptApi;
+import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
+import cn.shuhe.system.module.system.api.dingtalk.DingtalkNotifyApi;
+import cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkApiService;
@@ -49,8 +53,11 @@ import org.springframework.validation.annotation.Validated;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.*;
@@ -136,6 +143,8 @@ public class CrmContractServiceImpl implements CrmContractService {
         if (contract.getOwnerUserId() == null) {
             contract.setOwnerUserId(userId);
         }
+        // 校验附件URL（防 XSS：仅允许 http/https）
+        validateAttachmentUrl(createReqVO.getAttachment());
         // 校验：关联商机时，若提前投入审批进行中则不允许创建合同
         if (contract.getBusinessId() != null) {
             CrmBusinessDO linkedBusiness = businessService.getBusiness(contract.getBusinessId());
@@ -317,6 +326,8 @@ public class CrmContractServiceImpl implements CrmContractService {
         }
         // 1.3 校验关联字段
         validateRelationDataExists(updateReqVO);
+        // 1.4 校验附件URL（防 XSS：仅允许 http/https）
+        validateAttachmentUrl(updateReqVO.getAttachment());
 
         // 2. 更新合同
         CrmContractDO updateObj = BeanUtils.toBean(updateReqVO, CrmContractDO.class);
@@ -326,6 +337,31 @@ public class CrmContractServiceImpl implements CrmContractService {
         LogRecordContext.putVariable(DiffParseFunction.OLD_OBJECT,
                 BeanUtils.toBean(oldContract, CrmContractSaveReqVO.class));
         LogRecordContext.putVariable("contractName", oldContract.getName());
+    }
+
+    @Override
+    @CrmPermission(bizType = CrmBizTypeEnum.CRM_CONTRACT, bizId = "#id", level = CrmPermissionLevelEnum.WRITE)
+    public void updateContractAttachment(Long id, String attachment) {
+        validateAttachmentUrl(attachment);
+        CrmContractDO contract = validateContractExists(id);
+        if (!CrmAuditStatusEnum.APPROVE.getStatus().equals(contract.getAuditStatus())) {
+            throw exception(CONTRACT_UPDATE_ATTACHMENT_FAIL_NOT_APPROVED);
+        }
+        contractMapper.updateById(new CrmContractDO().setId(id).setAttachment(attachment));
+        log.info("[updateContractAttachment] contractId={}, attachment updated", id);
+    }
+
+    /**
+     * 校验附件URL，仅允许 http/https 协议，防止 javascript:、data: 等 XSS 攻击
+     */
+    private void validateAttachmentUrl(String url) {
+        if (StrUtil.isBlank(url)) {
+            return;
+        }
+        String lower = url.trim().toLowerCase();
+        if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
+            throw exception(CONTRACT_ATTACHMENT_URL_INVALID);
+        }
     }
 
     private void validateRelationDataExists(CrmContractSaveReqVO reqVO) {
@@ -538,6 +574,8 @@ public class CrmContractServiceImpl implements CrmContractService {
         if (CrmAuditStatusEnum.APPROVE.getStatus().equals(auditStatus)) {
             log.info("[updateContractAuditStatus] contract {} approved", contract.getNo());
             publishContractAuditPassEvent(contract);
+            // 审批通过且无附件时，通知人事部门上传附件
+            notifyHrDeptForMissingAttachment(contract);
             // 审批通过后执行签单下游操作
             if (contract.getBusinessId() != null) {
                 markBusinessAsWin(contract.getBusinessId());
@@ -593,6 +631,7 @@ public class CrmContractServiceImpl implements CrmContractService {
         contractMapper.updateById(new CrmContractDO().setId(id)
                 .setAuditStatus(cn.shuhe.system.module.crm.enums.common.CrmAuditStatusEnum.APPROVE.getStatus()));
         log.info("[approveContractByDingtalk] contract {} approved via dingtalk", contract.getNo());
+        notifyHrDeptForMissingAttachment(contract);
         if (contract.getBusinessId() != null) {
             markBusinessAsWin(contract.getBusinessId());
             notifyBusinessGroupOnContractSigned(contract);
@@ -641,6 +680,43 @@ public class CrmContractServiceImpl implements CrmContractService {
             } catch (Exception e) {
                 log.warn("[rejectContractByDingtalk] notify failed: {}", e.getMessage());
             }
+        }
+    }
+
+    /**
+     * 合同审批通过且无附件时，通知人事部门上传附件
+     */
+    private void notifyHrDeptForMissingAttachment(CrmContractDO contract) {
+        if (contract == null || StrUtil.isNotBlank(contract.getAttachment())) {
+            return;
+        }
+        try {
+            List<DeptRespDTO> hrDepts = deptApi.getDeptListByNameKeyword("人事");
+            if (CollUtil.isEmpty(hrDepts)) {
+                log.debug("[notifyHrDeptForMissingAttachment] 未找到名称包含「人事」的部门，跳过通知");
+                return;
+            }
+            Set<Long> deptIds = new LinkedHashSet<>();
+            for (DeptRespDTO d : hrDepts) {
+                if (d.getId() != null) deptIds.add(d.getId());
+            }
+            List<AdminUserRespDTO> users = adminUserApi.getUserListByDeptIds(deptIds);
+            if (CollUtil.isEmpty(users)) {
+                log.debug("[notifyHrDeptForMissingAttachment] 人事部门无用户，跳过通知");
+                return;
+            }
+            List<Long> userIds = new ArrayList<>(convertSet(users, AdminUserRespDTO::getId));
+            String title = "合同待上传附件提醒";
+            String content = String.format(
+                    "合同【%s】编号【%s】已审批通过（赢单），但尚未上传附件。\n\n请前往合同管理上传合同扫描件。",
+                    contract.getName(), contract.getNo());
+            dingtalkNotifyApi.sendWorkNotice(new DingtalkNotifySendReqDTO()
+                    .setUserIds(userIds)
+                    .setTitle(title)
+                    .setContent(content));
+            log.info("[notifyHrDeptForMissingAttachment] 已通知人事部门, contractId={}, userIds={}", contract.getId(), userIds);
+        } catch (Exception e) {
+            log.warn("[notifyHrDeptForMissingAttachment] 通知人事部门失败, contractId={}: {}", contract.getId(), e.getMessage());
         }
     }
 

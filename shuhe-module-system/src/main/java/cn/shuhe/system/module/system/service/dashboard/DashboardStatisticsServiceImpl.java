@@ -627,19 +627,15 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
     }
 
     /**
-     * 获取部门排行（只有管理员可见）
-     * 从经营分析服务获取各部门的利润数据
+     * 获取部门排行
+     * 从经营分析服务获取各部门的利润数据，非管理员仅能查看自己部门范围内的排行
      * 【性能优化】优先从缓存服务获取
      * 
      * @param userId 用户ID
      * @param isAdmin 是否管理员
      */
     private List<RankData> getDeptRanking(Long userId, boolean isAdmin) {
-        if (!isAdmin) {
-            return List.of();
-        }
-        
-        // 【性能优化】优先从缓存服务获取部门排行
+        // 【性能优化】优先从缓存服务获取部门排行（缓存服务内部已按用户权限过滤）
         if (businessAnalysisCacheService != null) {
             try {
                 List<RankData> cachedRanking = businessAnalysisCacheService.getDeptRanking(userId);

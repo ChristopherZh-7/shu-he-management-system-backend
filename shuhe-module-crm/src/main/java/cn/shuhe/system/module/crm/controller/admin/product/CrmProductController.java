@@ -81,8 +81,7 @@ public class CrmProductController {
     @Operation(summary = "获得产品精简列表", description = "只包含被开启的产品，主要用于前端的下拉选项")
     public CommonResult<List<CrmProductRespVO>> getProductSimpleList() {
         List<CrmProductDO> list = productService.getProductListByStatus(CrmProductStatusEnum.ENABLE.getStatus());
-        return success(convertList(list, product -> new CrmProductRespVO().setId(product.getId()).setName(product.getName())
-                .setUnit(product.getUnit()).setNo(product.getNo()).setPrice(product.getPrice())));
+        return success(convertList(list, product -> new CrmProductRespVO().setId(product.getId()).setName(product.getName())));
     }
 
     @GetMapping("/page")
@@ -103,7 +102,7 @@ public class CrmProductController {
         exportReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<CrmProductDO> list = productService.getProductPage(exportReqVO).getList();
         // 导出 Excel
-        ExcelUtils.write(response, "产品.xls", "数据", CrmProductRespVO.class,
+        ExcelUtils.write(response, "服务项.xls", "数据", CrmProductRespVO.class,
                 TranslateUtils.translate(BeanUtils.toBean(list, CrmProductRespVO.class)));
     }
 

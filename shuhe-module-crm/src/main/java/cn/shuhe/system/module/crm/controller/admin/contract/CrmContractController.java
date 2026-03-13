@@ -9,6 +9,7 @@ import cn.shuhe.system.framework.common.util.collection.MapUtils;
 import cn.shuhe.system.framework.common.util.number.NumberUtils;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.framework.excel.core.util.ExcelUtils;
+import cn.shuhe.system.module.crm.controller.admin.contract.vo.contract.CrmContractAttachmentUpdateReqVO;
 import cn.shuhe.system.module.crm.controller.admin.contract.vo.contract.CrmContractPageReqVO;
 import cn.shuhe.system.module.crm.controller.admin.contract.vo.contract.CrmContractRespVO;
 import cn.shuhe.system.module.crm.controller.admin.contract.vo.contract.CrmContractSaveReqVO;
@@ -165,6 +166,14 @@ public class CrmContractController {
     @PreAuthorize("@ss.hasPermission('crm:contract:update')")
     public CommonResult<Boolean> submitContract(@RequestParam("id") Long id) {
         contractService.submitContract(id, getLoginUserId());
+        return success(true);
+    }
+
+    @PutMapping("/update-attachment")
+    @Operation(summary = "更新合同附件", description = "仅限已审批通过（赢单）的合同，供人事等部门补传附件")
+    @PreAuthorize("@ss.hasPermission('crm:contract:update')")
+    public CommonResult<Boolean> updateContractAttachment(@Valid @RequestBody CrmContractAttachmentUpdateReqVO reqVO) {
+        contractService.updateContractAttachment(reqVO.getId(), reqVO.getAttachment());
         return success(true);
     }
 

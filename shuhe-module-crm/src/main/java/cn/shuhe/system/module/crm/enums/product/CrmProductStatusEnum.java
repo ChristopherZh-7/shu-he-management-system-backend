@@ -17,8 +17,8 @@ import java.util.Arrays;
 @AllArgsConstructor
 public enum CrmProductStatusEnum implements ArrayValuable<Integer> {
 
-    DISABLE(0, "下架"),
-    ENABLE(1, "上架");
+    DISABLE(0, "关闭"),
+    ENABLE(1, "开启");
 
     public static final Integer[] ARRAYS = Arrays.stream(values()).map(CrmProductStatusEnum::getStatus).toArray(Integer[]::new);
 

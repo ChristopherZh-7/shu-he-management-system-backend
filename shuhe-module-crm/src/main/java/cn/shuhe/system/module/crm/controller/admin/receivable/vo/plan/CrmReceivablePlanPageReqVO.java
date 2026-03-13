@@ -1,9 +1,9 @@
 package cn.shuhe.system.module.crm.controller.admin.receivable.vo.plan;
 
 import cn.shuhe.system.framework.common.pojo.PageParam;
-import cn.shuhe.system.framework.common.validation.InEnum;
-import cn.shuhe.system.module.crm.enums.common.CrmSceneTypeEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
@@ -36,8 +36,9 @@ public class CrmReceivablePlanPageReqVO extends PageParam {
     @Schema(description = "合同编号", example = "3473")
     private Long contractId;
 
-    @Schema(description = "场景类型", example = "1")
-    @InEnum(CrmSceneTypeEnum.class)
+    @Schema(description = "场景类型：1-我负责的，2-我参与的，3-下属负责的；null 表示全部", example = "1")
+    @Min(value = 1, message = "场景类型必须在 1-3 之间")
+    @Max(value = 3, message = "场景类型必须在 1-3 之间")
     private Integer sceneType; // 场景类型，为 null 时则表示全部
 
     @Schema(description = "提醒类型", example = "1")

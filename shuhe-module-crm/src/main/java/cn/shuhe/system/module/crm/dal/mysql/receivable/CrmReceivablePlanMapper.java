@@ -12,6 +12,7 @@ import cn.shuhe.system.module.crm.enums.common.CrmSceneTypeEnum;
 import cn.shuhe.system.module.crm.util.CrmPermissionUtils;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.util.List;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
@@ -22,6 +23,11 @@ import java.util.Objects;
  */
 @Mapper
 public interface CrmReceivablePlanMapper extends BaseMapperX<CrmReceivablePlanDO> {
+
+    default List<CrmReceivablePlanDO> selectListByContractId(Long contractId) {
+        return selectList(new MPJLambdaWrapperX<CrmReceivablePlanDO>()
+                .eq(CrmReceivablePlanDO::getContractId, contractId));
+    }
 
     default CrmReceivablePlanDO selectMaxPeriodByContractId(Long contractId) {
         return selectOne(new MPJLambdaWrapperX<CrmReceivablePlanDO>()

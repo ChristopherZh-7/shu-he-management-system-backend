@@ -11,7 +11,9 @@ import cn.shuhe.system.module.system.dal.mysql.cost.OutsideCostRecordMapper;
 import cn.shuhe.system.module.system.dal.mysql.cost.ProjectSiteMemberInfoMapper;
 import cn.shuhe.system.module.system.dal.mysql.cost.ServiceItemInfoMapper;
 import cn.shuhe.system.module.system.dal.mysql.dept.DeptMapper;
+import cn.shuhe.system.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.shuhe.system.module.system.service.dept.DeptService;
+import cn.shuhe.system.module.system.service.permission.PermissionService;
 import cn.shuhe.system.module.system.service.user.AdminUserService;
 import jakarta.annotation.Resource;
 import lombok.Builder;
@@ -72,6 +74,9 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
 
     @Resource
     private AdminUserService adminUserService;
+
+    @Resource
+    private PermissionService permissionService;
 
     @Resource
     private CostCalculationService costCalculationService;
@@ -284,6 +289,7 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
 
     /**
      * 根据权限获取可查看的顶级业务部门列表（避免重复统计）。
+     * 非管理员仅能查看自己部门及子部门的数据。
      */
     private List<DeptDO> getVisibleDepts(Long requestedDeptId, Long currentUserId) {
         AdminUserDO currentUser = adminUserService.getUser(currentUserId);
@@ -299,15 +305,6 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
         }
 
         List<DeptDO> allDepts = deptService.getAllDeptListFromCache();
-        log.info("[getVisibleDepts] 总部门数: {}", allDepts.size());
-
-        for (DeptDO dept : allDepts) {
-            Integer type = dept.getDeptType();
-            Integer inferred = calculator.inferDeptTypeFromName(dept.getName());
-            log.info("[getVisibleDepts] 部门 id={}, name={}, deptType={}, inferredType={}, parentId={}",
-                    dept.getId(), dept.getName(), type, inferred, dept.getParentId());
-        }
-
         Set<Long> businessDeptIds = allDepts.stream()
                 .filter(dept -> {
                     Integer type = dept.getDeptType();
@@ -316,26 +313,83 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
                 })
                 .map(DeptDO::getId)
                 .collect(Collectors.toSet());
-        log.info("[getVisibleDepts] 业务部门IDs: {}", businessDeptIds);
 
-        List<DeptDO> result = allDepts.stream()
+        List<DeptDO> topLevelBusinessDepts = allDepts.stream()
                 .filter(dept -> {
                     Integer type = dept.getDeptType();
                     if (type == null) type = calculator.inferDeptTypeFromName(dept.getName());
                     if (type == null || !isBusinessDeptType(type)) return false;
                     Long parentId = dept.getParentId();
-                    boolean isTopLevel = parentId == null || parentId == 0L || !businessDeptIds.contains(parentId);
-                    if (!isTopLevel) {
-                        log.info("[getVisibleDepts] 部门 {} ({}) 被过滤：父部门 {} 也是业务部门",
-                                dept.getId(), dept.getName(), parentId);
-                    }
-                    return isTopLevel;
+                    return parentId == null || parentId == 0L || !businessDeptIds.contains(parentId);
                 })
                 .collect(Collectors.toList());
 
-        log.info("[getVisibleDepts] 最终返回 {} 个顶级业务部门: {}", result.size(),
-                result.stream().map(d -> d.getId() + "(" + d.getName() + ")").collect(Collectors.joining(", ")));
-        return result;
+        // 根据数据权限过滤：非管理员仅能查看自己部门范围内的数据
+        DeptDataPermissionRespDTO permission = permissionService.getDeptDataPermission(currentUserId);
+        if (permission == null) {
+            return Collections.emptyList();
+        }
+        if (Boolean.TRUE.equals(permission.getAll())) {
+            log.info("[getVisibleDepts] 用户 {} 拥有全部数据权限，返回 {} 个顶级业务部门", currentUserId, topLevelBusinessDepts.size());
+            return topLevelBusinessDepts;
+        }
+
+        Set<Long> allowedDeptIds = permission.getDeptIds();
+        if (allowedDeptIds != null && !allowedDeptIds.isEmpty()) {
+            // 取允许的部门中作为「根」的部门：顶级业务部门，或父部门不在允许范围内的部门
+            List<DeptDO> result = allDepts.stream()
+                    .filter(dept -> {
+                        if (!allowedDeptIds.contains(dept.getId())) return false;
+                        Integer type = dept.getDeptType();
+                        if (type == null) type = calculator.inferDeptTypeFromName(dept.getName());
+                        if (type == null || !isBusinessDeptType(type)) return false;
+                        Long parentId = dept.getParentId();
+                        return parentId == null || parentId == 0L || !allowedDeptIds.contains(parentId);
+                    })
+                    .collect(Collectors.toList());
+            log.info("[getVisibleDepts] 用户 {} 部门权限 deptIds={}, 返回 {} 个部门", currentUserId, allowedDeptIds, result.size());
+            return result;
+        }
+
+        // SELF 或 仅本部门：返回用户所在部门所属的顶级业务部门
+        if (Boolean.TRUE.equals(permission.getSelf()) || (allowedDeptIds == null || allowedDeptIds.isEmpty())) {
+            Long userDeptId = currentUser.getDeptId();
+            if (userDeptId == null) {
+                log.info("[getVisibleDepts] 用户 {} 无部门，返回空", currentUserId);
+                return Collections.emptyList();
+            }
+            Set<Long> topLevelIds = topLevelBusinessDepts.stream().map(DeptDO::getId).collect(Collectors.toSet());
+            DeptDO topParent = findTopLevelBusinessParent(userDeptId, allDepts, topLevelIds);
+            if (topParent != null) {
+                log.info("[getVisibleDepts] 用户 {} 仅本部门权限，返回所属顶级部门 {}", currentUserId, topParent.getName());
+                return List.of(topParent);
+            }
+            DeptDO userDept = deptService.getDept(userDeptId);
+            if (userDept != null) {
+                Integer type = userDept.getDeptType();
+                if (type == null) type = calculator.inferDeptTypeFromName(userDept.getName());
+                if (type != null && isBusinessDeptType(type)) {
+                    return List.of(userDept);
+                }
+            }
+            return Collections.emptyList();
+        }
+
+        return Collections.emptyList();
+    }
+
+    /** 向上查找部门所属的顶级业务部门 */
+    private DeptDO findTopLevelBusinessParent(Long deptId, List<DeptDO> allDepts, Set<Long> topLevelIds) {
+        DeptDO dept = allDepts.stream().filter(d -> d.getId().equals(deptId)).findFirst().orElse(null);
+        while (dept != null) {
+            if (topLevelIds.contains(dept.getId())) {
+                return dept;
+            }
+            Long parentId = dept.getParentId();
+            if (parentId == null || parentId == 0L) break;
+            dept = allDepts.stream().filter(d -> d.getId().equals(parentId)).findFirst().orElse(null);
+        }
+        return null;
     }
 
     private boolean isBusinessDeptType(int type) {

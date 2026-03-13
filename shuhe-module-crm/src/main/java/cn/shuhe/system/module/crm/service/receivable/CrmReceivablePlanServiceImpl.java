@@ -2,7 +2,9 @@ package cn.shuhe.system.module.crm.service.receivable;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.collection.ListUtil;
+import cn.hutool.core.util.ObjectUtil;
 import cn.shuhe.system.framework.common.pojo.PageResult;
+import cn.shuhe.system.framework.common.util.collection.CollectionUtils;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.module.crm.controller.admin.receivable.vo.plan.CrmReceivablePlanPageReqVO;
 import cn.shuhe.system.module.crm.controller.admin.receivable.vo.plan.CrmReceivablePlanSaveReqVO;
@@ -24,11 +26,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
 import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.shuhe.system.module.crm.enums.ErrorCodeConstants.RECEIVABLE_PLAN_CREATE_FAIL_PRICE_EXCEEDS_LIMIT;
 import static cn.shuhe.system.module.crm.enums.ErrorCodeConstants.RECEIVABLE_PLAN_NOT_EXISTS;
 import static cn.shuhe.system.module.crm.enums.ErrorCodeConstants.RECEIVABLE_PLAN_UPDATE_FAIL;
 import static cn.shuhe.system.module.crm.enums.LogRecordConstants.*;
@@ -60,6 +64,8 @@ public class CrmReceivablePlanServiceImpl implements CrmReceivablePlanService {
     public Long createReceivablePlan(CrmReceivablePlanSaveReqVO createReqVO) {
         // 1. 校验关联数据是否存在
         validateRelationDataExists(createReqVO);
+        // 1.2 校验计划回款金额不超过合同剩余可计划金额
+        validatePlanPriceExceedsLimit(createReqVO);
 
         // 2. 插入回款计划
         CrmReceivablePlanDO maxPeriodReceivablePlan = receivablePlanMapper.selectMaxPeriodByContractId(createReqVO.getContractId());
@@ -91,7 +97,10 @@ public class CrmReceivablePlanServiceImpl implements CrmReceivablePlanService {
         validateRelationDataExists(updateReqVO);
         // 1.2 校验关联数据是否存在
         CrmReceivablePlanDO oldReceivablePlan = validateReceivablePlanExists(updateReqVO.getId());
-        // 1.3 如果已经有对应的回款，则不允许编辑
+        // 1.3 校验计划回款金额不超过合同剩余可计划金额
+        updateReqVO.setContractId(oldReceivablePlan.getContractId());
+        validatePlanPriceExceedsLimit(updateReqVO);
+        // 1.4 如果已经有对应的回款，则不允许编辑
         if (Objects.nonNull(oldReceivablePlan.getReceivableId())) {
             throw exception(RECEIVABLE_PLAN_UPDATE_FAIL);
         }
@@ -118,6 +127,29 @@ public class CrmReceivablePlanServiceImpl implements CrmReceivablePlanService {
         if (reqVO.getContractId() != null) {
             CrmContractDO contract = contractService.getContract(reqVO.getContractId());
             reqVO.setCustomerId(contract.getCustomerId());
+        }
+    }
+
+    /**
+     * 校验计划回款金额不超过合同剩余可计划金额
+     * 规则：该合同下所有回款计划金额之和不能超过合同总金额
+     */
+    private void validatePlanPriceExceedsLimit(CrmReceivablePlanSaveReqVO reqVO) {
+        if (reqVO.getContractId() == null || reqVO.getPrice() == null) {
+            return;
+        }
+        CrmContractDO contract = contractService.getContract(reqVO.getContractId());
+        if (contract == null || contract.getTotalPrice() == null) {
+            return;
+        }
+        List<CrmReceivablePlanDO> plans = receivablePlanMapper.selectListByContractId(reqVO.getContractId());
+        if (reqVO.getId() != null) {
+            plans.removeIf(plan -> ObjectUtil.equal(plan.getId(), reqVO.getId()));
+        }
+        BigDecimal existingSum = CollectionUtils.getSumValue(plans, CrmReceivablePlanDO::getPrice, BigDecimal::add, BigDecimal.ZERO);
+        BigDecimal maxAllowed = contract.getTotalPrice().subtract(existingSum);
+        if (reqVO.getPrice().compareTo(maxAllowed) > 0) {
+            throw exception(RECEIVABLE_PLAN_CREATE_FAIL_PRICE_EXCEEDS_LIMIT, maxAllowed);
         }
     }
 

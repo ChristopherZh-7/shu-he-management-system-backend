@@ -75,6 +75,14 @@ public interface DeptApi {
     List<DeptRespDTO> getDeptListByDeptType(Integer deptType);
 
     /**
+     * 根据部门名称关键词获取部门列表（模糊匹配，仅返回启用状态）
+     *
+     * @param name 部门名称关键词，如 "人事"
+     * @return 部门列表
+     */
+    List<DeptRespDTO> getDeptListByNameKeyword(String name);
+
+    /**
      * 检查部门是否是叶子部门（没有子部门）
      *
      * @param id 部门编号

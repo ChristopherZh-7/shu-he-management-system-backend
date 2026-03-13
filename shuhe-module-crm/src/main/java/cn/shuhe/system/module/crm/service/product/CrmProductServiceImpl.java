@@ -5,7 +5,6 @@ import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.module.crm.controller.admin.product.vo.product.CrmProductPageReqVO;
 import cn.shuhe.system.module.crm.controller.admin.product.vo.product.CrmProductSaveReqVO;
-import cn.shuhe.system.module.crm.dal.dataobject.product.CrmProductCategoryDO;
 import cn.shuhe.system.module.crm.dal.dataobject.product.CrmProductDO;
 import cn.shuhe.system.module.crm.dal.mysql.product.CrmProductMapper;
 import cn.shuhe.system.module.crm.enums.common.CrmBizTypeEnum;
@@ -47,8 +46,6 @@ public class CrmProductServiceImpl implements CrmProductService {
     private CrmProductMapper productMapper;
 
     @Resource
-    private CrmProductCategoryService productCategoryService;
-    @Resource
     private CrmPermissionService permissionService;
 
     @Resource
@@ -59,19 +56,21 @@ public class CrmProductServiceImpl implements CrmProductService {
     @LogRecord(type = CRM_PRODUCT_TYPE, subType = CRM_PRODUCT_CREATE_SUB_TYPE, bizNo = "{{#productId}}",
             success = CRM_PRODUCT_CREATE_SUCCESS)
     public Long createProduct(CrmProductSaveReqVO createReqVO) {
-        // 1. 校验产品
-        adminUserApi.validateUserList(Collections.singleton(createReqVO.getOwnerUserId()));
-        validateProductNoDuplicate(null, createReqVO.getNo());
-        validateProductCategoryExists(createReqVO.getCategoryId());
+        // 1. 校验（负责人可选，有则校验）
+        if (createReqVO.getOwnerUserId() != null) {
+            adminUserApi.validateUserList(Collections.singleton(createReqVO.getOwnerUserId()));
+        }
 
-        // 2. 插入产品
+        // 2. 插入产品（编码、单位、价格、分类已移除，仅保留名称、状态、描述、负责人）
         CrmProductDO product = BeanUtils.toBean(createReqVO, CrmProductDO.class);
         productMapper.insert(product);
 
-        // 3. 插入数据权限
-        permissionService.createPermission(new CrmPermissionCreateReqBO().setUserId(product.getOwnerUserId())
-                .setBizType(CrmBizTypeEnum.CRM_PRODUCT.getType()).setBizId(product.getId())
-                .setLevel(CrmPermissionLevelEnum.OWNER.getLevel()));
+        // 3. 插入数据权限（有负责人时）
+        if (product.getOwnerUserId() != null) {
+            permissionService.createPermission(new CrmPermissionCreateReqBO().setUserId(product.getOwnerUserId())
+                    .setBizType(CrmBizTypeEnum.CRM_PRODUCT.getType()).setBizId(product.getId())
+                    .setLevel(CrmPermissionLevelEnum.OWNER.getLevel()));
+        }
 
         // 4. 记录操作日志上下文
         LogRecordContext.putVariable("productId", product.getId());
@@ -83,14 +82,16 @@ public class CrmProductServiceImpl implements CrmProductService {
             success = CRM_PRODUCT_UPDATE_SUCCESS)
     @CrmPermission(bizType = CrmBizTypeEnum.CRM_PRODUCT, bizId = "#updateReqVO.id", level = CrmPermissionLevelEnum.WRITE)
     public void updateProduct(CrmProductSaveReqVO updateReqVO) {
-        // 1. 校验产品
+        // 1. 校验存在
         updateReqVO.setOwnerUserId(null); // 不修改负责人
         CrmProductDO crmProductDO = validateProductExists(updateReqVO.getId());
-        validateProductNoDuplicate(updateReqVO.getId(), updateReqVO.getNo());
-        validateProductCategoryExists(updateReqVO.getCategoryId());
 
-        // 2. 更新产品
+        // 2. 更新产品（仅更新名称、状态、描述，保留编码/单位/价格/分类等已废弃字段的旧值）
         CrmProductDO updateObj = BeanUtils.toBean(updateReqVO, CrmProductDO.class);
+        updateObj.setNo(crmProductDO.getNo());
+        updateObj.setUnit(crmProductDO.getUnit());
+        updateObj.setPrice(crmProductDO.getPrice());
+        updateObj.setCategoryId(crmProductDO.getCategoryId());
         productMapper.updateById(updateObj);
 
         // 3. 记录操作日志上下文
@@ -103,22 +104,6 @@ public class CrmProductServiceImpl implements CrmProductService {
             throw exception(PRODUCT_NOT_EXISTS);
         }
         return product;
-    }
-
-    private void validateProductNoDuplicate(Long id, String no) {
-        CrmProductDO product = productMapper.selectByNo(no);
-        if (product == null
-                || product.getId().equals(id)) {
-            return;
-        }
-        throw exception(PRODUCT_NO_EXISTS);
-    }
-
-    private void validateProductCategoryExists(Long categoryId) {
-        CrmProductCategoryDO category = productCategoryService.getProductCategory(categoryId);
-        if (category == null) {
-            throw exception(PRODUCT_CATEGORY_NOT_EXISTS);
-        }
     }
 
     @Override

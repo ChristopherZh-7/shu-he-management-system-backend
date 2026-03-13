@@ -40,6 +40,14 @@ public interface CrmContractService {
     void updateContract(@Valid CrmContractSaveReqVO updateReqVO);
 
     /**
+     * 更新合同附件（仅限已审批通过的合同，供人事等部门补传）
+     *
+     * @param id         合同编号
+     * @param attachment 附件URL
+     */
+    void updateContractAttachment(Long id, String attachment);
+
+    /**
      * 删除合同
      *
      * @param id 编号

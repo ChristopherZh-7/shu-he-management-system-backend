@@ -52,29 +52,29 @@ public class BusinessAnalysisCacheServiceImpl implements BusinessAnalysisCacheSe
     private StringRedisTemplate stringRedisTemplate;
 
     @Override
-    @Cacheable(value = RedisKeyConstants.BUSINESS_ANALYSIS, 
-               key = "#year + ':' + #cutoffDate.toString()",
+    @Cacheable(value = RedisKeyConstants.BUSINESS_ANALYSIS,
+               key = "#year + ':' + #cutoffDate.toString() + ':' + #userId",
                unless = "#result == null")
     public BusinessAnalysisRespVO getBusinessAnalysis(int year, LocalDate cutoffDate, Long userId) {
-        log.info("[缓存未命中] 开始计算经营分析数据，year={}, cutoffDate={}", year, cutoffDate);
+        log.info("[缓存未命中] 开始计算经营分析数据，year={}, cutoffDate={}, userId={}", year, cutoffDate, userId);
         long startTime = System.currentTimeMillis();
-        
+
         BusinessAnalysisReqVO reqVO = new BusinessAnalysisReqVO();
         reqVO.setYear(year);
         reqVO.setCutoffDate(cutoffDate);
         reqVO.setLevel(2); // 包含子部门
         reqVO.setIncludeEmployees(false); // 不包含员工详情，加快查询
-        
-        // 使用系统管理员ID(1L)获取完整数据，供所有用户共享
-        BusinessAnalysisRespVO result = businessAnalysisService.getBusinessAnalysis(reqVO, 1L);
-        
+
+        // 按当前用户权限过滤，非管理员仅能查看自己部门范围内的数据
+        BusinessAnalysisRespVO result = businessAnalysisService.getBusinessAnalysis(reqVO, userId);
+
         log.info("[缓存未命中] 经营分析计算完成，耗时={}ms", System.currentTimeMillis() - startTime);
         return result;
     }
 
     @Override
     @Cacheable(value = RedisKeyConstants.DASHBOARD_REVENUE,
-               key = "'all'",
+               key = "#userId",
                unless = "#result == null")
     public RevenueStats getRevenueStats(Long userId) {
         log.info("[缓存未命中] 开始计算收入统计");
@@ -118,7 +118,7 @@ public class BusinessAnalysisCacheServiceImpl implements BusinessAnalysisCacheSe
 
     @Override
     @Cacheable(value = RedisKeyConstants.DASHBOARD_DEPT_RANKING,
-               key = "'all'",
+               key = "#userId",
                unless = "#result == null || #result.isEmpty()")
     public List<RankData> getDeptRanking(Long userId) {
         log.info("[缓存未命中] 开始计算部门排行");

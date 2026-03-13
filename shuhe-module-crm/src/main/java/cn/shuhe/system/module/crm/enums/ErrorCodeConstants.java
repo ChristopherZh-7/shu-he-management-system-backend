@@ -18,6 +18,8 @@ public interface ErrorCodeConstants {
     ErrorCode CONTRACT_NO_EXISTS = new ErrorCode(1_020_000_004, "生成合同序列号重复，请重试");
     ErrorCode CONTRACT_DELETE_FAIL = new ErrorCode(1_020_000_005, "删除合同失败，原因：有被回款所使用");
     ErrorCode CONTRACT_CLAIM_FAIL_NOT_APPROVED = new ErrorCode(1_020_000_006, "领取合同失败，原因：合同未审批通过");
+    ErrorCode CONTRACT_UPDATE_ATTACHMENT_FAIL_NOT_APPROVED = new ErrorCode(1_020_000_008, "更新合同附件失败，仅限已审批通过（赢单）的合同");
+    ErrorCode CONTRACT_ATTACHMENT_URL_INVALID = new ErrorCode(1_020_000_009, "合同附件URL不合法，仅允许 http/https 协议");
 
     // ========== 线索管理 1-020-001-000 ==========
     ErrorCode CLUE_NOT_EXISTS = new ErrorCode(1_020_001_000, "线索不存在");
@@ -51,6 +53,8 @@ public interface ErrorCodeConstants {
 
     // ========== 回款计划 1-020-005-000 ==========
     ErrorCode RECEIVABLE_PLAN_NOT_EXISTS = new ErrorCode(1_020_005_000, "回款计划不存在");
+    ErrorCode RECEIVABLE_PLAN_CREATE_FAIL_PRICE_EXCEEDS_LIMIT = new ErrorCode(1_020_005_001,
+            "回款计划金额超出合同金额，该合同下剩余可计划金额：{} 元");
     ErrorCode RECEIVABLE_PLAN_UPDATE_FAIL = new ErrorCode(1_020_006_000, "更想回款计划失败，原因：已经有对应的还款");
     ErrorCode RECEIVABLE_PLAN_EXISTS_RECEIVABLE = new ErrorCode(1_020_006_001, "回款计划已经有对应的回款，不能使用");
 
