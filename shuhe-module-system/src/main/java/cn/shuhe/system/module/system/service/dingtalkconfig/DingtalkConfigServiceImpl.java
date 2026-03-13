@@ -302,8 +302,11 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                     createCount++;
                 }
             }
+
+            // 8. 强制总经办为业务部门上级（钉钉可能为同级，本地审批链需总经办在上级）
+            ensureZongjingbanAsParent();
             
-            // 8. 更新配置的最后同步时间和结果
+            // 9. 更新配置的最后同步时间和结果
             config.setLastSyncTime(LocalDateTime.now());
             config.setLastSyncResult(String.format("同步成功：新增 %d 个部门，更新 %d 个部门", createCount, updateCount));
             dingtalkConfigMapper.updateById(config);
@@ -317,6 +320,28 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
             config.setLastSyncResult("同步失败：" + e.getMessage());
             dingtalkConfigMapper.updateById(config);
             throw new RuntimeException("钉钉部门同步失败：" + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 强制总经办作为安全运营、人事行政、安全技术、数据安全的上级。
+     * 钉钉可能为同级，但本地商机审批链需逐级到总经办，故同步后统一调整。
+     */
+    private void ensureZongjingbanAsParent() {
+        List<DeptDO> zjList = deptMapper.selectList(DeptDO::getName, "总经办");
+        DeptDO zongjingban = CollUtil.isEmpty(zjList) ? null : zjList.get(0);
+        if (zongjingban == null) {
+            return;
+        }
+        List<String> childNames = Arrays.asList("安全运营服务部", "人事行政部", "安全技术服务部", "数据安全服务部");
+        for (String name : childNames) {
+            List<DeptDO> deptList = deptMapper.selectList(DeptDO::getName, name);
+            DeptDO dept = CollUtil.isEmpty(deptList) ? null : deptList.get(0);
+            if (dept != null && !zongjingban.getId().equals(dept.getParentId())) {
+                dept.setParentId(zongjingban.getId());
+                deptMapper.updateById(dept);
+                log.info("[ensureZongjingbanAsParent] {} 的上级已调整为总经办", name);
+            }
         }
     }
 

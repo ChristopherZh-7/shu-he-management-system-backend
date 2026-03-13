@@ -68,6 +68,15 @@ public interface DeptService {
     List<DeptDO> getDeptList(DeptListReqVO reqVO);
 
     /**
+     * 获取部门精简列表（用于下拉选择，不受数据权限限制）
+     * 避免 CRM 签合同时部门金额分配下拉无法选择、仅显示数字的问题
+     *
+     * @param reqVO 筛选条件请求 VO
+     * @return 部门列表
+     */
+    List<DeptDO> getDeptListForSimpleList(DeptListReqVO reqVO);
+
+    /**
      * 获取所有部门列表（带缓存）
      * 用于高频查询场景，缓存10分钟
      *

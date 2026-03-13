@@ -186,7 +186,7 @@ public class CostCalculationServiceImpl implements CostCalculationService {
         // 获取部门条件：包含指定部门及其所有子部门
         Set<Long> deptCondition = getDeptCondition(reqVO.getDeptId());
 
-        // 查询用户列表 - 必须有部门的用户
+        // 查询用户列表 - 必须有部门的用户（包含离职员工，成本管理需展示历史成本）
         IPage<AdminUserDO> userPage = adminUserMapper.selectPage(
                 new Page<>(reqVO.getPageNo(), reqVO.getPageSize()),
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<AdminUserDO>()
@@ -194,7 +194,7 @@ public class CostCalculationServiceImpl implements CostCalculationService {
                         .like(StrUtil.isNotEmpty(reqVO.getNickname()), AdminUserDO::getNickname, reqVO.getNickname())
                         .in(CollUtil.isNotEmpty(deptCondition), AdminUserDO::getDeptId, deptCondition)
                         .like(StrUtil.isNotEmpty(reqVO.getPositionLevel()), AdminUserDO::getPositionLevel, reqVO.getPositionLevel())
-                        .eq(AdminUserDO::getStatus, 0) // 只查询正常状态的用户
+                        // 不按 status 过滤，离职员工若有成本记录也应展示
                         .orderByAsc(AdminUserDO::getDeptId, AdminUserDO::getId) // 按部门排序
         );
 

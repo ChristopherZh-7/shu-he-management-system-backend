@@ -185,6 +185,12 @@ public class DeptServiceImpl implements DeptService {
     }
 
     @Override
+    @DataPermission(enable = false) // 下拉选择需展示全部部门，不受数据权限限制
+    public List<DeptDO> getDeptListForSimpleList(DeptListReqVO reqVO) {
+        return getDeptList(reqVO);
+    }
+
+    @Override
     @Cacheable(cacheNames = RedisKeyConstants.DEPT_ALL_LIST, key = "'all'", unless = "#result == null || #result.isEmpty()")
     public List<DeptDO> getAllDeptListFromCache() {
         log.debug("[缓存未命中] 查询全部门列表");
