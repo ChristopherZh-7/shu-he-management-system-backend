@@ -27,9 +27,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import static cn.shuhe.system.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
@@ -137,6 +136,27 @@ public class UserController {
         Map<Long, DeptDO> deptMap = deptService.getDeptMap(
                 convertList(list, AdminUserDO::getDeptId));
         return success(UserConvert.INSTANCE.convertSimpleList(list, deptMap));
+    }
+
+    @GetMapping("/dept-leader-simple-list")
+    @Operation(summary = "获取部门负责人精简列表", description = "只包含部门负责人（管理岗），用于服务项负责人等只能选管理的场景")
+    public CommonResult<List<UserSimpleRespVO>> getDeptLeaderSimpleList() {
+        List<DeptDO> allDepts = deptService.getAllDeptListFromCache();
+        Set<Long> leaderUserIds = allDepts.stream()
+                .map(DeptDO::getLeaderUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (leaderUserIds.isEmpty()) {
+            return success(Collections.emptyList());
+        }
+        List<AdminUserDO> users = userService.getUserList(leaderUserIds);
+        // 只返回启用状态的用户
+        users = users.stream()
+                .filter(u -> CommonStatusEnum.ENABLE.getStatus().equals(u.getStatus()))
+                .collect(Collectors.toList());
+        Map<Long, DeptDO> deptMap = deptService.getDeptMap(
+                convertList(users, AdminUserDO::getDeptId));
+        return success(UserConvert.INSTANCE.convertSimpleList(users, deptMap));
     }
 
     @GetMapping("/simple-list-resigned")
