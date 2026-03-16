@@ -50,6 +50,9 @@ public interface UserConvert {
         userVO.setRoles(BeanUtils.toBean(userRoles, RoleSimpleRespVO.class));
         userVO.setDept(BeanUtils.toBean(dept, DeptSimpleRespVO.class));
         userVO.setPosts(BeanUtils.toBean(posts, PostSimpleRespVO.class));
+        if (user != null) {
+            userVO.setPasswordMustChange(Integer.valueOf(1).equals(user.getPasswordMustChange()));
+        }
         return userVO;
     }
 

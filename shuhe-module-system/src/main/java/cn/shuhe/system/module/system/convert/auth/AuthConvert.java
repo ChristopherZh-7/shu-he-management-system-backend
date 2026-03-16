@@ -29,8 +29,12 @@ public interface AuthConvert {
     AuthConvert INSTANCE = Mappers.getMapper(AuthConvert.class);
 
     default AuthPermissionInfoRespVO convert(AdminUserDO user, List<RoleDO> roleList, List<MenuDO> menuList) {
+        AuthPermissionInfoRespVO.UserVO userVO = BeanUtils.toBean(user, AuthPermissionInfoRespVO.UserVO.class);
+        if (userVO != null && user != null) {
+            userVO.setPasswordMustChange(Integer.valueOf(1).equals(user.getPasswordMustChange()));
+        }
         return AuthPermissionInfoRespVO.builder()
-                .user(BeanUtils.toBean(user, AuthPermissionInfoRespVO.UserVO.class))
+                .user(userVO)
                 .roles(convertSet(roleList, RoleDO::getCode))
                 // 权限标识信息
                 .permissions(convertSet(menuList, MenuDO::getPermission))

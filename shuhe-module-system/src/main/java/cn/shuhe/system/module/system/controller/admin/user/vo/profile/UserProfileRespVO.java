@@ -43,6 +43,9 @@ public class UserProfileRespVO {
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED, example = "时间戳格式")
     private LocalDateTime createTime;
 
+    @Schema(description = "是否首次登录需强制修改密码", example = "true")
+    private Boolean passwordMustChange;
+
     /**
      * 所属角色
      */

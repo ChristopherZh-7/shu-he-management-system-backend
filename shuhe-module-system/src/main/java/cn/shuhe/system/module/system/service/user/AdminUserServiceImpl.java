@@ -99,6 +99,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         AdminUserDO user = BeanUtils.toBean(createReqVO, AdminUserDO.class);
         user.setStatus(CommonStatusEnum.ENABLE.getStatus()); // 默认开启
         user.setPassword(encodePassword(createReqVO.getPassword())); // 加密密码
+        user.setPasswordMustChange(1); // 首次登录需强制修改密码
         userMapper.insert(user);
         // 2.2 插入关联岗位
         if (CollectionUtil.isNotEmpty(user.getPostIds())) {
@@ -192,6 +193,18 @@ public class AdminUserServiceImpl implements AdminUserService {
     }
 
     @Override
+    public void updateUserPasswordForFirstLogin(Long id, String newPassword) {
+        AdminUserDO user = validateUserExists(id);
+        if (!Integer.valueOf(1).equals(user.getPasswordMustChange())) {
+            throw exception(USER_PASSWORD_NOT_REQUIRED_CHANGE);
+        }
+        AdminUserDO updateObj = new AdminUserDO().setId(id);
+        updateObj.setPassword(encodePassword(newPassword));
+        updateObj.setPasswordMustChange(0); // 已修改，不再强制
+        userMapper.updateById(updateObj);
+    }
+
+    @Override
     @LogRecord(type = SYSTEM_USER_TYPE, subType = SYSTEM_USER_UPDATE_PASSWORD_SUB_TYPE, bizNo = "{{#id}}",
             success = SYSTEM_USER_UPDATE_PASSWORD_SUCCESS)
     public void updateUserPassword(Long id, String password) {
@@ -207,6 +220,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         AdminUserDO updateObj = new AdminUserDO();
         updateObj.setId(id);
         updateObj.setPassword(encodePassword(password));
+        updateObj.setPasswordMustChange(1); // 管理员重置后需首次登录强制修改
         userMapper.updateById(updateObj);
 
         // 3. 记录操作日志上下文
@@ -512,8 +526,11 @@ public class AdminUserServiceImpl implements AdminUserService {
             // 2.2.1 判断如果不存在，在进行插入
             AdminUserDO existUser = userMapper.selectByUsername(importUser.getUsername());
             if (existUser == null) {
-                userMapper.insert(BeanUtils.toBean(importUser, AdminUserDO.class)
-                        .setPassword(encodePassword(initPassword)).setPostIds(new HashSet<>())); // 设置默认密码及空岗位编号数组
+                AdminUserDO newUser = BeanUtils.toBean(importUser, AdminUserDO.class);
+                newUser.setPassword(encodePassword(initPassword));
+                newUser.setPostIds(new HashSet<>());
+                newUser.setPasswordMustChange(1); // 导入用户首次登录需强制修改密码
+                userMapper.insert(newUser);
                 respVO.getCreateUsernames().add(importUser.getUsername());
                 return;
             }
@@ -565,6 +582,7 @@ public class AdminUserServiceImpl implements AdminUserService {
             AdminUserDO updateObj = new AdminUserDO();
             updateObj.setId(user.getId());
             updateObj.setPassword(encodedPassword);
+            updateObj.setPasswordMustChange(1); // 批量重置后需首次登录强制修改
             userMapper.updateById(updateObj);
         }
 

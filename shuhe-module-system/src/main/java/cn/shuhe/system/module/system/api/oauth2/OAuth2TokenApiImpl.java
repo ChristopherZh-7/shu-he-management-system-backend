@@ -5,11 +5,17 @@ import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.framework.common.biz.system.oauth2.dto.OAuth2AccessTokenCheckRespDTO;
 import cn.shuhe.system.framework.common.biz.system.oauth2.dto.OAuth2AccessTokenCreateReqDTO;
 import cn.shuhe.system.framework.common.biz.system.oauth2.dto.OAuth2AccessTokenRespDTO;
+import cn.shuhe.system.framework.common.enums.UserTypeEnum;
+import cn.shuhe.system.framework.security.core.LoginUser;
 import cn.shuhe.system.module.system.dal.dataobject.oauth2.OAuth2AccessTokenDO;
+import cn.shuhe.system.module.system.dal.dataobject.user.AdminUserDO;
 import cn.shuhe.system.module.system.service.oauth2.OAuth2TokenService;
+import cn.shuhe.system.module.system.service.user.AdminUserService;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * OAuth2.0 Token API 实现类
@@ -21,6 +27,8 @@ public class OAuth2TokenApiImpl implements OAuth2TokenCommonApi {
 
     @Resource
     private OAuth2TokenService oauth2TokenService;
+    @Resource
+    private AdminUserService adminUserService;
 
     @Override
     public OAuth2AccessTokenRespDTO createAccessToken(OAuth2AccessTokenCreateReqDTO reqDTO) {
@@ -32,7 +40,19 @@ public class OAuth2TokenApiImpl implements OAuth2TokenCommonApi {
     @Override
     public OAuth2AccessTokenCheckRespDTO checkAccessToken(String accessToken) {
         OAuth2AccessTokenDO accessTokenDO = oauth2TokenService.checkAccessToken(accessToken);
-        return BeanUtils.toBean(accessTokenDO, OAuth2AccessTokenCheckRespDTO.class);
+        OAuth2AccessTokenCheckRespDTO resp = BeanUtils.toBean(accessTokenDO, OAuth2AccessTokenCheckRespDTO.class);
+        // 管理端用户：补充 passwordMustChange，用于后端强制修改密码校验
+        if (resp != null && UserTypeEnum.ADMIN.getValue().equals(resp.getUserType()) && resp.getUserId() != null) {
+            AdminUserDO user = adminUserService.getUser(resp.getUserId());
+            if (user != null) {
+                Map<String, String> userInfo = resp.getUserInfo() != null
+                        ? new HashMap<>(resp.getUserInfo()) : new HashMap<>();
+                userInfo.put(LoginUser.INFO_KEY_PASSWORD_MUST_CHANGE,
+                        Integer.valueOf(1).equals(user.getPasswordMustChange()) ? "1" : "0");
+                resp.setUserInfo(userInfo);
+            }
+        }
+        return resp;
     }
 
     @Override

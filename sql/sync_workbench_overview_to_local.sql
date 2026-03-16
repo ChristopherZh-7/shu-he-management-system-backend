@@ -67,4 +67,48 @@ JOIN system_menu m ON (m.parent_id = @team_overview_id OR m.parent_id = @global_
 WHERE rm.menu_id IN (@team_overview_id, @global_overview_id) AND rm.deleted = 0
   AND NOT EXISTS (SELECT 1 FROM system_role_menu rm2 WHERE rm2.role_id = rm.role_id AND rm2.menu_id = m.id AND rm2.deleted = 0);
 
+-- ========== Part 3: fix 我的任务/我的工作记录 404 ==========
+SET @my_tasks_id = (SELECT id FROM system_menu WHERE path = 'my-tasks' AND deleted = 0 LIMIT 1);
+SET @my_work_record_id = (SELECT id FROM system_menu WHERE path = 'my-work-record' AND deleted = 0 LIMIT 1);
+SET @my_tasks_query_id = (SELECT id FROM system_menu WHERE permission = 'project:my-tasks:query' AND deleted = 0 LIMIT 1);
+SET @my_work_query_id = (SELECT id FROM system_menu WHERE permission = 'project:my-work-record:query' AND deleted = 0 LIMIT 1);
+SET @my_work_create_id = (SELECT id FROM system_menu WHERE permission = 'project:my-work-record:create' AND deleted = 0 LIMIT 1);
+SET @my_work_update_id = (SELECT id FROM system_menu WHERE permission = 'project:my-work-record:update' AND deleted = 0 LIMIT 1);
+
+INSERT IGNORE INTO `system_role_menu` (`role_id`, `menu_id`, `creator`, `create_time`, `updater`, `update_time`, `deleted`)
+SELECT rm.role_id, @my_tasks_id, '1', NOW(), '1', NOW(), b'0'
+FROM system_role_menu rm WHERE rm.menu_id IN (@workbench_id, @team_overview_id, @global_overview_id) AND rm.deleted = 0
+  AND @my_tasks_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM system_role_menu rm2 WHERE rm2.role_id = rm.role_id AND rm2.menu_id = @my_tasks_id AND rm2.deleted = 0);
+
+INSERT IGNORE INTO `system_role_menu` (`role_id`, `menu_id`, `creator`, `create_time`, `updater`, `update_time`, `deleted`)
+SELECT rm.role_id, @my_tasks_query_id, '1', NOW(), '1', NOW(), b'0'
+FROM system_role_menu rm WHERE rm.menu_id IN (@workbench_id, @team_overview_id, @global_overview_id) AND rm.deleted = 0
+  AND @my_tasks_query_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM system_role_menu rm2 WHERE rm2.role_id = rm.role_id AND rm2.menu_id = @my_tasks_query_id AND rm2.deleted = 0);
+
+INSERT IGNORE INTO `system_role_menu` (`role_id`, `menu_id`, `creator`, `create_time`, `updater`, `update_time`, `deleted`)
+SELECT rm.role_id, @my_work_record_id, '1', NOW(), '1', NOW(), b'0'
+FROM system_role_menu rm WHERE rm.menu_id IN (@workbench_id, @team_overview_id, @global_overview_id) AND rm.deleted = 0
+  AND @my_work_record_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM system_role_menu rm2 WHERE rm2.role_id = rm.role_id AND rm2.menu_id = @my_work_record_id AND rm2.deleted = 0);
+
+INSERT IGNORE INTO `system_role_menu` (`role_id`, `menu_id`, `creator`, `create_time`, `updater`, `update_time`, `deleted`)
+SELECT rm.role_id, @my_work_query_id, '1', NOW(), '1', NOW(), b'0'
+FROM system_role_menu rm WHERE rm.menu_id IN (@workbench_id, @team_overview_id, @global_overview_id) AND rm.deleted = 0
+  AND @my_work_query_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM system_role_menu rm2 WHERE rm2.role_id = rm.role_id AND rm2.menu_id = @my_work_query_id AND rm2.deleted = 0);
+
+INSERT IGNORE INTO `system_role_menu` (`role_id`, `menu_id`, `creator`, `create_time`, `updater`, `update_time`, `deleted`)
+SELECT rm.role_id, @my_work_create_id, '1', NOW(), '1', NOW(), b'0'
+FROM system_role_menu rm WHERE rm.menu_id IN (@workbench_id, @team_overview_id, @global_overview_id) AND rm.deleted = 0
+  AND @my_work_create_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM system_role_menu rm2 WHERE rm2.role_id = rm.role_id AND rm2.menu_id = @my_work_create_id AND rm2.deleted = 0);
+
+INSERT IGNORE INTO `system_role_menu` (`role_id`, `menu_id`, `creator`, `create_time`, `updater`, `update_time`, `deleted`)
+SELECT rm.role_id, @my_work_update_id, '1', NOW(), '1', NOW(), b'0'
+FROM system_role_menu rm WHERE rm.menu_id IN (@workbench_id, @team_overview_id, @global_overview_id) AND rm.deleted = 0
+  AND @my_work_update_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM system_role_menu rm2 WHERE rm2.role_id = rm.role_id AND rm2.menu_id = @my_work_update_id AND rm2.deleted = 0);
+
 SELECT 'sync_workbench_overview_to_local done. Clear Redis (FLUSHDB) and re-login.' AS result;

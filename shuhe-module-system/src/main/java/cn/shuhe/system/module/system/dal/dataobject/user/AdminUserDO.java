@@ -92,6 +92,11 @@ public class AdminUserDO extends BaseDO {
      * 最后登录时间
      */
     private LocalDateTime loginDate;
+    /**
+     * 是否首次登录需强制修改密码
+     * 0-否 1-是（新用户、管理员重置密码后需强制修改）
+     */
+    private Integer passwordMustChange;
     
     // ========== 人事信息字段 ==========
     

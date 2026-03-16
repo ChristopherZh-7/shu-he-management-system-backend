@@ -20,6 +20,8 @@ public class LoginUser {
 
     public static final String INFO_KEY_NICKNAME = "nickname";
     public static final String INFO_KEY_DEPT_ID = "deptId";
+    /** 是否首次登录需强制修改密码，1=是 */
+    public static final String INFO_KEY_PASSWORD_MUST_CHANGE = "passwordMustChange";
 
     /**
      * 用户编号

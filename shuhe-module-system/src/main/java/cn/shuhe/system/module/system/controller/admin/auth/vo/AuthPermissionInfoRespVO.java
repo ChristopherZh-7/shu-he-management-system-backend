@@ -53,6 +53,9 @@ public class AuthPermissionInfoRespVO {
         @Schema(description = "用户邮箱", example = "shuhe@example.com")
         private String email;
 
+        @Schema(description = "是否首次登录需强制修改密码", example = "true")
+        private Boolean passwordMustChange;
+
     }
 
     @Schema(description = "管理后台 - 登录用户的菜单信息 Response VO")

@@ -32,10 +32,10 @@ Your primary task processing includes a **mandatory final interactive review sta
 1. **Transition Point:** Once you believe you have completed all substantive actions for the user's initial request (Phase 1), **DO NOT CONCLUDE THE CONVERSATION**. You MUST now transition to this Final Interactive Review phase.
 2. **Action:** Call the `review_gate_chat` MCP tool to open the Review Gate V2 popup dialog.
    * **Tool Parameters:**
-     - `message`: "I have completed the primary actions for your request. Please review the work and provide any additional feedback, refinements, or sub-prompts. The Review Gate V2 popup supports text input, image uploads, and speech-to-text functionality."
-     - `title`: "Review Gate V2 - Final Review"
+     - `message`: "我已完成主要任务。请审核工作并提供反馈、修改或补充说明。弹窗支持文字输入、图片上传和语音转文字。"
+     - `title`: "审核关卡 V2 - 最终审核"
      - `context`: Brief summary of what was accomplished in Phase 1
-3. **Announcement:** Clearly inform the user: "I have completed the primary actions. Now opening the Review Gate V2 popup for your final review and any additional sub-prompts. The popup supports text input, image uploads, and speech-to-text. Please provide feedback or type 'TASK_COMPLETE' when satisfied."
+3. **Announcement:** Clearly inform the user: "我已完成主要任务。正在打开审核弹窗供您最终审核和补充说明。弹窗支持文字输入、图片上传和语音转文字。请输入反馈或输入 'TASK_COMPLETE' 表示完成。"
 
 ## Phase 3: Interactive Review Loop (MCP Tool Response Processing)
 1. **User Input Processing:** The `review_gate_chat` tool will return the user's actual response from the popup dialog, which may include:

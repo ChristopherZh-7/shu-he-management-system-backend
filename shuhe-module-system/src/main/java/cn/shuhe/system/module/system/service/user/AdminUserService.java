@@ -73,6 +73,14 @@ public interface AdminUserService {
     void updateUserPassword(Long id, @Valid UserProfileUpdatePasswordReqVO reqVO);
 
     /**
+     * 首次登录强制修改密码（无需校验旧密码）
+     *
+     * @param id 用户编号
+     * @param newPassword 新密码
+     */
+    void updateUserPasswordForFirstLogin(Long id, String newPassword);
+
+    /**
      * 修改密码
      *
      * @param id       用户编号

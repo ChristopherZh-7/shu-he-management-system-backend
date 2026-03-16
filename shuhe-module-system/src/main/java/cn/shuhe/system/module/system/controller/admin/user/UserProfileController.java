@@ -3,6 +3,7 @@ package cn.shuhe.system.module.system.controller.admin.user;
 import cn.hutool.core.collection.CollUtil;
 import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
+import cn.shuhe.system.module.system.controller.admin.user.vo.profile.UserProfileForceUpdatePasswordReqVO;
 import cn.shuhe.system.module.system.controller.admin.user.vo.profile.UserProfileRespVO;
 import cn.shuhe.system.module.system.controller.admin.user.vo.profile.UserProfileUpdatePasswordReqVO;
 import cn.shuhe.system.module.system.controller.admin.user.vo.profile.UserProfileUpdateReqVO;
@@ -73,6 +74,13 @@ public class UserProfileController {
     @Operation(summary = "修改用户个人密码")
     public CommonResult<Boolean> updateUserProfilePassword(@Valid @RequestBody UserProfileUpdatePasswordReqVO reqVO) {
         userService.updateUserPassword(getLoginUserId(), reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/force-update-password")
+    @Operation(summary = "首次登录强制修改密码", description = "需强制修改密码时使用，无需校验旧密码")
+    public CommonResult<Boolean> forceUpdatePassword(@Valid @RequestBody UserProfileForceUpdatePasswordReqVO reqVO) {
+        userService.updateUserPasswordForFirstLogin(getLoginUserId(), reqVO.getNewPassword());
         return success(true);
     }
 
