@@ -9,6 +9,7 @@ import cn.shuhe.system.module.system.dal.dataobject.dept.DeptDO;
 import cn.shuhe.system.module.system.dal.dataobject.dingtalkconfig.DingtalkConfigDO;
 import cn.shuhe.system.module.system.dal.dataobject.dingtalkmapping.DingtalkMappingDO;
 import cn.shuhe.system.module.system.dal.mysql.dingtalkmapping.DingtalkMappingMapper;
+import cn.shuhe.system.module.system.framework.dingtalk.LocalAddressResolver;
 import cn.shuhe.system.module.system.service.dept.DeptService;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkApiService;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,6 +37,9 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
 
     @Resource
     private DingtalkApiService dingtalkApiService;
+
+    @Resource
+    private LocalAddressResolver localAddressResolver;
 
     /** 本地/环境配置：审批链接 baseUrl，钉钉配置为空时使用。如 http://localhost:5666 */
     @Value("${shuhe.dingtalk.business-audit.approve-base-url:}")
@@ -303,11 +307,12 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
     @Override
     public String getCallbackBaseUrl() {
         List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
-        if (CollUtil.isEmpty(configs) || StrUtil.isEmpty(configs.get(0).getCallbackBaseUrl())) {
-            return null;
+        if (CollUtil.isNotEmpty(configs) && StrUtil.isNotEmpty(configs.get(0).getCallbackBaseUrl())) {
+            String url = configs.get(0).getCallbackBaseUrl();
+            return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
         }
-        String url = configs.get(0).getCallbackBaseUrl();
-        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+        String auto = localAddressResolver.buildAutoBaseUrl();
+        return auto != null && auto.endsWith("/") ? auto.substring(0, auto.length() - 1) : auto;
     }
 
     @Override
@@ -326,7 +331,10 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
         } else if (StrUtil.isNotEmpty(approveBaseUrlFromConfig)) {
             url = approveBaseUrlFromConfig;
         }
-        if (StrUtil.isEmpty(url)) return null;
+        if (StrUtil.isEmpty(url)) {
+            url = localAddressResolver.buildAutoBaseUrl();  // 未配置时用本机 IP（58 优先，其次 10）
+        }
+        if (url == null || url.isEmpty()) return null;
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 

@@ -93,6 +93,11 @@ public class EmployeeScheduleServiceImpl implements EmployeeScheduleService {
             userStatus.put("userId", user.getId());
             userStatus.put("userName", user.getNickname());
             userStatus.put("deptId", user.getDeptId());
+            userStatus.put("positionLevel", user.getPositionLevel());
+            if (user.getDeptId() != null) {
+                DeptRespDTO dept = deptApi.getDept(user.getDeptId());
+                userStatus.put("deptName", dept != null ? dept.getName() : null);
+            }
 
             List<ProjectRoundDO> userRounds = roundsByUser.getOrDefault(user.getId(), Collections.emptyList());
             

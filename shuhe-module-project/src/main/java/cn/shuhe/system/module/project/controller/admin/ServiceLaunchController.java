@@ -2,12 +2,14 @@ package cn.shuhe.system.module.project.controller.admin;
 
 import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.framework.common.pojo.PageResult;
+import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceLaunchMemberRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceLaunchPageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceLaunchRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceLaunchSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceLaunchMemberDO;
+import cn.shuhe.system.module.project.service.EmployeeScheduleService;
 import cn.shuhe.system.module.project.service.ServiceLaunchService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -18,6 +20,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -31,6 +34,9 @@ public class ServiceLaunchController {
 
     @Resource
     private ServiceLaunchService serviceLaunchService;
+
+    @Resource
+    private EmployeeScheduleService employeeScheduleService;
 
     @PostMapping("/create")
     @Operation(summary = "创建统一服务发起")
@@ -114,6 +120,37 @@ public class ServiceLaunchController {
     @Operation(summary = "获取可选的执行部门列表")
     public CommonResult<List<Map<String, Object>>> getDeptList() {
         return success(serviceLaunchService.getDeptList());
+    }
+
+    @GetMapping("/dept-type-list")
+    @Operation(summary = "获取借调可选的部门类型列表（安全运营、安全服务、数据安全）")
+    public CommonResult<List<Map<String, Object>>> getDeptTypeListForSecondment() {
+        return success(serviceLaunchService.getDeptTypeListForSecondment());
+    }
+
+    @GetMapping("/dept-info")
+    @Operation(summary = "获取部门信息（含负责人，用于借调流程变量）")
+    @Parameter(name = "deptId", description = "部门ID", required = true)
+    public CommonResult<Map<String, Object>> getDeptInfo(@RequestParam("deptId") Long deptId) {
+        return success(serviceLaunchService.getDeptInfo(deptId));
+    }
+
+    @GetMapping("/dept-employee-status")
+    @Operation(summary = "获取部门员工状态（借调选人用，复用 service-launch:create 权限）")
+    @Parameter(name = "deptId", description = "部门ID", required = true)
+    @PreAuthorize("@ss.hasPermission('project:service-launch:create')")
+    @DataPermission(enable = false) // 借调需跨部门选人，不受数据权限限制
+    public CommonResult<List<Map<String, Object>>> getDeptEmployeeStatusForSecondment(@RequestParam("deptId") Long deptId) {
+        return success(employeeScheduleService.getDeptEmployeeStatus(deptId));
+    }
+
+    @GetMapping("/earliest-available")
+    @Operation(summary = "获取部门最早可安排时间（借调用，复用 service-launch:create 权限）")
+    @Parameter(name = "deptId", description = "部门ID", required = true)
+    @PreAuthorize("@ss.hasPermission('project:service-launch:create')")
+    @DataPermission(enable = false) // 借调需跨部门选人，不受数据权限限制
+    public CommonResult<LocalDateTime> getEarliestAvailableForSecondment(@RequestParam("deptId") Long deptId) {
+        return success(employeeScheduleService.getEarliestAvailableTime(deptId));
     }
 
     @GetMapping("/user-list-by-dept")

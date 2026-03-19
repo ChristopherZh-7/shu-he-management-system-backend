@@ -68,6 +68,9 @@ public class ServiceLaunchSaveReqVO {
     @Schema(description = "备注")
     private String remark;
 
+    @Schema(description = "续借自哪条借调记录ID（续借时填充）")
+    private Long renewalOfId;
+
     @Schema(description = "审批人所在部门ID（前端传递，用于确定审批人）")
     private Long approverDeptId;
 

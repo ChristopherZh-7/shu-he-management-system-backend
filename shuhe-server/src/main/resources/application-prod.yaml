@@ -143,6 +143,9 @@ wx:
 shuhe:
   captcha:
     enable: false
+  # 钉钉回调/审批链接：未配置 callback_base_url、approve_base_url 时，自动用本机 IP（58 优先，其次 10）
+  dingtalk:
+    auto-base-url-port: 80  # nginx 部署，用户通过 80 访问
   pay:
     order-notify-url: http://localhost/admin-api/pay/notify/order
     refund-notify-url: http://localhost/admin-api/pay/notify/refund

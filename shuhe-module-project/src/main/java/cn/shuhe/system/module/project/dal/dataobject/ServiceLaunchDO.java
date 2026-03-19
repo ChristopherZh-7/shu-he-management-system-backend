@@ -9,10 +9,9 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 /**
- * 统一服务发起 DO
+ * 借调申请 DO（原统一服务发起）
  * 
- * 整合外出请求和服务执行，统一服务发起流程
- * 支持：普通服务执行、外出服务、跨部门服务
+ * 借调申请：跨部门借调人员到项目，审批通过后可在项目管理中选人
  */
 @TableName("project_service_launch")
 @KeySequence("project_service_launch_seq")
@@ -157,6 +156,11 @@ public class ServiceLaunchDO extends BaseDO {
      * 创建的轮次ID（审批通过后）
      */
     private Long roundId;
+
+    /**
+     * 续借自哪条借调记录ID（续借时填充）
+     */
+    private Long renewalOfId;
 
     /**
      * 审批人所在部门ID

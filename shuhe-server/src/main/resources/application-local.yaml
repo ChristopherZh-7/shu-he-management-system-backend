@@ -227,10 +227,12 @@ wx:
 # 戍合配置项，设置当前项目所有自定义的配置
 shuhe:
   dingtalk:
+    # auto-base-url-port: 80   # 生产 nginx 部署用 80；本地直连可改 48080
     business-audit:
       skip-boss: true           # 测试阶段：不拉老板，群主用商机负责人，仅拉部门主管
       # test-only-user-id: 249 # 测试阶段：仅拉此用户进群（钉钉需至少2人）。启用后会忽略 skip-boss
-      approve-base-url: http://localhost:5666  # 审批链接 baseUrl，钉钉配置未填时生效
+      # approve-base-url 留空：生产自动用本机 IP:80（58>10）；本地开发可填 http://localhost:5666
+      approve-base-url: http://localhost:5666  # 仅本地开发用；生产 profile 不读此配置
   captcha:
     enable: false # 本地环境，暂时关闭图片验证码，方便登录等接口的测试；
   security:

@@ -107,6 +107,22 @@ public interface ServiceLaunchService {
     List<Map<String, Object>> getDeptList();
 
     /**
+     * 获取借调可选的部门类型列表（安全运营、安全服务、数据安全）
+     * 第一层选择用，排除请求方所在部门类型
+     *
+     * @return 部门类型列表 [{deptType, name, deptId}]
+     */
+    List<Map<String, Object>> getDeptTypeListForSecondment();
+
+    /**
+     * 获取部门信息（含负责人，用于借调流程变量）
+     *
+     * @param deptId 部门ID
+     * @return 部门信息
+     */
+    Map<String, Object> getDeptInfo(Long deptId);
+
+    /**
      * 根据部门ID获取用户列表（包含子部门）
      * 用于审批页面选择执行人
      *

@@ -49,6 +49,7 @@ public interface ErrorCodeConstants {
     ErrorCode USER_MOBILE_NOT_EXISTS = new ErrorCode(1_002_003_010, "该手机号尚未注册");
     ErrorCode USER_REGISTER_DISABLED = new ErrorCode(1_002_003_011, "注册功能已关闭");
     ErrorCode USER_PASSWORD_NOT_REQUIRED_CHANGE = new ErrorCode(1_002_003_012, "当前无需强制修改密码，请使用普通修改密码接口");
+    ErrorCode USER_PASSWORD_SAME_AS_OLD = new ErrorCode(1_002_003_013, "新密码不能与当前密码相同");
 
     // ========== 部门模块 1-002-004-000 ==========
     ErrorCode DEPT_NAME_DUPLICATE = new ErrorCode(1_002_004_000, "已经存在该名字的部门");

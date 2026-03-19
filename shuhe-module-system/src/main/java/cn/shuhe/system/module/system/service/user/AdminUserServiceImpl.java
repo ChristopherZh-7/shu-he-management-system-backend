@@ -184,8 +184,12 @@ public class AdminUserServiceImpl implements AdminUserService {
 
     @Override
     public void updateUserPassword(Long id, UserProfileUpdatePasswordReqVO reqVO) {
-        // 校验旧密码密码
+        // 校验旧密码
         validateOldPassword(id, reqVO.getOldPassword());
+        AdminUserDO user = userMapper.selectById(id);
+        if (user != null && passwordEncoder.matches(reqVO.getNewPassword(), user.getPassword())) {
+            throw exception(USER_PASSWORD_SAME_AS_OLD);
+        }
         // 执行更新
         AdminUserDO updateObj = new AdminUserDO().setId(id);
         updateObj.setPassword(encodePassword(reqVO.getNewPassword())); // 加密密码
@@ -198,10 +202,16 @@ public class AdminUserServiceImpl implements AdminUserService {
         if (!Integer.valueOf(1).equals(user.getPasswordMustChange())) {
             throw exception(USER_PASSWORD_NOT_REQUIRED_CHANGE);
         }
+        // 新密码不能与当前（重置）密码相同
+        if (passwordEncoder.matches(newPassword, user.getPassword())) {
+            throw exception(USER_PASSWORD_SAME_AS_OLD);
+        }
         AdminUserDO updateObj = new AdminUserDO().setId(id);
         updateObj.setPassword(encodePassword(newPassword));
         updateObj.setPasswordMustChange(0); // 已修改，不再强制
         userMapper.updateById(updateObj);
+        // 强制登出，清除 token 缓存，要求用户用新密码重新登录
+        oauth2TokenService.removeAccessToken(id, UserTypeEnum.ADMIN.getValue());
     }
 
     @Override

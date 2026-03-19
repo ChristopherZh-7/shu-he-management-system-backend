@@ -51,4 +51,9 @@ public class AdminUserRespDTO {
      */
     private Integer workMode;
 
+    /**
+     * 职级（如 P1-1、P2-2、P3-3 等）
+     */
+    private String positionLevel;
+
 }

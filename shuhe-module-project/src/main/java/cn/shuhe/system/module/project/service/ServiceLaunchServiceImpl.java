@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.json.JSONUtil;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
+import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceLaunchPageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceLaunchRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceLaunchSaveReqVO;
@@ -365,7 +366,57 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
         log.info("【获取执行部门列表】返回{}个叶子部门, 详情: {}", result.size(), result);
         return result;
     }
-    
+
+    private static final Map<Integer, String> DEPT_TYPE_NAMES = Map.of(
+            1, "安全服务",
+            2, "安全运营",
+            3, "数据安全"
+    );
+
+    @Override
+    @DataPermission(enable = false) // 借调需显示全部部门类型，不受数据权限限制
+    public List<Map<String, Object>> getDeptTypeListForSecondment() {
+        // 借调第一层：显示 安全运营、安全服务、数据安全（全部类型，支持跨班借人）
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (int deptType = 1; deptType <= 3; deptType++) {
+            List<DeptRespDTO> depts = deptApi.getDeptListByDeptType(deptType);
+            if (depts == null || depts.isEmpty()) continue;
+
+            java.util.Set<Long> deptIds = depts.stream().map(DeptRespDTO::getId).collect(java.util.stream.Collectors.toSet());
+            DeptRespDTO root = depts.stream()
+                    .filter(d -> d.getParentId() == null || d.getParentId() == 0 || !deptIds.contains(d.getParentId()))
+                    .min((a, b) -> Long.compare(a.getId() != null ? a.getId() : 0, b.getId() != null ? b.getId() : 0))
+                    .orElse(depts.get(0));
+
+            Map<String, Object> map = new HashMap<>();
+            map.put("deptType", deptType);
+            map.put("name", DEPT_TYPE_NAMES.getOrDefault(deptType, "部门" + deptType));
+            map.put("deptId", root.getId());
+            result.add(map);
+        }
+        log.info("【借调部门类型列表】返回{}个类型", result.size());
+        return result;
+    }
+
+    @Override
+    public Map<String, Object> getDeptInfo(Long deptId) {
+        if (deptId == null) return Collections.emptyMap();
+        DeptRespDTO dept = deptApi.getDept(deptId);
+        if (dept == null) return Collections.emptyMap();
+        Map<String, Object> map = new HashMap<>();
+        map.put("id", dept.getId());
+        map.put("name", dept.getName());
+        Long leaderUserId = deptApi.findLeaderUserIdRecursively(deptId);
+        Long leaderDeptId = deptApi.findLeaderDeptIdRecursively(deptId);
+        map.put("leaderUserId", leaderUserId);
+        map.put("leaderDeptId", leaderDeptId);
+        map.put("leaderUserName", leaderUserId != null ? (adminUserApi.getUser(leaderUserId) != null ? adminUserApi.getUser(leaderUserId).getNickname() : null) : null);
+        DeptRespDTO leaderDept = leaderDeptId != null ? deptApi.getDept(leaderDeptId) : null;
+        map.put("leaderDeptName", leaderDept != null ? leaderDept.getName() : null);
+        map.put("needSelectExecuteDept", leaderDeptId != null && !leaderDeptId.equals(deptId));
+        return map;
+    }
+
     /**
      * 获取所有部门列表（包含非叶子部门，用于部门层级判断）
      */

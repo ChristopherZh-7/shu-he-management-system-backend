@@ -146,8 +146,9 @@ public class CrmContractServiceImpl implements CrmContractService {
         // 校验附件URL（防 XSS：仅允许 http/https）
         validateAttachmentUrl(createReqVO.getAttachment());
         // 校验：关联商机时，若提前投入审批进行中则不允许创建合同
+        // 使用 validateBusiness 而非 getBusiness：签合同入口已通过商机详情页权限校验，此处为内部校验，避免重复触发 @CrmPermission 导致「没有权限」
         if (contract.getBusinessId() != null) {
-            CrmBusinessDO linkedBusiness = businessService.getBusiness(contract.getBusinessId());
+            CrmBusinessDO linkedBusiness = businessService.validateBusiness(contract.getBusinessId());
             if (linkedBusiness != null
                     && CrmAuditStatusEnum.PROCESS.getStatus().equals(linkedBusiness.getEarlyInvestmentStatus())) {
                 throw exception(CONTRACT_CREATE_FAIL_EARLY_INVESTMENT_PROCESSING);
@@ -193,27 +194,14 @@ public class CrmContractServiceImpl implements CrmContractService {
 
     /**
      * 签单成功，通知关联商机群（纯通知，无需审批操作）
+     * 不发送具体金额，因客户可能已进群
      */
     private void notifyBusinessGroupOnContractSigned(CrmContractDO contract) {
         try {
-            List<cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessDO.DeptAllocation> bizAllocations = null;
-            if (contract.getBusinessId() != null) {
-                cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessDO biz =
-                        businessService.validateBusiness(contract.getBusinessId());
-                if (biz != null) {
-                    bizAllocations = biz.getDeptAllocations();
-                }
-            }
-
             StringBuilder msg = new StringBuilder();
             msg.append("🎉 **合同已签单，项目正式开始！**\n\n");
             msg.append("合同名称：").append(contract.getName()).append("\n\n");
             msg.append("合同编号：").append(contract.getNo()).append("\n\n");
-            if (contract.getTotalPrice() != null) {
-                msg.append("合同金额：").append(String.format("%,.2f", contract.getTotalPrice())).append(" 元\n\n");
-            }
-
-            appendAllocationComparison(msg, bizAllocations, contract.getDeptAllocations());
 
             businessService.sendBusinessGroupNotification(
                     contract.getBusinessId(), msg.toString(), "合同签单通知");
@@ -224,72 +212,8 @@ public class CrmContractServiceImpl implements CrmContractService {
     }
 
     /**
-     * 生成部门金额分配对比文字
-     */
-    private void appendAllocationComparison(
-            StringBuilder msg,
-            List<cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessDO.DeptAllocation> bizAllocations,
-            List<cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessDO.DeptAllocation> contractAllocations) {
-
-        boolean hasBiz      = CollUtil.isNotEmpty(bizAllocations);
-        boolean hasContract = CollUtil.isNotEmpty(contractAllocations);
-
-        if (!hasBiz && !hasContract) {
-            return;
-        }
-
-        msg.append("**部门金额分配**：\n\n");
-
-        if (hasBiz && !hasContract) {
-            msg.append("（沿用商机分配）\n\n");
-            for (var a : bizAllocations) {
-                msg.append("- ").append(a.getDeptName()).append("：")
-                        .append(String.format("%,.2f", a.getAmount())).append(" 元\n\n");
-            }
-            return;
-        }
-
-        java.util.Map<Long, java.math.BigDecimal> bizMap = new java.util.HashMap<>();
-        if (hasBiz) {
-            for (var a : bizAllocations) {
-                if (a.getDeptId() != null && a.getAmount() != null) {
-                    bizMap.put(a.getDeptId(), a.getAmount());
-                }
-            }
-        }
-
-        for (var ca : contractAllocations) {
-            if (ca.getDeptName() == null || ca.getAmount() == null) continue;
-            java.math.BigDecimal oldAmt = bizMap.get(ca.getDeptId());
-            if (oldAmt == null) {
-                msg.append("- ").append(ca.getDeptName()).append("：")
-                        .append(String.format("%,.2f", ca.getAmount())).append(" 元（新增）\n\n");
-            } else if (oldAmt.compareTo(ca.getAmount()) == 0) {
-                msg.append("- ").append(ca.getDeptName()).append("：")
-                        .append(String.format("%,.2f", ca.getAmount())).append(" 元（不变）\n\n");
-            } else {
-                java.math.BigDecimal diff = ca.getAmount().subtract(oldAmt);
-                String arrow = diff.compareTo(java.math.BigDecimal.ZERO) > 0 ? "↑" : "↓";
-                msg.append("- ").append(ca.getDeptName()).append("：")
-                        .append(String.format("%,.2f", oldAmt)).append(" → ")
-                        .append(String.format("%,.2f", ca.getAmount())).append(" 元 ")
-                        .append(arrow).append(String.format("%,.2f", diff.abs())).append("\n\n");
-            }
-            bizMap.remove(ca.getDeptId());
-        }
-
-        if (hasBiz) {
-            for (var a : bizAllocations) {
-                if (a.getDeptId() != null && bizMap.containsKey(a.getDeptId())) {
-                    msg.append("- ").append(a.getDeptName()).append("：")
-                            .append(String.format("%,.2f", a.getAmount())).append(" 元（已移除）\n\n");
-                }
-            }
-        }
-    }
-
-    /**
      * 合同审批通过后，通知关联商机群
+     * 不发送具体金额，因客户可能已进群
      */
     private void notifyBusinessGroupOnContractApproved(CrmContractDO contract) {
         if (contract.getBusinessId() == null) {
@@ -299,9 +223,6 @@ public class CrmContractServiceImpl implements CrmContractService {
             String msg = "✅ **合同签单已确认**\n\n" +
                     "合同名称：" + contract.getName() + "\n\n" +
                     "合同编号：" + contract.getNo() + "\n\n" +
-                    (contract.getTotalPrice() != null
-                            ? "合同金额：" + String.format("%,.2f", contract.getTotalPrice()) + " 元\n\n"
-                            : "") +
                     "合同已正式生效，继续服务！";
             businessService.sendBusinessGroupNotification(contract.getBusinessId(), msg, "合同签单确认");
         } catch (Exception e) {
@@ -497,25 +418,13 @@ public class CrmContractServiceImpl implements CrmContractService {
                 .setProcessInstanceId(processInstanceId)
                 .setAuditStatus(CrmAuditStatusEnum.PROCESS.getStatus()));
 
-        // 5. 群通知：签合同审批已提交
+        // 5. 群通知：签合同审批已提交（不发送具体金额，因客户可能已进群）
         if (contract.getBusinessId() != null) {
             try {
                 StringBuilder msg = new StringBuilder();
                 msg.append("## ⏳ 签合同审批已提交\n\n");
                 msg.append("**合同名称：** ").append(contract.getName()).append("\n\n");
                 msg.append("**合同编号：** ").append(contract.getNo()).append("\n\n");
-                if (contract.getTotalPrice() != null) {
-                    msg.append("**合同金额：** ¥")
-                            .append(String.format("%,.2f", contract.getTotalPrice()))
-                            .append(" 元\n\n");
-                }
-                if (CollUtil.isNotEmpty(contract.getDeptAllocations())) {
-                    msg.append("**部门分配：**\n\n");
-                    for (var a : contract.getDeptAllocations()) {
-                        msg.append("- ").append(a.getDeptName()).append("：")
-                                .append(String.format("%,.2f", a.getAmount())).append(" 元\n\n");
-                    }
-                }
                 msg.append("---\n\n");
                 msg.append("> 申请正在逐级审批中，请等待审批结果。");
                 businessService.sendBusinessGroupNotification(
