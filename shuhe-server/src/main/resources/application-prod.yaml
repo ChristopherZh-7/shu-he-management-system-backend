@@ -141,11 +141,26 @@ wx:
       http-client-type: HttpClient
 
 shuhe:
+  security:
+    password-login-enabled: false # 仅钉钉扫码
+    # 个人中心「身份切换」：开关 + 允许发起切换的用户 id（system_users.id）白名单 + 目标管理员登录名
+    switch-admin-enabled: true
+    switch-admin-allowed-user-ids:
+      - 249 # 生产请按实际运营账号 id 调整，可配置多个
+    switch-admin-target-username: admin
+  web:
+    admin-ui:
+      # BPM 钉钉「待审批」「查看详情」等消息内链接；未配置时继承 application.yaml 的 localhost
+      url: http://8.138.179.62:8080
   captcha:
     enable: false
-  # 钉钉回调/审批链接：未配置 callback_base_url、approve_base_url 时，自动用本机 IP（58 优先，其次 10）
+  # 钉钉回调/审批链接：数据库钉钉配置未填时使用下列地址；均未配置时自动用本机 IP（58 优先，其次 10）
   dingtalk:
     auto-base-url-port: 80  # nginx 部署，用户通过 80 访问
+    # 对外访问地址（与前端/网关一致），用于消息内链接、服务发起确认链接等
+    callback-base-url: http://8.138.179.62:8080
+    business-audit:
+      approve-base-url: http://8.138.179.62:8080  # 商机/合同等审批链接
   pay:
     order-notify-url: http://localhost/admin-api/pay/notify/order
     refund-notify-url: http://localhost/admin-api/pay/notify/refund
@@ -156,9 +171,11 @@ shuhe:
 justauth:
   enabled: true
   type:
-    DINGTALK:
-      client-id: dingvrnreaje3yqvzhxg
-      client-secret: i8E6iZyDvZj51JIb0tYsYfVQYOks9Cq1lgryEjFRqC79P3iJcrxEwT6Qk2QvLrLI
+    # 钉钉 OAuth2（新）：与开放平台扫码 / login.dingtalk.com 一致；system_social_client 启用的记录会覆盖 yaml（见 sql/mysql/manual/fix_social_client_dingtalk_appkey.sql）
+    DINGTALK_V2:
+      client-id: dingt49strlwu53ezfbj
+      # 生产环境请改为该 AppKey 对应 AppSecret，或使用环境变量覆盖（勿提交真实密钥到仓库）
+      client-secret: 3W1EZXPhaXq8FelChgrl5uj1a-KpofPquaLNaehPCh3xNMMYsOb8d6Dq505wDnst
       ignore-check-redirect-uri: true
     WECHAT_ENTERPRISE:
       client-id: wwd411c69a39ad2e54

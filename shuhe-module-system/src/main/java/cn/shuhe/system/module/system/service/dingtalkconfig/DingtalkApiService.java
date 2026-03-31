@@ -63,6 +63,27 @@ public class DingtalkApiService {
         return json.getStr("access_token");
     }
 
+    private static final String DINGTALK_GET_JSAPI_TICKET_URL = "https://oapi.dingtalk.com/get_jsapi_ticket";
+
+    /**
+     * 获取 JSAPI ticket，用于前端 {@code dd.config} 签名
+     *
+     * @param accessToken 应用 access_token
+     * @return jsapi_ticket
+     */
+    public String getJsapiTicket(String accessToken) {
+        String url = DINGTALK_GET_JSAPI_TICKET_URL + "?access_token=" + accessToken;
+        String result = HttpUtil.get(url);
+        JSONObject json = JSONUtil.parseObj(result);
+        int errcode = json.getInt("errcode", -1);
+        if (errcode != 0) {
+            String errmsg = json.getStr("errmsg", "未知错误");
+            log.error("获取钉钉 jsapi_ticket 失败: errcode={}, errmsg={}", errcode, errmsg);
+            throw new RuntimeException("获取钉钉 jsapi_ticket 失败: " + errmsg);
+        }
+        return json.getStr("ticket");
+    }
+
     /**
      * 获取钉钉部门列表（递归获取所有子部门）
      *
@@ -243,6 +264,7 @@ public class DingtalkApiService {
                 JSONObject userJson = userList.getJSONObject(i);
                 DingtalkUser user = new DingtalkUser();
                 user.setUserid(userJson.getStr("userid"));
+                user.setUnionid(userJson.getStr("unionid"));
                 user.setName(userJson.getStr("name"));
                 user.setMobile(userJson.getStr("mobile"));
                 user.setEmail(userJson.getStr("email"));
@@ -293,6 +315,7 @@ public class DingtalkApiService {
             
             DingtalkUser user = new DingtalkUser();
             user.setUserid(resultObj.getStr("userid"));
+            user.setUnionid(resultObj.getStr("unionid"));
             user.setName(resultObj.getStr("name"));
             user.setMobile(resultObj.getStr("mobile"));
             user.setEmail(resultObj.getStr("email"));
@@ -313,6 +336,10 @@ public class DingtalkApiService {
     public static class DingtalkUser {
         /** 用户ID */
         private String userid;
+        /**
+         * 钉钉 unionid，与网页 OAuth 扫码登录后写入 system_social_user.openid 的标识一致（见 JustAuth 钉钉 uuid）
+         */
+        private String unionid;
         /** 姓名 */
         private String name;
         /** 手机号 */

@@ -5,7 +5,7 @@ import cn.hutool.json.JSONObject;
 import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.module.system.dal.dataobject.dingtalkconfig.DingtalkConfigDO;
 import cn.shuhe.system.module.system.service.dingtalk.ServiceLaunchConfirmService;
-import cn.shuhe.system.module.infra.event.dingtalk.DingtalkRobotMessageEvent;
+import cn.shuhe.system.module.system.service.dingtalkrobot.event.DingtalkRobotMessageEvent;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkApiService;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkConfigService;
 import io.swagger.v3.oas.annotations.Operation;

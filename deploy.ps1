@@ -269,6 +269,10 @@ function Step-DeployFrontend {
 
     # Keep only 3 most recent backups
     Invoke-Remote "cd /opt/shuhe && ls -dt frontend.bak.* 2>/dev/null | tail -n +4 | xargs rm -rf 2>/dev/null || true"
+
+    # Docker Nginx（8080）挂载 /opt/shuhe/frontend；整目录替换后偶发挂载不刷新，容器内看到空目录 → 403/500，需重启
+    Write-Host "  Restarting Docker nginx (shuhe-safeline-upstream)..."
+    Invoke-Remote "docker restart shuhe-safeline-upstream 2>/dev/null || true"
     Write-OK "Frontend deployed"
 }
 

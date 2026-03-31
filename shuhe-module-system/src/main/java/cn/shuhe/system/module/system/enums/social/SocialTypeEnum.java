@@ -23,11 +23,11 @@ public enum SocialTypeEnum implements ArrayValuable<Integer> {
      */
     GITEE(10, "GITEE"),
     /**
-     * 钉钉
+     * 钉钉（开放平台 OAuth2 统一登录，须用 JustAuth {@code DINGTALK_V2}，与 login.dingtalk.com 扫码一致；旧 {@code DINGTALK} 换票会报「不存在的临时授权码」）
      *
-     * @see <a href="https://developers.dingtalk.com/document/app/obtain-identity-credentials">接入文档</a>
+     * @see <a href="https://www.justauth.cn/guide/oauth/dingtalk_v2/">JustAuth 钉钉登录（新）</a>
      */
-    DINGTALK(20, "DINGTALK"),
+    DINGTALK(20, "DINGTALK_V2"),
 
     /**
      * 企业微信

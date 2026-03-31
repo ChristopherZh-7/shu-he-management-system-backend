@@ -36,6 +36,22 @@ public interface SocialUserService {
     String bindSocialUser(@Valid SocialUserBindReqDTO reqDTO);
 
     /**
+     * 钉钉通讯录同步后，用 unionid（与 OAuth 扫码登录写入的 openid 一致）预绑定管理端用户与钉钉身份
+     *
+     * @param userId  后台用户编号 {@link cn.shuhe.system.framework.common.enums.UserTypeEnum#ADMIN}
+     * @param unionid 钉钉 unionid
+     * @param nickname 展示昵称，可空
+     */
+    void bindDingtalkUserByUnionid(Long userId, String unionid, String nickname);
+
+    /**
+     * 解除管理端用户与钉钉（type=钉钉）的绑定，用于离职同步等场景
+     *
+     * @param userId 后台用户编号 {@link cn.shuhe.system.framework.common.enums.UserTypeEnum#ADMIN}
+     */
+    void unbindDingtalkForAdminUser(Long userId);
+
+    /**
      * 取消绑定社交用户
      *
      * @param userId 用户编号
@@ -67,6 +83,16 @@ public interface SocialUserService {
      * @return 社交用户
      */
     SocialUserRespDTO getSocialUserByCode(Integer userType, Integer socialType, String code, String state);
+
+    /**
+     * 根据 openid（钉钉为 unionId）解析已绑定的后台用户，用于端内免登等非 OAuth code 场景
+     *
+     * @param userType   用户类型
+     * @param socialType 社交平台类型
+     * @param openid     社交平台唯一标识
+     * @return 未找到社交用户或未完成绑定时，{@link SocialUserRespDTO#getUserId()} 为 null
+     */
+    SocialUserRespDTO getSocialUserByOpenid(Integer userType, Integer socialType, String openid);
 
     // ==================== 社交用户 CRUD ====================
 

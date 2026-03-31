@@ -14,6 +14,7 @@ public enum LoginLogTypeEnum {
     LOGIN_SOCIAL(101), // 使用社交登录
     LOGIN_MOBILE(103), // 使用手机登陆
     LOGIN_SMS(104), // 使用短信登陆
+    LOGIN_SWITCH_ADMIN(105), // 已登录用户切换为管理员账号
 
     LOGOUT_SELF(200),  // 自己主动登出
     LOGOUT_DELETE(202), // 强制退出

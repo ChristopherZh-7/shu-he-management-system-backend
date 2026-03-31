@@ -35,7 +35,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
+import static cn.shuhe.system.module.system.enums.ErrorCodeConstants.AUTH_PASSWORD_LOGIN_DISABLED;
+
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
+import static cn.shuhe.system.framework.common.pojo.CommonResult.error;
 import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 
@@ -66,6 +69,9 @@ public class AuthController {
     @PermitAll
     @Operation(summary = "使用账号密码登录")
     public CommonResult<AuthLoginRespVO> login(@RequestBody @Valid AuthLoginReqVO reqVO) {
+        if (Boolean.FALSE.equals(securityProperties.getPasswordLoginEnabled())) {
+            return error(AUTH_PASSWORD_LOGIN_DISABLED);
+        }
         return success(authService.login(reqVO));
     }
 
@@ -169,6 +175,31 @@ public class AuthController {
     @Operation(summary = "社交快捷登录，使用 code 授权码", description = "适合未登录的用户，但是社交账号已绑定用户")
     public CommonResult<AuthLoginRespVO> socialQuickLogin(@RequestBody @Valid AuthSocialLoginReqVO reqVO) {
         return success(authService.socialLogin(reqVO));
+    }
+
+    @GetMapping("/dingtalk-jsapi-config")
+    @PermitAll
+    @Operation(summary = "钉钉 JSAPI 签名", description = "供钉钉内 H5 调用 dd.config，参数 url 为当前页完整地址（不含 hash）")
+    @Parameter(name = "url", description = "当前页面 URL", required = true)
+    public CommonResult<AuthDingtalkJsapiConfigRespVO> getDingtalkJsapiConfig(@RequestParam("url") String url) {
+        return success(authService.getDingtalkJsapiConfig(url));
+    }
+
+    @PostMapping("/dingtalk-inapp-login")
+    @PermitAll
+    @Operation(summary = "钉钉端内免登", description = "使用 JSAPI 获取的 authCode 换票登录，需与扫码绑定同一 unionId")
+    public CommonResult<AuthLoginRespVO> dingtalkInAppLogin(@RequestBody @Valid AuthDingtalkInAppLoginReqVO reqVO) {
+        return success(authService.dingtalkInAppLogin(reqVO));
+    }
+
+    @PostMapping("/switch-admin")
+    @Operation(summary = "切换为管理员账号",
+            description = "需已登录且当前用户 id 在配置白名单内；须提交配置中目标管理员的账号与密码验证通过后，返回新 token，原 token 失效")
+    public CommonResult<AuthLoginRespVO> switchToAdmin(HttpServletRequest request,
+                                                       @RequestBody @Valid AuthSwitchAdminReqVO reqVO) {
+        String token = SecurityFrameworkUtils.obtainAuthorization(request,
+                securityProperties.getTokenHeader(), securityProperties.getTokenParameter());
+        return success(authService.switchToAdmin(getLoginUserId(), token, reqVO));
     }
 
 }

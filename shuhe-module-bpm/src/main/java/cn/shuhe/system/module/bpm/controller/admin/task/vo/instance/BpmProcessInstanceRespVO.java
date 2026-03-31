@@ -22,7 +22,7 @@ public class BpmProcessInstanceRespVO {
     private String name;
 
     @Schema(description = "流程摘要")
-    private List<KeyValue<String, String>> summary; // 只有流程表单，才有摘要！
+    private List<KeyValue<String, String>> summary; // 流程表单按表单字段；业务表单按流程变量（如 CRM 的 customerName）
 
     @Schema(description = "流程分类", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private String category;

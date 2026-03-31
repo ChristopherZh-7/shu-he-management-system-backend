@@ -242,15 +242,24 @@ public class BpmModelServiceImpl implements BpmModelService {
         // 1.1 校验流程模型存在
         Model model = validateModelManager(id, userId);
         BpmModelMetaInfoVO metaInfo = BpmModelConvert.INSTANCE.parseMetaInfo(model);
-        // 1.2 校验流程图
-        byte[] bpmnBytes = getModelBpmnXML(model.getId());
-        validateBpmnXml(bpmnBytes, metaInfo.getType());
-        // 1.3 校验表单已配
-        BpmFormDO form = validateFormConfig(metaInfo);
-        // 1.4 校验任务分配规则已配置
-        taskCandidateInvoker.validateBpmnConfig(bpmnBytes);
-        // 1.5 获取仿钉钉流程设计器模型数据
+        // 1.2 仿钉钉模型：部署前用当前 SimpleModelUtils 从 JSON 重新生成 BPMN，避免仓库里仍是旧 XML（例如 ${coll_userList}）
         String simpleJson = getModelSimpleJson(model.getId());
+        byte[] bpmnBytes = getModelBpmnXML(model.getId());
+        if (ObjUtil.equals(BpmModelTypeEnum.SIMPLE.getType(), metaInfo.getType()) && StrUtil.isNotBlank(simpleJson)) {
+            BpmSimpleModelNodeVO simpleModel = JsonUtils.parseObject(simpleJson, BpmSimpleModelNodeVO.class);
+            if (simpleModel != null) {
+                BpmnModel rebuilt = SimpleModelUtils.buildBpmnModel(model.getKey(), model.getName(), simpleModel);
+                String bpmnXml = BpmnModelUtils.getBpmnXml(rebuilt);
+                bpmnBytes = StrUtil.utf8Bytes(bpmnXml);
+                updateModelBpmnXml(model.getId(), bpmnXml);
+            }
+        }
+        // 1.3 校验流程图
+        validateBpmnXml(bpmnBytes, metaInfo.getType());
+        // 1.4 校验表单已配
+        BpmFormDO form = validateFormConfig(metaInfo);
+        // 1.5 校验任务分配规则已配置
+        taskCandidateInvoker.validateBpmnConfig(bpmnBytes);
 
         // 2.1 创建流程定义
         String definitionId = processDefinitionService.createProcessDefinition(model, metaInfo, bpmnBytes, simpleJson,

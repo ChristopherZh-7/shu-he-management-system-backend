@@ -37,6 +37,7 @@ import cn.shuhe.system.module.system.dal.dataobject.dept.UserPostDO;
 import cn.shuhe.system.module.system.dal.dataobject.permission.RoleDO;
 import cn.shuhe.system.module.system.service.cost.PositionLevelHistoryService;
 import cn.shuhe.system.module.system.service.permission.PermissionService;
+import cn.shuhe.system.module.system.service.social.SocialUserService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -79,6 +80,39 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
         }
         return mobile;
     }
+
+    /**
+     * 钉钉通讯录同步成功后，用 unionid 预绑定「管理端用户 ↔ 钉钉扫码登录」。
+     * unionid 与 OAuth 写入 {@code system_social_user.openid} 一致（JustAuth 钉钉 uuid）。
+     */
+    private void tryBindDingtalkSocialAfterUserSync(String accessToken, Long localUserId,
+                                                    DingtalkApiService.DingtalkUser dingtalkUser) {
+        if (localUserId == null || dingtalkUser == null || StrUtil.isEmpty(dingtalkUser.getUserid())) {
+            return;
+        }
+        AdminUserDO bindTargetUser = adminUserMapper.selectById(localUserId);
+        if (bindTargetUser == null || EMPLOYEE_STATUS_DIMISSION.equals(bindTargetUser.getEmployeeStatus())) {
+            return;
+        }
+        String unionid = dingtalkUser.getUnionid();
+        if (StrUtil.isEmpty(unionid)) {
+            DingtalkApiService.DingtalkUser detail = dingtalkApiService.getUserByUserId(accessToken, dingtalkUser.getUserid());
+            if (detail != null) {
+                unionid = detail.getUnionid();
+            }
+        }
+        if (StrUtil.isEmpty(unionid)) {
+            log.debug("钉钉用户未返回 unionid，跳过社交预绑定: userid={}", dingtalkUser.getUserid());
+            return;
+        }
+        try {
+            socialUserService.bindDingtalkUserByUnionid(localUserId, unionid, dingtalkUser.getName());
+            log.debug("钉钉同步已预绑定社交登录: localUserId={}, unionid={}", localUserId, unionid);
+        } catch (Exception e) {
+            log.warn("钉钉同步后预绑定社交登录失败: localUserId={}, userid={}, err={}",
+                    localUserId, dingtalkUser.getUserid(), e.getMessage());
+        }
+    }
     
     /** 在职状态: 1-在职, 2-离职 */
     private static final Integer EMPLOYEE_STATUS_ON_JOB = 1;
@@ -116,6 +150,9 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
 
     @Resource
     private RoleMapper roleMapper;
+
+    @Resource
+    private SocialUserService socialUserService;
 
     @Override
     public Long createDingtalkConfig(DingtalkConfigSaveReqVO createReqVO) {
@@ -531,6 +568,7 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                             syncUserPosts(existingUser.getId(), postIds);
                             // 根据部门+职位自动分配角色
                             assignAutoRoleIfNeeded(existingUser.getId(), deptTypeForRole, dingtalkUser.getTitle());
+                            tryBindDingtalkSocialAfterUserSync(accessToken, existingUser.getId(), dingtalkUser);
                             updateCount++;
                         } else {
                             // 映射存在但用户被删除了，重新创建用户
@@ -566,6 +604,7 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                             // 更新映射关系
                             mapping.setLocalId(newUser.getId());
                             dingtalkMappingMapper.updateById(mapping);
+                            tryBindDingtalkSocialAfterUserSync(accessToken, newUser.getId(), dingtalkUser);
                             createCount++;
                         }
                     } else {
@@ -608,6 +647,7 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                                 .dingtalkId(dingtalkUser.getUserid())
                                 .build();
                         dingtalkMappingMapper.insert(newMapping);
+                        tryBindDingtalkSocialAfterUserSync(accessToken, newUser.getId(), dingtalkUser);
                         createCount++;
                     }
                 }
@@ -736,6 +776,12 @@ public class DingtalkConfigServiceImpl implements DingtalkConfigService {
                             }
                             
                             adminUserMapper.updateById(existingUser);
+                            try {
+                                socialUserService.unbindDingtalkForAdminUser(existingUser.getId());
+                            } catch (Exception e) {
+                                log.warn("离职同步解除钉钉社交绑定失败: userId={}, err={}",
+                                        existingUser.getId(), e.getMessage());
+                            }
                             dimissionUpdateCount++;
                         } else {
                             // 用户被删除了，删除旧映射

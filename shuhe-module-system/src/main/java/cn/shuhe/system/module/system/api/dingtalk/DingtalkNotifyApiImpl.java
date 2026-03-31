@@ -45,6 +45,10 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
     @Value("${shuhe.dingtalk.business-audit.approve-base-url:}")
     private String approveBaseUrlFromConfig;
 
+    /** 本地/环境配置：回调/确认类链接 baseUrl，钉钉配置 callback_base_url 为空时使用 */
+    @Value("${shuhe.dingtalk.callback-base-url:}")
+    private String callbackBaseUrlFromConfig;
+
     @Resource
     private DingtalkMappingMapper dingtalkMappingMapper;
 
@@ -309,10 +313,17 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
         List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
         if (CollUtil.isNotEmpty(configs) && StrUtil.isNotEmpty(configs.get(0).getCallbackBaseUrl())) {
             String url = configs.get(0).getCallbackBaseUrl();
-            return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+            return normalizeBaseUrl(url);
+        }
+        if (StrUtil.isNotEmpty(callbackBaseUrlFromConfig)) {
+            return normalizeBaseUrl(callbackBaseUrlFromConfig);
         }
         String auto = localAddressResolver.buildAutoBaseUrl();
         return auto != null && auto.endsWith("/") ? auto.substring(0, auto.length() - 1) : auto;
+    }
+
+    private static String normalizeBaseUrl(String url) {
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
     @Override
@@ -331,11 +342,14 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
         } else if (StrUtil.isNotEmpty(approveBaseUrlFromConfig)) {
             url = approveBaseUrlFromConfig;
         }
+        if (StrUtil.isEmpty(url) && StrUtil.isNotEmpty(callbackBaseUrlFromConfig)) {
+            url = callbackBaseUrlFromConfig;
+        }
         if (StrUtil.isEmpty(url)) {
             url = localAddressResolver.buildAutoBaseUrl();  // 未配置时用本机 IP（58 优先，其次 10）
         }
         if (url == null || url.isEmpty()) return null;
-        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+        return normalizeBaseUrl(url);
     }
 
     @Override

@@ -40,6 +40,26 @@ public class SecurityProperties {
     private String mockSecret = "test";
 
     /**
+     * 是否开放账号密码登录（关闭后 /system/auth/login 将拒绝，仅保留钉钉等社交登录）
+     */
+    private Boolean passwordLoginEnabled = true;
+
+    /**
+     * 是否允许已登录用户调用「切换为管理员账号」接口（需同时配置 {@link #switchAdminAllowedUserIds} 白名单）
+     */
+    private Boolean switchAdminEnabled = false;
+
+    /**
+     * 允许发起切换的用户 id 白名单（通常为已绑定钉钉的运营账号）；未包含的 id 调用接口会拒绝
+     */
+    private List<Long> switchAdminAllowedUserIds = Collections.emptyList();
+
+    /**
+     * 切换目标管理员登录名（默认 admin）
+     */
+    private String switchAdminTargetUsername = "admin";
+
+    /**
      * 免登录的 URL 列表
      */
     private List<String> permitAllUrls = Collections.emptyList();

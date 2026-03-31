@@ -517,8 +517,11 @@ public class SimpleModelUtils {
 
             // 处理多实例审批方式
             MultiInstanceLoopCharacteristics multiInstanceCharacteristics = new MultiInstanceLoopCharacteristics();
-            // 设置 collectionVariable。本系统用不到，仅仅为了 Flowable 校验不报错
-            multiInstanceCharacteristics.setInputDataItem("${coll_userList}");
+            // 必须与 BpmParallelMultiInstanceBehavior / BpmSequentialMultiInstanceBehavior 中
+            // FlowableUtils.formatExecutionCollectionVariable(userTaskId) 一致，否则 Flowable 仍会解析
+            // ${coll_userList}，而运行时从未设置该变量，会在审批进入多实例节点时报 PropertyNotFoundException
+            String collectionVar = FlowableUtils.formatExecutionCollectionVariable(userTask.getId());
+            multiInstanceCharacteristics.setInputDataItem("${" + collectionVar + "}");
             if (approveMethodEnum == BpmUserTaskApproveMethodEnum.ANY) {
                 multiInstanceCharacteristics.setCompletionCondition(approveMethodEnum.getCompletionCondition());
                 multiInstanceCharacteristics.setSequential(false);

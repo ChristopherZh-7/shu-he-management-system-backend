@@ -1,0 +1,55 @@
+# 监听 9080，经 Coraza + CRS 后反代到本机现有业务（Docker 8080）
+# 访问: http://10.40.88.38:9080/ （内网）
+# 审计日志（WAF）：宿主机 ./logs/audit.log（见 docker-compose volumes）
+#
+# 说明：对特定 URI 关闭 WAF 的 SecRule 必须写在 Include @owasp_crs 之前，
+# 否则 CRS 会在 phase1/2 先累计异常分，phase2 仍会被 949110 拦截。
+
+{
+	order coraza_waf first
+	auto_https off
+}
+
+:9080 {
+	coraza_waf {
+		load_owasp_crs
+		directives `
+			Include @coraza.conf-recommended
+			Include @crs-setup.conf.example
+			SecRuleEngine On
+			# 改密码 JSON 中含 @ 触发 CRS 误报；仅以下 URI 对本请求关闭 WAF（业务侧仍有登录鉴权）
+			SecRule REQUEST_URI "@rx ^/admin-api/system/user/(profile/(update-password|force-update-password)|update-password)$" "id:10000,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			# CRM 提交审核：易触发 CRS 误报；仅该路径关闭 WAF（鉴权仍由业务处理）
+			SecRule REQUEST_URI "@rx ^/admin-api/crm/business/submit-audit(\?|$)" "id:10002,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			# BPM 任务审批 / 驳回
+			SecRule REQUEST_URI "@rx ^/admin-api/bpm/task/approve(\?|$)" "id:10003,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			SecRule REQUEST_URI "@rx ^/admin-api/bpm/task/reject(\?|$)" "id:10009,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			# OAuth / 社交登录回调（redirectUri 长 URL 易误报）
+			SecRule REQUEST_URI "@rx ^/admin-api/system/auth/social-auth-redirect(\?|$)" "id:10010,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			# 钉钉端内：dd.config 签名（url 参数）与 authCode 换票，钉钉 UA/JSON 易触发 CRS 误报
+			SecRule REQUEST_URI "@rx ^/admin-api/system/auth/dingtalk-jsapi-config(\?|$)" "id:10011,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			SecRule REQUEST_URI "@rx ^/admin-api/system/auth/dingtalk-inapp-login(\?|$)" "id:10012,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			# 钉钉配置更新：请求体含 URL/密钥等易触发 CRS 误报（仍须登录与权限）
+			SecRule REQUEST_URI "@rx ^/admin-api/system/dingtalk-config/update(\?|$)" "id:10013,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			# BPM 流程模型：修改模型 / 保存简单设计器（JSON 大，易误报）
+			SecRule REQUEST_URI "@rx ^/admin-api/bpm/model/update(\?|$)" "id:10004,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			SecRule REQUEST_URI "@rx ^/admin-api/bpm/model/simple/update(\?|$)" "id:10005,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			# CRM 商机删除
+			SecRule REQUEST_URI "@rx ^/admin-api/crm/business/delete(\?|$)" "id:10006,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			# 系统菜单更新
+			SecRule REQUEST_URI "@rx ^/admin-api/system/menu/update(\?|$)" "id:10007,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			# CRM 客户更新
+			SecRule REQUEST_URI "@rx ^/admin-api/crm/customer/update(\?|$)" "id:10008,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			Include @owasp_crs/*.conf
+			SecAuditEngine RelevantOnly
+			SecAuditLog /var/log/coraza/audit.log
+			SecAuditLogType Serial
+		`
+	}
+	reverse_proxy http://127.0.0.1:8080 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

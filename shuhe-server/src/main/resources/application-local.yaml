@@ -236,7 +236,12 @@ shuhe:
   captcha:
     enable: false # 本地环境，暂时关闭图片验证码，方便登录等接口的测试；
   security:
+    password-login-enabled: false # 仅钉钉扫码；若本地需测账号密码可改为 true
     mock-enable: true
+    switch-admin-enabled: true
+    switch-admin-allowed-user-ids:
+      - 249
+    switch-admin-target-username: admin
   pay:
     order-notify-url: https://yutou.mynatapp.cc/admin-api/pay/notify/order # 支付渠道的【支付】回调地址
     refund-notify-url: https://yutou.mynatapp.cc/admin-api/pay/notify/refund # 支付渠道的【退款】回调地址
@@ -253,9 +258,11 @@ shuhe:
 justauth:
   enabled: true
   type:
-    DINGTALK: # 钉钉
-      client-id: dingvrnreaje3yqvzhxg
-      client-secret: i8E6iZyDvZj51JIb0tYsYfVQYOks9Cq1lgryEjFRqC79P3iJcrxEwT6Qk2QvLrLI
+    # 钉钉 OAuth2（新）：与开放平台扫码 / login.dingtalk.com 一致；勿用旧键 DINGTALK。库表 system_social_client social_type=20 仍可覆盖 client-id/secret
+    DINGTALK_V2: # AppSecret 在开放平台「凭证与基础信息」；或执行 sql/mysql/manual/fix_social_client_dingtalk_appkey.sql
+      client-id: dingt49strlwu53ezfbj
+      # 将下方替换为该 AppKey 对应的 AppSecret（勿使用仓库历史中的芋道示例密钥）
+      client-secret: 3W1EZXPhaXq8FelChgrl5uj1a-KpofPquaLNaehPCh3xNMMYsOb8d6Dq505wDnst
       ignore-check-redirect-uri: true
     WECHAT_ENTERPRISE: # 企业微信
       client-id: wwd411c69a39ad2e54

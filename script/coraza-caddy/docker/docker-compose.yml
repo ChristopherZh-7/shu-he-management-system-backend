@@ -1,0 +1,9 @@
+services:
+  caddy-coraza:
+    build: .
+    image: caddy-coraza:local
+    container_name: caddy-coraza-waf
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro

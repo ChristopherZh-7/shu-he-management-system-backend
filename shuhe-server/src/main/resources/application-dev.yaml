@@ -171,6 +171,13 @@ wx: # 参见 https://github.com/Wechat-Group/WxJava/blob/develop/spring-boot-sta
 
 # 戍合配置项，设置当前项目所有自定义的配置
 shuhe:
+  security:
+    password-login-enabled: false # 仅钉钉扫码
+    # 个人中心「身份切换」：已登录用户一键切到管理员账号（需白名单 system_users.id）
+    switch-admin-enabled: true
+    switch-admin-allowed-user-ids:
+      - 249 # 按实际允许切换的用户 id 填写，可多个
+    switch-admin-target-username: admin # 目标管理员登录名，须存在于 system_users
   pay:
     order-notify-url: http://yunai.natapp1.cc/admin-api/pay/notify/order # 支付渠道的【支付】回调地址
     refund-notify-url: http://yunai.natapp1.cc/admin-api/pay/notify/refund # 支付渠道的【退款】回调地址
@@ -181,9 +188,11 @@ shuhe:
 justauth:
   enabled: true
   type:
-    DINGTALK: # 钉钉
-      client-id: dingvrnreaje3yqvzhxg
-      client-secret: i8E6iZyDvZj51JIb0tYsYfVQYOks9Cq1lgryEjFRqC79P3iJcrxEwT6Qk2QvLrLI
+    # 钉钉 OAuth2（新）：与开放平台扫码 / login.dingtalk.com 一致；system_social_client 启用的记录会覆盖 yaml（见 sql/mysql/manual/fix_social_client_dingtalk_appkey.sql）
+    DINGTALK_V2:
+      client-id: dingt49strlwu53ezfbj
+      # 将下方替换为该 AppKey 对应的 AppSecret（勿使用仓库历史中的芋道示例密钥）
+      client-secret: 3W1EZXPhaXq8FelChgrl5uj1a-KpofPquaLNaehPCh3xNMMYsOb8d6Dq505wDnst
       ignore-check-redirect-uri: true
     WECHAT_ENTERPRISE: # 企业微信
       client-id: wwd411c69a39ad2e54

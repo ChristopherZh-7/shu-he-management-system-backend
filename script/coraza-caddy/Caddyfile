@@ -1,0 +1,52 @@
+# Caddy + OWASP Coraza（需用 xcaddy 编译进 coraza-caddy 插件的 caddy 二进制运行）
+# 部署位置建议：阿里云 ECS（公网入口），且本机已能访问 10.40.88.38:8080（WireGuard 已通）
+#
+# 使用前：systemctl stop nginx（释放 80/8080）
+# 证书：80 官网若需 Let's Encrypt，将域名写在对应站点并配置 tls；此处示例为 HTTP
+
+{
+	order coraza_waf first
+}
+
+# -------- 官网：公网 80（静态目录，与此前 Nginx 官网一致）--------
+# 将 example.com 换成你的域名；若暂用 IP 访问，可改为 :80 单段（见下方注释）
+:80 {
+	coraza_waf {
+		load_owasp_crs
+		directives `
+			Include @coraza.conf-recommended
+			Include @crs-setup.conf.example
+			Include @owasp_crs/*.conf
+			SecRuleEngine On
+		`
+	}
+	root * /var/www/official
+	try_files {path} /index.html
+	file_server
+}
+
+# 若仅需 IP 访问、不要 Host 匹配，上面 :80 已足够；有域名时建议改为：
+# shguard.cn, www.shguard.cn {
+#     ... 同上 coraza + root ...
+# }
+
+# -------- 管理系统：公网 8080 → 内网（经 WireGuard）--------
+:8080 {
+	coraza_waf {
+		load_owasp_crs
+		directives `
+			Include @coraza.conf-recommended
+			Include @crs-setup.conf.example
+			Include @owasp_crs/*.conf
+			SecRuleEngine On
+			# 改密码 JSON 中含 @、-- 等易触发 CRS SQLi 误报；仅对上述 URI 关闭本请求的 WAF（业务侧仍有登录鉴权）
+			SecRule REQUEST_URI "@rx ^/admin-api/system/user/(profile/(update-password|force-update-password)|update-password)$" "id:10000,phase:1,pass,nolog,ctl:ruleEngine=Off"
+		`
+	}
+	reverse_proxy http://10.40.88.38:8080 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

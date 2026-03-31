@@ -1,0 +1,18 @@
+# 本机 Windows：Coraza 已启用；为避免 CRS 通配路径在 Windows 下报错，此处用最小 SecRule 演示
+# 监听 127.0.0.1:9180
+# Linux/服务器上仍可使用主 Caddyfile 中的 load_owasp_crs 全量 CRS
+
+{
+	order coraza_waf first
+	auto_https off
+}
+
+127.0.0.1:9180 {
+	coraza_waf {
+		directives `
+			SecRuleEngine On
+			SecRule REQUEST_URI "@rx /admin" "id:1001,phase:1,deny,status:403,msg:'blocked demo path'"
+		`
+	}
+	respond "Coraza + Caddy 本机测试 OK\n"
+}

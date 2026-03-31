@@ -1,12 +1,15 @@
 package cn.shuhe.system.module.system.service.auth;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.shuhe.system.framework.common.enums.CommonStatusEnum;
 import cn.shuhe.system.framework.common.enums.UserTypeEnum;
 import cn.shuhe.system.framework.common.util.monitor.TracerUtils;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.framework.common.util.servlet.ServletUtils;
 import cn.shuhe.system.framework.common.util.validation.ValidationUtils;
+import cn.shuhe.system.framework.security.config.SecurityProperties;
 import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
 import cn.shuhe.system.module.system.api.logger.dto.LoginLogCreateReqDTO;
 import cn.shuhe.system.module.system.api.sms.SmsCodeApi;
@@ -19,8 +22,10 @@ import cn.shuhe.system.module.system.dal.dataobject.oauth2.OAuth2AccessTokenDO;
 import cn.shuhe.system.module.system.dal.dataobject.user.AdminUserDO;
 import cn.shuhe.system.module.system.enums.logger.LoginLogTypeEnum;
 import cn.shuhe.system.module.system.enums.logger.LoginResultEnum;
+import cn.shuhe.system.module.system.enums.social.SocialTypeEnum;
 import cn.shuhe.system.module.system.enums.oauth2.OAuth2ClientConstants;
 import cn.shuhe.system.module.system.enums.sms.SmsSceneEnum;
+import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkInAppAuthService;
 import cn.shuhe.system.module.system.service.logger.LoginLogService;
 import cn.shuhe.system.module.system.service.member.MemberService;
 import cn.shuhe.system.module.system.service.oauth2.OAuth2TokenService;
@@ -69,6 +74,10 @@ public class AdminAuthServiceImpl implements AdminAuthService {
     private CaptchaService captchaService;
     @Resource
     private SmsCodeApi smsCodeApi;
+    @Resource
+    private DingtalkInAppAuthService dingtalkInAppAuthService;
+    @Resource
+    private SecurityProperties securityProperties;
 
     /**
      * 验证码的开关，默认为 true
@@ -185,6 +194,61 @@ public class AdminAuthServiceImpl implements AdminAuthService {
 
         // 创建 Token 令牌，记录登录日志
         return createTokenAfterLoginSuccess(user.getId(), user.getUsername(), LoginLogTypeEnum.LOGIN_SOCIAL, user);
+    }
+
+    @Override
+    public AuthDingtalkJsapiConfigRespVO getDingtalkJsapiConfig(String url) {
+        return dingtalkInAppAuthService.buildJsapiConfig(url);
+    }
+
+    @Override
+    public AuthLoginRespVO dingtalkInAppLogin(AuthDingtalkInAppLoginReqVO reqVO) {
+        String unionId = dingtalkInAppAuthService.exchangeAuthCodeForUnionId(reqVO.getAuthCode());
+        SocialUserRespDTO socialUser = socialUserService.getSocialUserByOpenid(
+                UserTypeEnum.ADMIN.getValue(), SocialTypeEnum.DINGTALK.getType(), unionId);
+        if (socialUser == null || socialUser.getUserId() == null) {
+            throw exception(AUTH_THIRD_LOGIN_NOT_BIND);
+        }
+        AdminUserDO user = userService.getUser(socialUser.getUserId());
+        if (user == null) {
+            throw exception(USER_NOT_EXISTS);
+        }
+        return createTokenAfterLoginSuccess(user.getId(), user.getUsername(), LoginLogTypeEnum.LOGIN_SOCIAL, user);
+    }
+
+    @Override
+    @DataPermission(enable = false)
+    public AuthLoginRespVO switchToAdmin(Long sourceUserId, String accessToken, AuthSwitchAdminReqVO reqVO) {
+        if (Boolean.FALSE.equals(securityProperties.getSwitchAdminEnabled())) {
+            throw exception(AUTH_SWITCH_ADMIN_DISABLED);
+        }
+        if (sourceUserId == null) {
+            throw exception(AUTH_SWITCH_ADMIN_NOT_ALLOWED);
+        }
+        if (StrUtil.isBlank(accessToken)) {
+            throw exception(AUTH_SWITCH_ADMIN_NOT_ALLOWED);
+        }
+        if (CollUtil.isEmpty(securityProperties.getSwitchAdminAllowedUserIds())
+                || !securityProperties.getSwitchAdminAllowedUserIds().contains(sourceUserId)) {
+            throw exception(AUTH_SWITCH_ADMIN_NOT_ALLOWED);
+        }
+
+        String targetUsername = StrUtil.blankToDefault(securityProperties.getSwitchAdminTargetUsername(), "admin");
+        if (!StrUtil.equals(reqVO.getUsername(), targetUsername)) {
+            throw exception(AUTH_SWITCH_ADMIN_NOT_ALLOWED);
+        }
+
+        // 校验管理员账号密码（与登录一致）；需关闭数据权限，否则 dept 过滤下可能查不到 admin
+        AdminUserDO target = authenticate(reqVO.getUsername(), reqVO.getPassword());
+        if (CommonStatusEnum.isDisable(target.getStatus())) {
+            throw exception(AUTH_LOGIN_USER_DISABLED);
+        }
+
+        oauth2TokenService.removeAccessToken(accessToken);
+        log.info("[switch-admin] fromUserId={} -> targetUserId={} targetUsername={}",
+                sourceUserId, target.getId(), target.getUsername());
+
+        return createTokenAfterLoginSuccess(target.getId(), target.getUsername(), LoginLogTypeEnum.LOGIN_SWITCH_ADMIN, target);
     }
 
     @VisibleForTesting

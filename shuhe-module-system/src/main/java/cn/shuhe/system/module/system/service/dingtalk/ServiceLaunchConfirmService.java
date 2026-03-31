@@ -5,7 +5,6 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.SecureUtil;
 import cn.shuhe.system.module.system.api.dingtalk.DingtalkNotifyApi;
 import cn.shuhe.system.module.system.dal.dataobject.dingtalkconfig.DingtalkConfigDO;
-import cn.shuhe.system.module.system.framework.dingtalk.LocalAddressResolver;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkConfigService;
 import jakarta.annotation.Resource;
 import lombok.AllArgsConstructor;
@@ -41,9 +40,6 @@ public class ServiceLaunchConfirmService {
 
     @Resource
     private ServiceLaunchConfirmCallback serviceLaunchConfirmCallback;
-
-    @Resource
-    private LocalAddressResolver localAddressResolver;
 
     /**
      * 确认结果
@@ -91,20 +87,12 @@ public class ServiceLaunchConfirmService {
     public String generateConfirmUrl(Long memberId, Long userId) {
         String token = generateConfirmToken(memberId, userId);
         
-        // 从数据库配置读取回调URL，未配置时用本机 IP（58 优先，其次 10）
-        DingtalkConfigDO config = getConfig();
-        String baseUrl = null;
-        if (config != null && StrUtil.isNotEmpty(config.getCallbackBaseUrl())) {
-            baseUrl = config.getCallbackBaseUrl();
-        }
-        if (StrUtil.isEmpty(baseUrl)) {
-            baseUrl = localAddressResolver.buildAutoBaseUrl();
-        }
+        // 与 DingtalkNotifyApi#getCallbackBaseUrl 一致：库表 > yaml callback-base-url > 本机 IP
+        String baseUrl = dingtalkNotifyApi.getCallbackBaseUrl();
         if (StrUtil.isEmpty(baseUrl)) {
             baseUrl = "http://localhost:48080"; // 兜底
         }
-        // 确保 baseUrl 不以 / 结尾
-        if (baseUrl != null && baseUrl.endsWith("/")) {
+        if (baseUrl.endsWith("/")) {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
         

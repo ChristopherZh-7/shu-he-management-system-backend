@@ -85,4 +85,25 @@ public interface AdminAuthService {
      */
     void resetPassword(AuthResetPasswordReqVO reqVO);
 
+    /**
+     * 钉钉内打开页面时的 JSAPI 签名（dd.config）
+     *
+     * @param url 当前页 URL（不含 hash）
+     */
+    AuthDingtalkJsapiConfigRespVO getDingtalkJsapiConfig(String url);
+
+    /**
+     * 钉钉端内免登：JSAPI authCode 换票后按 unionId 与扫码一致绑定关系登录
+     */
+    AuthLoginRespVO dingtalkInAppLogin(@Valid AuthDingtalkInAppLoginReqVO reqVO);
+
+    /**
+     * 已登录用户切换为管理员：需验证配置中目标管理员的账号密码；返回新 token，原 token 作废
+     *
+     * @param sourceUserId 当前登录用户 id
+     * @param accessToken  当前访问令牌（将失效）
+     * @param reqVO        管理员账号、密码（用户名须与配置的 switch-admin-target-username 一致）
+     */
+    AuthLoginRespVO switchToAdmin(Long sourceUserId, String accessToken, @Valid AuthSwitchAdminReqVO reqVO);
+
 }

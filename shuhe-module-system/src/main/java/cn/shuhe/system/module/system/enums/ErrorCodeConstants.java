@@ -18,6 +18,11 @@ public interface ErrorCodeConstants {
     ErrorCode AUTH_REGISTER_CAPTCHA_CODE_ERROR = new ErrorCode(1_002_000_008, "验证码不正确，原因：{}");
     /** 首次登录需强制修改密码，请先修改密码后再操作 */
     ErrorCode AUTH_PASSWORD_MUST_CHANGE = new ErrorCode(1_002_000_009, "首次登录需强制修改密码，请先修改密码后再操作");
+    ErrorCode AUTH_PASSWORD_LOGIN_DISABLED = new ErrorCode(1_002_000_010, "未开放账号密码登录，请使用钉钉扫码");
+    ErrorCode AUTH_DINGTALK_JSAPI_CONFIG_FAIL = new ErrorCode(1_002_000_011, "钉钉 JSAPI 配置失败：{}");
+    ErrorCode AUTH_DINGTALK_INAPP_TOKEN_FAIL = new ErrorCode(1_002_000_012, "钉钉端内换票失败：{}");
+    ErrorCode AUTH_SWITCH_ADMIN_DISABLED = new ErrorCode(1_002_000_013, "未开启「切换管理员账号」功能");
+    ErrorCode AUTH_SWITCH_ADMIN_NOT_ALLOWED = new ErrorCode(1_002_000_014, "当前账号无权切换为管理员");
 
     // ========== 菜单模块 1-002-001-000 ==========
     ErrorCode MENU_NAME_DUPLICATE = new ErrorCode(1_002_001_000, "已经存在该名字的菜单");

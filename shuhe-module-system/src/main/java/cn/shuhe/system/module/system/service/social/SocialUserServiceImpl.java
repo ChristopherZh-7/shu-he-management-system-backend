@@ -1,6 +1,7 @@
 package cn.shuhe.system.module.system.service.social;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.core.lang.Assert;
 import cn.shuhe.system.framework.common.exception.ServiceException;
 import cn.shuhe.system.framework.common.pojo.PageResult;
@@ -11,12 +12,14 @@ import cn.shuhe.system.module.system.dal.dataobject.social.SocialUserBindDO;
 import cn.shuhe.system.module.system.dal.dataobject.social.SocialUserDO;
 import cn.shuhe.system.module.system.dal.mysql.social.SocialUserBindMapper;
 import cn.shuhe.system.module.system.dal.mysql.social.SocialUserMapper;
+import cn.shuhe.system.framework.common.enums.UserTypeEnum;
 import cn.shuhe.system.module.system.enums.social.SocialTypeEnum;
 import jakarta.annotation.Resource;
 import jakarta.validation.constraints.NotNull;
 import lombok.extern.slf4j.Slf4j;
 import me.zhyd.oauth.model.AuthUser;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
@@ -81,6 +84,52 @@ public class SocialUserServiceImpl implements SocialUserService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRES_NEW)
+    public void bindDingtalkUserByUnionid(Long userId, String unionid, String nickname) {
+        if (userId == null || StrUtil.isEmpty(unionid)) {
+            return;
+        }
+        Integer userType = UserTypeEnum.ADMIN.getValue();
+        Integer socialType = SocialTypeEnum.DINGTALK.getType();
+
+        SocialUserDO socialUser = socialUserMapper.selectByTypeAndOpenid(socialType, unionid);
+        if (socialUser == null) {
+            socialUser = new SocialUserDO();
+            socialUser.setType(socialType);
+            socialUser.setOpenid(unionid);
+            // 表字段 raw_token_info / raw_user_info / code / nickname 为 NOT NULL；非 OAuth 场景用占位，首次扫码后会由 authSocialUser 覆盖
+            socialUser.setRawTokenInfo("{}");
+            socialUser.setRawUserInfo("{}");
+            socialUser.setCode("sync");
+            socialUser.setNickname(StrUtil.emptyToDefault(nickname, ""));
+            socialUserMapper.insert(socialUser);
+        } else {
+            if (StrUtil.isNotEmpty(nickname)) {
+                socialUser.setNickname(nickname);
+                socialUserMapper.updateById(socialUser);
+            }
+        }
+
+        socialUserBindMapper.deleteByUserTypeAndSocialUserId(userType, socialUser.getId());
+        socialUserBindMapper.deleteByUserTypeAndUserIdAndSocialType(userType, userId, socialType);
+
+        SocialUserBindDO socialUserBind = SocialUserBindDO.builder()
+                .userId(userId).userType(userType)
+                .socialUserId(socialUser.getId()).socialType(socialType).build();
+        socialUserBindMapper.insert(socialUserBind);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRES_NEW)
+    public void unbindDingtalkForAdminUser(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        socialUserBindMapper.deleteByUserTypeAndUserIdAndSocialType(
+                UserTypeEnum.ADMIN.getValue(), userId, SocialTypeEnum.DINGTALK.getType());
+    }
+
+    @Override
     public void unbindSocialUser(Long userId, Integer userType, Integer socialType, String openid) {
         // 获得 openid 对应的 SocialUserDO 社交用户
         SocialUserDO socialUser = socialUserMapper.selectByTypeAndOpenid(socialType, openid);
@@ -113,6 +162,18 @@ public class SocialUserServiceImpl implements SocialUserService {
         Assert.notNull(socialUser, "社交用户不能为空");
 
         // 获得绑定用户
+        SocialUserBindDO socialUserBind = socialUserBindMapper.selectByUserTypeAndSocialUserId(userType,
+                socialUser.getId());
+        return new SocialUserRespDTO(socialUser.getOpenid(), socialUser.getNickname(), socialUser.getAvatar(),
+                socialUserBind != null ? socialUserBind.getUserId() : null);
+    }
+
+    @Override
+    public SocialUserRespDTO getSocialUserByOpenid(Integer userType, Integer socialType, String openid) {
+        SocialUserDO socialUser = socialUserMapper.selectByTypeAndOpenid(socialType, openid);
+        if (socialUser == null) {
+            return new SocialUserRespDTO(openid, null, null, null);
+        }
         SocialUserBindDO socialUserBind = socialUserBindMapper.selectByUserTypeAndSocialUserId(userType,
                 socialUser.getId());
         return new SocialUserRespDTO(socialUser.getOpenid(), socialUser.getNickname(), socialUser.getAvatar(),
