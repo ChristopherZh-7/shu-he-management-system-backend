@@ -89,6 +89,10 @@ public interface CrmContractMapper extends BaseMapperX<CrmContractDO> {
         return selectCount(CrmContractDO::getBusinessId, businessId);
     }
 
+    default List<CrmContractDO> selectListByBusinessId(Long businessId) {
+        return selectList(CrmContractDO::getBusinessId, businessId);
+    }
+
     default Long selectCountByAudit(Long userId) {
         return selectCountByAudit(userId, CrmSceneTypeEnum.OWNER.getType());
     }

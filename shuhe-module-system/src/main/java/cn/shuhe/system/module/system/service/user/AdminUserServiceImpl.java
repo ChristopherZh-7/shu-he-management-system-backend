@@ -519,7 +519,9 @@ public class AdminUserServiceImpl implements AdminUserService {
         importUsers.forEach(importUser -> {
             // 2.1.1 校验字段是否符合要求
             try {
-                ValidationUtils.validate(BeanUtils.toBean(importUser, UserSaveReqVO.class).setPassword(initPassword));
+                UserSaveReqVO importSaveReq = BeanUtils.toBean(importUser, UserSaveReqVO.class);
+                importSaveReq.setPassword(initPassword);
+                ValidationUtils.validate(importSaveReq);
             } catch (ConstraintViolationException ex){
                 respVO.getFailureUsernames().put(importUser.getUsername(), ex.getMessage());
                 return;

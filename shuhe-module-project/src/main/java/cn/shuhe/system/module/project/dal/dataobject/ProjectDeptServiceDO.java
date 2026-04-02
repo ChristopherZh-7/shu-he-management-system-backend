@@ -72,12 +72,12 @@ public class ProjectDeptServiceDO extends BaseDO {
     // ========== 部门信息 ==========
 
     /**
-     * 所属部门ID（领取后填充）
+     * 所属部门 ID（领取后填充；商机/提前投入批量创建时从 deptAllocations 写入，供数据权限使用）
      */
     private Long deptId;
 
     /**
-     * 部门名称
+     * 部门名称（与 deptId 同步）
      */
     private String deptName;
 

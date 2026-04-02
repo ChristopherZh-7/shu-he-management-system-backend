@@ -21,6 +21,9 @@
 			SecRule REQUEST_URI "@rx ^/admin-api/system/user/(profile/(update-password|force-update-password)|update-password)$" "id:10000,phase:1,pass,nolog,ctl:ruleEngine=Off"
 			# CRM 提交审核：易触发 CRS 误报；仅该路径关闭 WAF（鉴权仍由业务处理）
 			SecRule REQUEST_URI "@rx ^/admin-api/crm/business/submit-audit(\?|$)" "id:10002,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			# CRM 提交早期投入等：同上（PUT 易触发 911100；需在 phase2 再关一次，否则 949110 仍拦截）
+			SecRule REQUEST_URI "@rx ^/admin-api/crm/business/submit-early-investment(\?|$)" "id:10014,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			SecRule REQUEST_URI "@rx ^/admin-api/crm/business/submit-early-investment(\?|$)" "id:10016,phase:2,pass,nolog,ctl:ruleEngine=Off"
 			# BPM 任务审批 / 驳回
 			SecRule REQUEST_URI "@rx ^/admin-api/bpm/task/approve(\?|$)" "id:10003,phase:1,pass,nolog,ctl:ruleEngine=Off"
 			SecRule REQUEST_URI "@rx ^/admin-api/bpm/task/reject(\?|$)" "id:10009,phase:1,pass,nolog,ctl:ruleEngine=Off"

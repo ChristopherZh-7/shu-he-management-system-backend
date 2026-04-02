@@ -253,4 +253,12 @@ public class CrmBusinessController {
         return success(true);
     }
 
+    @PostMapping("/add-dept-allocation")
+    @Operation(summary = "补充部门分配（管理员功能，用于商机审批后补充遗漏的部门）")
+    @PreAuthorize("@ss.hasPermission('crm:business:update')")
+    public CommonResult<Boolean> addDeptAllocation(@Valid @RequestBody CrmBusinessAddDeptAllocationReqVO reqVO) {
+        businessService.addDeptAllocation(reqVO.getBusinessId(), reqVO.getDeptId(), reqVO.getAmount());
+        return success(true);
+    }
+
 }

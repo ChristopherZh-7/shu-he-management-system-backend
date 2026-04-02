@@ -133,6 +133,13 @@ public class ProjectRoundDO extends BaseDO {
      */
     private String remark;
 
+    // ========== 钉钉群 ==========
+
+    /**
+     * 钉钉群聊ID（创建轮次时建群，用于发送轮次消息通知）
+     */
+    private String dingtalkChatId;
+
     // ========== 来源标识 ==========
 
     /**

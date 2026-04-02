@@ -46,6 +46,7 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     @Lazy
     private ProjectService projectService;
 
+
     @Override
     public Long createDeptService(ProjectDeptServiceSaveReqVO createReqVO) {
         // 校验同一项目下同一部门类型不能重复
@@ -69,6 +70,7 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     }
 
     @Override
+    @DataPermission(enable = false) // 与 getDeptService/page 一致：按 id 更新时不能以 dept_id 过滤，否则承接部门与用户部门不一致会误判「不存在」
     public void updateDeptService(ProjectDeptServiceSaveReqVO updateReqVO) {
         // 校验存在
         validateDeptServiceExists(updateReqVO.getId());
@@ -296,11 +298,14 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
         }
     }
 
+
     @Override
     public List<ProjectDeptServiceDO> batchCreateDeptServiceForBusiness(Long projectId, Long businessId,
                                                                          Long customerId, String customerName,
                                                                          List<Integer> deptTypes,
-                                                                         java.util.Map<Integer, BigDecimal> deptTypeBudgetMap) {
+                                                                         java.util.Map<Integer, BigDecimal> deptTypeBudgetMap,
+                                                                         java.util.Map<Integer, Long> deptTypeToDeptId,
+                                                                         java.util.Map<Integer, String> deptTypeToDeptName) {
         List<ProjectDeptServiceDO> result = new ArrayList<>();
 
         for (Integer deptType : deptTypes) {
@@ -312,6 +317,8 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
             }
 
             BigDecimal deptBudget = deptTypeBudgetMap != null ? deptTypeBudgetMap.get(deptType) : null;
+            Long deptId = deptTypeToDeptId != null ? deptTypeToDeptId.get(deptType) : null;
+            String deptName = deptTypeToDeptName != null ? deptTypeToDeptName.get(deptType) : null;
 
             ProjectDeptServiceDO deptService = ProjectDeptServiceDO.builder()
                     .projectId(projectId)
@@ -319,6 +326,8 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
                     .customerId(customerId)
                     .customerName(customerName)
                     .deptType(deptType)
+                    .deptId(deptId)
+                    .deptName(deptName)
                     .status(1) // 待开始（无需领取）
                     .progress(0)
                     .claimed(true) // 跳过领取流程
@@ -328,8 +337,8 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
             deptServiceMapper.insert(deptService);
             result.add(deptService);
 
-            log.info("【部门服务单-商机】批量创建，projectId={}, deptType={}, id={}, deptBudget={}",
-                    projectId, deptType, deptService.getId(), deptBudget);
+            log.info("【部门服务单-商机】批量创建，projectId={}, deptType={}, id={}, deptId={}, deptBudget={}",
+                    projectId, deptType, deptService.getId(), deptId, deptBudget);
         }
 
         return result;

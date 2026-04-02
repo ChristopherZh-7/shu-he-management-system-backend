@@ -7,6 +7,7 @@ import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.util.ObjUtil;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
+import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
 import cn.shuhe.system.module.bpm.api.task.BpmProcessInstanceApi;
 import cn.shuhe.system.module.bpm.api.task.dto.BpmProcessInstanceCreateReqDTO;
 import cn.shuhe.system.module.crm.controller.admin.business.vo.business.CrmBusinessEarlyInvestmentSubmitReqVO;
@@ -20,6 +21,7 @@ import cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessDO;
 import cn.shuhe.system.module.crm.dal.dataobject.customer.CrmCustomerDO;
 import cn.shuhe.system.module.crm.dal.dataobject.contact.CrmContactBusinessDO;
 import cn.shuhe.system.module.crm.dal.mysql.business.CrmBusinessMapper;
+import cn.shuhe.system.module.crm.enums.ErrorCodeConstants;
 import cn.shuhe.system.module.crm.enums.common.CrmAuditStatusEnum;
 import cn.shuhe.system.module.crm.enums.common.CrmBizTypeEnum;
 import cn.shuhe.system.module.crm.enums.permission.CrmPermissionLevelEnum;
@@ -33,6 +35,10 @@ import cn.shuhe.system.module.project.service.ProjectDeptServiceService;
 import cn.shuhe.system.module.project.service.ProjectService;
 import cn.shuhe.system.module.system.dal.dataobject.cost.ContractDeptAllocationDO;
 import cn.shuhe.system.module.system.dal.mysql.cost.ContractDeptAllocationMapper;
+import cn.shuhe.system.module.crm.dal.dataobject.contract.CrmContractDO;
+import cn.shuhe.system.module.crm.dal.mysql.contract.CrmContractMapper;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
+import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
 import cn.shuhe.system.module.crm.service.permission.CrmPermissionService;
 import cn.shuhe.system.module.crm.service.permission.bo.CrmPermissionCreateReqBO;
 import cn.shuhe.system.module.crm.service.permission.bo.CrmPermissionTransferReqBO;
@@ -102,6 +108,10 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
     private cn.shuhe.system.module.system.service.cost.CostCalculationService costCalculationService;
     @Resource
     private ContractDeptAllocationMapper contractDeptAllocationMapper;
+    @Resource
+    private CrmContractMapper contractMapper;
+    @Resource
+    private ProjectMapper projectMapper;
 
     /** 测试阶段：不拉老板（总经办），仅部门主管。配置：shuhe.dingtalk.business-audit.skip-boss=true */
     @Value("${shuhe.dingtalk.business-audit.skip-boss:false}")
@@ -202,6 +212,11 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
             } catch (Exception e) {
                 log.warn("[updateBusinessAuditStatus] 发送驳回通知失败, businessId={}", id, e);
             }
+        } else if (CrmAuditStatusEnum.CANCEL.getStatus().equals(auditStatus)) {
+            // 撤单（申请人主动取消）：重置为草稿状态，允许用户重新编辑和提交
+            log.info("[updateBusinessAuditStatus] 商机 {} 审批已撤单，重置为草稿状态", id);
+            businessMapper.updateById(new CrmBusinessDO().setId(id)
+                    .setAuditStatus(CrmAuditStatusEnum.DRAFT.getStatus()));
         }
     }
 
@@ -501,8 +516,10 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
 
         // 构建 deptType -> budget 映射，带入各部门的合同预算
         Map<Integer, BigDecimal> deptTypeBudgetMap = buildDeptTypeBudgetMap(business);
+        DeptTypeDeptBinding deptBinding = buildDeptTypeDeptBindingMaps(business);
         projectDeptServiceService.batchCreateDeptServiceForBusiness(
-                projectId, business.getId(), business.getCustomerId(), customerName, deptTypes, deptTypeBudgetMap);
+                projectId, business.getId(), business.getCustomerId(), customerName, deptTypes, deptTypeBudgetMap,
+                deptBinding.deptTypeToDeptId(), deptBinding.deptTypeToDeptName());
 
         // 合同签订时，把商机的部门金额分配同步到 contract_dept_allocation（历史数据保留）
         if (contractId != null) {
@@ -633,6 +650,48 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
             }
         }
         return map;
+    }
+
+    /**
+     * 从商机的部门分配列表构建 deptType -> 承接部门 ID/名称（与 {@link #buildDeptTypeBudgetMap} 同源，用于跳过领取时写入 project_dept_service.dept_id）
+     */
+    private DeptTypeDeptBinding buildDeptTypeDeptBindingMaps(CrmBusinessDO business) {
+        Map<Integer, Long> idMap = new HashMap<>();
+        Map<Integer, String> nameMap = new HashMap<>();
+        if (CollUtil.isEmpty(business.getDeptAllocations())) {
+            return new DeptTypeDeptBinding(idMap, nameMap);
+        }
+        List<Long> deptIds = business.getDeptAllocations().stream()
+                .map(CrmBusinessDO.DeptAllocation::getDeptId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (deptIds.isEmpty()) {
+            return new DeptTypeDeptBinding(idMap, nameMap);
+        }
+        List<DeptRespDTO> depts = deptApi.getDeptList(deptIds);
+        Map<Long, DeptRespDTO> deptById = depts.stream()
+                .collect(java.util.stream.Collectors.toMap(DeptRespDTO::getId, d -> d, (a, b) -> a));
+
+        for (CrmBusinessDO.DeptAllocation alloc : business.getDeptAllocations()) {
+            if (alloc.getDeptId() == null) {
+                continue;
+            }
+            DeptRespDTO d = deptById.get(alloc.getDeptId());
+            if (d == null || d.getDeptType() == null) {
+                continue;
+            }
+            Integer deptType = d.getDeptType();
+            idMap.put(deptType, alloc.getDeptId());
+            String name = StrUtil.isNotBlank(alloc.getDeptName()) ? alloc.getDeptName() : d.getName();
+            if (StrUtil.isNotBlank(name)) {
+                nameMap.put(deptType, name);
+            }
+        }
+        return new DeptTypeDeptBinding(idMap, nameMap);
+    }
+
+    private record DeptTypeDeptBinding(Map<Integer, Long> deptTypeToDeptId, Map<Integer, String> deptTypeToDeptName) {
     }
 
     /**
@@ -1424,6 +1483,125 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
     @Override
     public PageResult<CrmBusinessDO> getBusinessPageByDate(CrmStatisticsFunnelReqVO pageVO) {
         return businessMapper.selectPage(pageVO);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @DataPermission(enable = false)
+    public void addDeptAllocation(Long businessId, Long deptId, BigDecimal amount) {
+        // 1. 校验商机存在
+        CrmBusinessDO business = validateBusinessExists(businessId);
+
+        // 2. 检查该部门是否已在分配列表中
+        List<CrmBusinessDO.DeptAllocation> allocations = business.getDeptAllocations();
+        if (allocations == null) {
+            allocations = new ArrayList<>();
+        }
+        boolean exists = allocations.stream().anyMatch(a -> deptId.equals(a.getDeptId()));
+        if (exists) {
+            throw exception(ErrorCodeConstants.BUSINESS_DEPT_ALLOCATION_EXISTS);
+        }
+
+        // 3. 获取部门信息
+        DeptRespDTO dept = deptApi.getDept(deptId);
+        if (dept == null) {
+            throw exception(ErrorCodeConstants.BUSINESS_DEPT_NOT_EXISTS);
+        }
+
+        // 4. 创建新的部门分配
+        CrmBusinessDO.DeptAllocation newAllocation = new CrmBusinessDO.DeptAllocation();
+        newAllocation.setDeptId(deptId);
+        newAllocation.setDeptName(dept.getName());
+        newAllocation.setAmount(amount);
+        allocations.add(newAllocation);
+
+        // 5. 更新商机的部门分配和总金额
+        BigDecimal newTotalPrice = business.getTotalPrice().add(amount);
+        businessMapper.updateById(new CrmBusinessDO()
+                .setId(businessId)
+                .setDeptAllocations(allocations)
+                .setTotalPrice(newTotalPrice));
+
+        // 6. 同步到关联的合同
+        List<CrmContractDO> contracts = contractMapper.selectListByBusinessId(businessId);
+        for (CrmContractDO contract : contracts) {
+            List<CrmBusinessDO.DeptAllocation> contractAllocations = contract.getDeptAllocations();
+            if (contractAllocations == null) {
+                contractAllocations = new ArrayList<>();
+            }
+            boolean contractExists = contractAllocations.stream().anyMatch(a -> deptId.equals(a.getDeptId()));
+            if (!contractExists) {
+                contractAllocations.add(newAllocation);
+                contractMapper.updateById(new CrmContractDO()
+                        .setId(contract.getId())
+                        .setDeptAllocations(contractAllocations)
+                        .setTotalPrice(contract.getTotalPrice().add(amount)));
+            }
+            // 同步到 contract_dept_allocation 表
+            syncContractDeptAllocations(contract.getId(), contract.getNo(),
+                    getCustomerName(contract.getCustomerId()),
+                    Collections.singletonList(newAllocation));
+        }
+
+        // 7. 如果项目已创建，补充部门服务单
+        List<ProjectDO> projects = projectMapper.selectListByBusinessId(businessId);
+        for (ProjectDO project : projects) {
+            try {
+                Integer deptType = dept.getDeptType();
+                if (deptType != null) {
+                    Map<Integer, BigDecimal> budgetMap = new HashMap<>();
+                    budgetMap.put(deptType, amount);
+                    String customerName = getCustomerName(business.getCustomerId());
+                    Map<Integer, Long> deptTypeToDeptId = new HashMap<>();
+                    Map<Integer, String> deptTypeToDeptName = new HashMap<>();
+                    deptTypeToDeptId.put(deptType, deptId);
+                    deptTypeToDeptName.put(deptType, dept.getName());
+                    projectDeptServiceService.batchCreateDeptServiceForBusiness(
+                            project.getId(), businessId, business.getCustomerId(), customerName,
+                            Collections.singletonList(deptType), budgetMap,
+                            deptTypeToDeptId, deptTypeToDeptName);
+                }
+            } catch (Exception e) {
+                log.warn("[addDeptAllocation] 创建部门服务单失败, projectId={}, deptId={}: {}",
+                        project.getId(), deptId, e.getMessage());
+            }
+        }
+
+        // 8. 把新部门主管拉入商机钉钉群
+        if (business.getDingtalkChatId() != null && dept.getLeaderUserId() != null) {
+            try {
+                dingtalkNotifyApi.addMembersToGroupChat(business.getDingtalkChatId(),
+                        Collections.singletonList(dept.getLeaderUserId()));
+                log.info("[addDeptAllocation] 已将部门主管加入商机群: chatId={}, userId={}",
+                        business.getDingtalkChatId(), dept.getLeaderUserId());
+            } catch (Exception e) {
+                log.warn("[addDeptAllocation] 拉入钉钉群失败, deptId={}", deptId, e);
+            }
+        }
+
+        // 9. 给新部门主管添加商机 CRM 数据权限（使其在"我参与的"中可见）
+        if (dept.getLeaderUserId() != null) {
+            try {
+                permissionService.createPermission(new CrmPermissionCreateReqBO()
+                        .setUserId(dept.getLeaderUserId())
+                        .setBizType(CrmBizTypeEnum.CRM_BUSINESS.getType())
+                        .setBizId(businessId)
+                        .setLevel(CrmPermissionLevelEnum.READ.getLevel()));
+                log.info("[addDeptAllocation] 已添加部门主管商机权限: userId={}, businessId={}",
+                        dept.getLeaderUserId(), businessId);
+            } catch (Exception e) {
+                log.warn("[addDeptAllocation] 添加CRM权限失败, userId={}: {}", dept.getLeaderUserId(), e.getMessage());
+            }
+        }
+
+        log.info("[addDeptAllocation] 补充部门分配成功: businessId={}, deptId={}, amount={}",
+                businessId, deptId, amount);
+    }
+
+    private String getCustomerName(Long customerId) {
+        if (customerId == null) return "";
+        List<CrmCustomerDO> customers = customerService.getCustomerList(Collections.singleton(customerId));
+        return customers.isEmpty() ? "" : customers.get(0).getName();
     }
 
 }

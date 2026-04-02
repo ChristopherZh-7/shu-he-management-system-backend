@@ -8,7 +8,9 @@ import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectRoundVulnerabilityMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
+import cn.shuhe.system.module.system.api.dingtalk.DingtalkNotifyApi;
 import cn.shuhe.system.module.system.api.notify.NotifyMessageSendApi;
 import cn.shuhe.system.module.system.api.notify.dto.NotifySendSingleToUserReqDTO;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
@@ -20,6 +22,7 @@ import cn.shuhe.system.module.system.dal.dataobject.dict.DictDataDO;
 import cn.shuhe.system.module.system.service.dict.DictDataService;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkApiService;
 import cn.shuhe.system.module.system.service.dingtalkconfig.DingtalkConfigService;
+import cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -71,6 +74,9 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
     private DingtalkMappingMapper dingtalkMappingMapper;
 
     @Resource
+    private DingtalkNotifyApi dingtalkNotifyApi;
+
+    @Resource
     private AdminUserApi adminUserApi;
 
     @Resource
@@ -78,6 +84,9 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
 
     @Resource
     private DictDataService dictDataService;
+
+    @Resource
+    private ProjectRoundVulnerabilityMapper vulnerabilityMapper;
 
     /**
      * 部门类型对应的服务类型字典类型
@@ -158,7 +167,144 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
         }
 
         projectRoundMapper.insert(round);
+
+        // 确保项目有钉钉群（没有则创建），拉执行人进群，发轮次通知
+        try {
+            ensureProjectGroupAndNotify(round, serviceItem, createReqVO.getExecutorIds());
+        } catch (Exception e) {
+            log.warn("[createProjectRound] 钉钉群操作失败, roundId={}", round.getId(), e);
+        }
+
         return round.getId();
+    }
+
+    /**
+     * 确保项目有钉钉群（没有则创建），拉执行人进群，发轮次通知
+     */
+    private void ensureProjectGroupAndNotify(ProjectRoundDO round, ServiceItemDO serviceItem, List<Long> executorIds) {
+        if (serviceItem == null) {
+            return;
+        }
+
+        Long projectId = serviceItem.getProjectId() != null ? serviceItem.getProjectId() : round.getProjectId();
+        ProjectDO project = projectMapper.selectById(projectId);
+        if (project == null) {
+            log.info("[ensureProjectGroupAndNotify] 项目不存在: {}", projectId);
+            return;
+        }
+
+        Integer serviceMode = serviceItem.getServiceMode();
+        String chatId = getProjectChatId(project, serviceMode);
+        Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
+
+        // 1. 如果项目还没有群，创建群
+        if (chatId == null) {
+            chatId = createProjectGroup(project, serviceMode, executorIds, currentUserId);
+            if (chatId == null) {
+                log.warn("[ensureProjectGroupAndNotify] 创建群失败, projectId={}, serviceMode={}", projectId, serviceMode);
+                return;
+            }
+        } else {
+            // 2. 群已存在，把新执行人加进去
+            if (CollUtil.isNotEmpty(executorIds)) {
+                try {
+                    dingtalkNotifyApi.addMembersToGroupChat(chatId, executorIds);
+                    log.info("[ensureProjectGroupAndNotify] 已将执行人加入群: chatId={}, executorIds={}", chatId, executorIds);
+                } catch (Exception e) {
+                    log.warn("[ensureProjectGroupAndNotify] 拉人进群失败", e);
+                }
+            }
+        }
+
+        // 3. 发送轮次通知卡片
+        sendRoundCardMessage(chatId, round, project, serviceItem);
+    }
+
+    private String getProjectChatId(ProjectDO project, Integer serviceMode) {
+        if (serviceMode != null && serviceMode == 1) {
+            return project.getDingtalkOnsiteChatId();
+        } else if (serviceMode != null && serviceMode == 2) {
+            return project.getDingtalkSecondLineChatId();
+        }
+        return null;
+    }
+
+    private String createProjectGroup(ProjectDO project, Integer serviceMode, List<Long> executorIds, Long currentUserId) {
+        java.util.List<Long> members = new java.util.ArrayList<>();
+        if (CollUtil.isNotEmpty(executorIds)) {
+            members.addAll(executorIds);
+        }
+        if (currentUserId != null && !members.contains(currentUserId)) {
+            members.add(currentUserId);
+        }
+        if (members.size() < 2) {
+            log.info("[createProjectGroup] 成员不足2人, 无法创建群: members={}", members);
+            return null;
+        }
+
+        String projectName = project.getName() != null ? project.getName() : "项目";
+        String dateStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String modeName = serviceMode != null && serviceMode == 1 ? "驻场" : "二线";
+        String chatName = projectName + "-" + modeName + "-" + dateStr;
+
+        Long owner = currentUserId != null ? currentUserId : members.get(0);
+        String chatId = dingtalkNotifyApi.createGroupChat(chatName, owner, members);
+        if (chatId != null) {
+            ProjectDO upd = new ProjectDO();
+            upd.setId(project.getId());
+            if (serviceMode != null && serviceMode == 1) {
+                upd.setDingtalkOnsiteChatId(chatId);
+            } else {
+                upd.setDingtalkSecondLineChatId(chatId);
+            }
+            projectMapper.updateById(upd);
+            log.info("[createProjectGroup] 群创建成功: projectId={}, chatId={}, name={}", project.getId(), chatId, chatName);
+        }
+        return chatId;
+    }
+
+    private void sendRoundCardMessage(String chatId, ProjectRoundDO round, ProjectDO project, ServiceItemDO serviceItem) {
+        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        String planStart = round.getDeadline() != null ? round.getDeadline().format(fmt) : "未设置";
+        String planEnd = round.getPlanEndTime() != null ? round.getPlanEndTime().format(fmt) : "未设置";
+        String executorNames = round.getExecutorNames() != null ? round.getExecutorNames() : "-";
+        String serviceTypeName = getServiceTypeLabel(serviceItem);
+
+        StringBuilder msg = new StringBuilder();
+        msg.append("## 新轮次已创建\n\n");
+        msg.append("**").append(round.getName()).append("**\n\n");
+        msg.append("- 项目：").append(project.getName() != null ? project.getName() : "-").append("\n\n");
+        msg.append("- 服务类型：").append(serviceTypeName).append("\n\n");
+        msg.append("- 客户：").append(serviceItem.getCustomerName() != null ? serviceItem.getCustomerName() : "-").append("\n\n");
+        msg.append("- 执行人：").append(executorNames).append("\n\n");
+        msg.append("- 计划开始时间：").append(planStart).append("\n\n");
+        msg.append("- 计划结束时间：").append(planEnd).append("\n\n");
+        msg.append("请相关人员及时关注并执行任务！");
+
+        dingtalkNotifyApi.sendMessageToChat(chatId, "轮次任务通知", msg.toString());
+    }
+
+    /**
+     * 获取服务类型的中文标签
+     */
+    private String getServiceTypeLabel(ServiceItemDO serviceItem) {
+        if (serviceItem == null || serviceItem.getServiceType() == null) {
+            return "服务";
+        }
+        if (serviceItem.getDeptType() != null) {
+            String dictType = DEPT_TYPE_DICT_MAP.get(serviceItem.getDeptType());
+            if (dictType != null) {
+                try {
+                    DictDataDO dictData = dictDataService.getDictData(dictType, serviceItem.getServiceType());
+                    if (dictData != null && dictData.getLabel() != null) {
+                        return dictData.getLabel();
+                    }
+                } catch (Exception e) {
+                    log.warn("[getServiceTypeLabel] 获取字典标签失败: {}", serviceItem.getServiceType());
+                }
+            }
+        }
+        return serviceItem.getServiceType();
     }
 
     @Override
@@ -315,16 +461,82 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
             sendRoundStartNotification(round);
         }
         
-        // 当状态变为"已完成"(2)时，完成关联的排期记录
+        // 当状态变为"已完成"(2)时，完成关联的排期记录 + 发钉钉完成通知
         if (status == 2 && oldStatus != null && oldStatus != 2) {
             log.info("【轮次状态】轮次 {} 已完成，更新关联排期", id);
             try {
                 employeeScheduleService.completeScheduleByRoundId(id);
             } catch (Exception e) {
-                // 排期更新失败不影响主流程
                 log.warn("【轮次状态】完成排期失败，roundId={}, error={}", id, e.getMessage());
             }
+            // 发送钉钉群完成通知
+            try {
+                sendRoundCompletionNotification(round);
+            } catch (Exception e) {
+                log.warn("[updateRoundStatus] 发送完成通知失败, roundId={}", id, e);
+            }
         }
+    }
+
+    /**
+     * 向项目钉钉群发送轮次完成通知
+     */
+    private void sendRoundCompletionNotification(ProjectRoundDO round) {
+        // 通过服务项找到对应的项目群
+        Long serviceItemIdToQuery = round.getServiceItemId() != null ? round.getServiceItemId() : round.getProjectId();
+        ServiceItemDO serviceItem = serviceItemMapper.selectById(serviceItemIdToQuery);
+        if (serviceItem == null) {
+            log.info("[sendRoundCompletionNotification] 服务项不存在, roundId={}", round.getId());
+            return;
+        }
+
+        Long projectId = serviceItem.getProjectId() != null ? serviceItem.getProjectId() : round.getProjectId();
+        ProjectDO project = projectMapper.selectById(projectId);
+        if (project == null) {
+            return;
+        }
+
+        String chatId = null;
+        Integer serviceMode = serviceItem.getServiceMode();
+        if (serviceMode != null && serviceMode == 1) {
+            chatId = project.getDingtalkOnsiteChatId();
+        } else if (serviceMode != null && serviceMode == 2) {
+            chatId = project.getDingtalkSecondLineChatId();
+        }
+        if (chatId == null) {
+            log.info("[sendRoundCompletionNotification] 项目 {} 没有对应的钉钉群", projectId);
+            return;
+        }
+
+        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        String completedAt = java.time.LocalDateTime.now().format(fmt);
+        String executorNames = round.getExecutorNames() != null ? round.getExecutorNames() : "-";
+        String serviceTypeName = getServiceTypeLabel(serviceItem);
+
+        Long highCount = vulnerabilityMapper.selectCountByRoundIdAndSeverity(round.getId(), "high");
+        Long mediumCount = vulnerabilityMapper.selectCountByRoundIdAndSeverity(round.getId(), "medium");
+        Long lowCount = vulnerabilityMapper.selectCountByRoundIdAndSeverity(round.getId(), "low");
+        long totalCount = highCount + mediumCount + lowCount;
+
+        StringBuilder msg = new StringBuilder();
+        msg.append("## 轮次已完成\n\n");
+        msg.append("**").append(round.getName()).append("**\n\n");
+        msg.append("- 项目：").append(project.getName() != null ? project.getName() : "-").append("\n\n");
+        msg.append("- 服务类型：").append(serviceTypeName).append("\n\n");
+        msg.append("- 执行人：").append(executorNames).append("\n\n");
+        msg.append("- 完成时间：").append(completedAt).append("\n\n");
+        msg.append("### 漏洞成果\n\n");
+        if (totalCount > 0) {
+            msg.append("- 共发现 **").append(totalCount).append("** 个漏洞\n\n");
+            if (highCount > 0) msg.append("- 🔴 高危：").append(highCount).append(" 个\n\n");
+            if (mediumCount > 0) msg.append("- 🟡 中危：").append(mediumCount).append(" 个\n\n");
+            if (lowCount > 0) msg.append("- 🟢 低危：").append(lowCount).append(" 个\n\n");
+        } else {
+            msg.append("- 本轮次未发现漏洞\n\n");
+        }
+        msg.append("轮次任务已顺利完成，感谢各位的配合！");
+
+        dingtalkNotifyApi.sendMessageToChat(chatId, "轮次完成通知", msg.toString());
     }
 
     /**

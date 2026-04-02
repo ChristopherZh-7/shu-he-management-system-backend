@@ -18,7 +18,9 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
 
@@ -79,6 +81,70 @@ public class DeptController {
         List<DeptDO> list = deptService.getDeptListForSimpleList(
                 new DeptListReqVO().setStatus(CommonStatusEnum.ENABLE.getStatus()));
         return success(BeanUtils.toBean(list, DeptSimpleRespVO.class));
+    }
+
+    @GetMapping("/business-dept-list")
+    @Operation(summary = "获取业务部门列表（商机用）", description = "过滤掉总经办、人事行政部及其子部门，用于商机补充部门分配")
+    public CommonResult<List<DeptSimpleRespVO>> getBusinessDeptList() {
+        List<DeptDO> allDepts = deptService.getDeptListForSimpleList(
+                new DeptListReqVO().setStatus(CommonStatusEnum.ENABLE.getStatus()));
+
+        // 1. 找到"总经办"和"人事行政"部门
+        Long zongjingbanId = null;
+        Set<Long> renshiIds = new HashSet<>();
+        for (DeptDO dept : allDepts) {
+            if (dept.getName() == null) continue;
+            if (dept.getName().contains("总经办")) {
+                zongjingbanId = dept.getId();
+            }
+            if (dept.getName().contains("人事行政")) {
+                renshiIds.add(dept.getId());
+            }
+        }
+
+        // 2. 递归收集"人事行政"的所有子部门
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (DeptDO dept : allDepts) {
+                if (!renshiIds.contains(dept.getId()) && dept.getParentId() != null
+                        && renshiIds.contains(dept.getParentId())) {
+                    renshiIds.add(dept.getId());
+                    changed = true;
+                }
+            }
+        }
+
+        // 3. 构建结果：移除总经办自身（子部门提升到总经办的父级）+ 移除人事行政整棵子树
+        final Long zjbId = zongjingbanId;
+        Long zjbParentId = null;
+        if (zongjingbanId != null) {
+            for (DeptDO dept : allDepts) {
+                if (dept.getId().equals(zongjingbanId)) {
+                    zjbParentId = dept.getParentId();
+                    break;
+                }
+            }
+        }
+        final Long finalZjbParentId = zjbParentId;
+
+        List<DeptDO> filtered = new java.util.ArrayList<>();
+        for (DeptDO dept : allDepts) {
+            // 排除人事行政及其子部门
+            if (renshiIds.contains(dept.getId())) continue;
+            // 排除总经办自身
+            if (zjbId != null && dept.getId().equals(zjbId)) continue;
+
+            // 总经办的直接子部门，parentId 提升到总经办的父级
+            if (zjbId != null && zjbId.equals(dept.getParentId())) {
+                DeptDO copy = BeanUtils.toBean(dept, DeptDO.class);
+                copy.setParentId(finalZjbParentId);
+                filtered.add(copy);
+            } else {
+                filtered.add(dept);
+            }
+        }
+        return success(BeanUtils.toBean(filtered, DeptSimpleRespVO.class));
     }
 
     @GetMapping("/get")

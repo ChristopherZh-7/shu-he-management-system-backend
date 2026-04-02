@@ -76,6 +76,9 @@ public class CrmBusinessRespVO {
     @ExcelProperty("审批状态")
     private Integer auditStatus;
 
+    @Schema(description = "BPM 流程实例编号")
+    private String processInstanceId;
+
     @Schema(description = "钉钉群会话ID")
     private String dingtalkChatId;
 

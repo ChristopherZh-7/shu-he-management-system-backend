@@ -9,7 +9,9 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.mzt.logapi.starter.annotation.DiffLogField;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
+import lombok.AccessLevel;
 import lombok.Data;
+import lombok.Setter;
 import org.hibernate.validator.constraints.Length;
 import jakarta.validation.constraints.Pattern;
 
@@ -67,11 +69,21 @@ public class UserSaveReqVO {
 
     // ========== 仅【创建】时，需要传递的字段 ==========
 
-    @Schema(description = "密码", requiredMode = Schema.RequiredMode.REQUIRED, example = "Abc@1234")
+    @Schema(description = "密码（创建必填；修改时留空或不传表示不改，勿传空字符串）", example = "Abc@1234")
     @Length(min = 8, max = 20, message = "密码长度为 8-20 位")
     @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>/?`~]).+$",
             message = "密码需包含大小写字母、数字和特殊字符")
+    @Setter(AccessLevel.NONE)
     private String password;
+
+    /** 前端常传 password: \"\"；视为未改密，避免 @Length 误判 */
+    public void setPassword(String password) {
+        if (password != null && password.isBlank()) {
+            this.password = null;
+        } else {
+            this.password = password;
+        }
+    }
 
     @AssertTrue(message = "密码不能为空")
     @JsonIgnore

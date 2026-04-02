@@ -110,6 +110,16 @@ public class ProjectDO extends BaseDO {
     private String dingtalkChatId;
 
     /**
+     * 安全服务-驻场钉钉群ID（分配驻场负责人时创建）
+     */
+    private String dingtalkOnsiteChatId;
+
+    /**
+     * 安全服务-二线钉钉群ID（分配二线负责人时创建）
+     */
+    private String dingtalkSecondLineChatId;
+
+    /**
      * 退场备注
      */
     private String exitRemark;

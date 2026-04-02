@@ -1,5 +1,6 @@
 package cn.shuhe.system.module.project.controller.admin.vo;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -24,7 +25,8 @@ public class ProjectRoundSaveReqVO {
     @Schema(description = "轮次名称", example = "第1次渗透测试")
     private String name;
 
-    @Schema(description = "截止日期（任务应在此日期前完成）")
+    @Schema(description = "计划开始时间")
+    @JsonAlias("planStartTime")
     private LocalDateTime deadline;
 
     @Schema(description = "计划结束时间（保留字段）")

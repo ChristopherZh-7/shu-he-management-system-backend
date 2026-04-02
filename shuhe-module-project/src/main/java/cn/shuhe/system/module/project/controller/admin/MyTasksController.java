@@ -214,31 +214,18 @@ public class MyTasksController {
             return null;
         }
         Long currentDeptId = deptId;
-        DeptRespDTO topDept = null;
-
         while (currentDeptId != null && currentDeptId != 0) {
             DeptRespDTO dept = deptApi.getDept(currentDeptId);
             if (dept == null) {
                 break;
             }
-            topDept = dept;
+            if (dept.getDeptType() != null) {
+                return dept.getDeptType();
+            }
             if (dept.getParentId() == null || dept.getParentId() == 0) {
                 break;
             }
             currentDeptId = dept.getParentId();
-        }
-
-        if (topDept == null || topDept.getName() == null) {
-            return null;
-        }
-
-        String deptName = topDept.getName();
-        if (deptName.contains("数据安全")) {
-            return 3;
-        } else if (deptName.contains("安全运营") || deptName.contains("运营服务")) {
-            return 2;
-        } else if (deptName.contains("安全技术") || deptName.contains("安全服务") || deptName.contains("安服")) {
-            return 1;
         }
         return null;
     }

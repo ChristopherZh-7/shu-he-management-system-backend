@@ -236,7 +236,7 @@ shuhe:
   captcha:
     enable: false # 本地环境，暂时关闭图片验证码，方便登录等接口的测试；
   security:
-    password-login-enabled: false # 仅钉钉扫码；若本地需测账号密码可改为 true
+    password-login-enabled: true # 本地开发启用账号密码登录
     mock-enable: true
     switch-admin-enabled: true
     switch-admin-allowed-user-ids:

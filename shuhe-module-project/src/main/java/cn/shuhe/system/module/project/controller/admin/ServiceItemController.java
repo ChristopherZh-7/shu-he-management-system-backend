@@ -346,37 +346,52 @@ public class ServiceItemController {
     }
 
     @GetMapping("/user-list-by-dept-type")
-    @Operation(summary = "根据部门类型获取可选执行人列表", description = "根据部门类型返回对应岗位的用户列表")
+    @Operation(summary = "根据部门类型获取可选执行人列表", description = "根据部门类型返回对应岗位的用户列表，同时包含同部门无岗位的用户（如实习生）")
     @Parameter(name = "deptType", description = "部门类型：1安全服务 2安全运营 3数据安全", required = true)
     @PreAuthorize("@ss.hasPermission('project:service-item:query')")
     public CommonResult<List<UserSimpleRespVO>> getUserListByDeptType(@RequestParam("deptType") Integer deptType) {
-        // 获取部门类型对应的岗位code列表
-        List<String> postCodes = DEPT_TYPE_POST_CODES.get(deptType);
-        if (CollUtil.isEmpty(postCodes)) {
-            return success(Collections.emptyList());
-        }
+        // 收集所有符合条件的用户（按 userId 去重）
+        Map<Long, AdminUserDO> userMap = new LinkedHashMap<>();
 
-        // 根据岗位code查询岗位ID
-        List<Long> postIds = new ArrayList<>();
-        for (String code : postCodes) {
-            PostDO post = postMapper.selectByCode(code);
-            if (post != null) {
-                postIds.add(post.getId());
+        // 1. 按岗位code筛选（原有逻辑）
+        List<String> postCodes = DEPT_TYPE_POST_CODES.get(deptType);
+        if (CollUtil.isNotEmpty(postCodes)) {
+            List<Long> postIds = new ArrayList<>();
+            for (String code : postCodes) {
+                PostDO post = postMapper.selectByCode(code);
+                if (post != null) {
+                    postIds.add(post.getId());
+                }
+            }
+            if (CollUtil.isNotEmpty(postIds)) {
+                List<AdminUserDO> postUsers = adminUserService.getUserListByPostIds(postIds);
+                if (CollUtil.isNotEmpty(postUsers)) {
+                    postUsers.forEach(u -> userMap.put(u.getId(), u));
+                }
             }
         }
-        if (CollUtil.isEmpty(postIds)) {
+
+        // 2. 补充同部门用户（覆盖无岗位的实习生等）
+        Long deptId = findDeptIdByDeptType(deptType);
+        if (deptId != null) {
+            Set<Long> deptIds = new HashSet<>();
+            deptIds.add(deptId);
+            deptIds.addAll(deptService.getChildDeptIdListFromCache(deptId));
+            List<AdminUserDO> deptUsers = adminUserService.getUserListByDeptIds(deptIds);
+            if (CollUtil.isNotEmpty(deptUsers)) {
+                deptUsers.forEach(u -> userMap.putIfAbsent(u.getId(), u));
+            }
+        }
+
+        if (userMap.isEmpty()) {
             return success(Collections.emptyList());
         }
 
-        // 根据岗位ID查询用户列表
-        List<AdminUserDO> users = adminUserService.getUserListByPostIds(postIds);
-        if (CollUtil.isEmpty(users)) {
-            return success(Collections.emptyList());
-        }
+        Collection<AdminUserDO> users = userMap.values();
 
         // 拼接部门信息
         Map<Long, DeptDO> deptMap = deptService.getDeptMap(
-                convertList(users, AdminUserDO::getDeptId));
+                convertList(new ArrayList<>(users), AdminUserDO::getDeptId));
 
         // 转换为简单响应
         List<UserSimpleRespVO> result = users.stream().map(user -> {
