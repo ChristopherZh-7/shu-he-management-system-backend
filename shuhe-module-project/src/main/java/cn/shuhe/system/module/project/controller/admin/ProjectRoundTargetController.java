@@ -55,7 +55,7 @@ public class ProjectRoundTargetController {
     @GetMapping("/get")
     @Operation(summary = "获取测试目标")
     @Parameter(name = "id", description = "目标ID", required = true)
-    @PreAuthorize("@ss.hasPermission('project:info:query')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:info:query', 'project:my-tasks:query')")
     public CommonResult<ProjectRoundTargetRespVO> getTarget(@RequestParam("id") Long id) {
         ProjectRoundTargetDO target = targetService.getTarget(id);
         return success(BeanUtils.toBean(target, ProjectRoundTargetRespVO.class));
@@ -64,7 +64,7 @@ public class ProjectRoundTargetController {
     @GetMapping("/list-by-round")
     @Operation(summary = "获取轮次的测试目标列表")
     @Parameter(name = "roundId", description = "轮次ID", required = true)
-    @PreAuthorize("@ss.hasPermission('project:info:query')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:info:query', 'project:my-tasks:query')")
     public CommonResult<List<ProjectRoundTargetRespVO>> getTargetListByRoundId(@RequestParam("roundId") Long roundId) {
         List<ProjectRoundTargetDO> list = targetService.getTargetListByRoundId(roundId);
         return success(BeanUtils.toBean(list, ProjectRoundTargetRespVO.class));

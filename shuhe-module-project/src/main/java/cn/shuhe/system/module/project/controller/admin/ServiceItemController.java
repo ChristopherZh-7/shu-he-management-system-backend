@@ -5,6 +5,7 @@ import cn.hutool.json.JSONUtil;
 import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
+import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
 import cn.shuhe.system.framework.excel.core.util.ExcelUtils;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemBatchSaveReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemDeptBudgetRespVO;
@@ -227,7 +228,8 @@ public class ServiceItemController {
     @GetMapping("/get")
     @Operation(summary = "获得服务项详情")
     @Parameter(name = "id", description = "服务项编号", required = true)
-    @PreAuthorize("@ss.hasPermission('project:service-item:query')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:service-item:query', 'project:my-tasks:query')")
+    @DataPermission(enable = false)
     public CommonResult<ServiceItemRespVO> getServiceItem(@RequestParam("id") Long id) {
         ServiceItemDO serviceItem = serviceItemService.getServiceItem(id);
         ServiceItemRespVO respVO = BeanUtils.toBean(serviceItem, ServiceItemRespVO.class);
@@ -281,7 +283,7 @@ public class ServiceItemController {
     @Parameter(name = "deptType", description = "部门类型：1-安全服务 2-安全运营 3-数据安全", required = false)
     @Parameter(name = "serviceMode", description = "服务模式：1-驻场 2-二线", required = false)
     @Parameter(name = "serviceMemberType", description = "服务归属人员类型（安全运营专用）：1-驻场人员 2-管理人员", required = false)
-    @PreAuthorize("@ss.hasPermission('project:service-item:query')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:service-item:query', 'project:my-tasks:query')")
     public CommonResult<List<ServiceItemRespVO>> getServiceItemList(
             @RequestParam("projectId") Long projectId,
             @RequestParam(value = "deptType", required = false) Integer deptType,

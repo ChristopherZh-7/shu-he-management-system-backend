@@ -15,6 +15,7 @@ import lombok.Setter;
 import org.hibernate.validator.constraints.Length;
 import jakarta.validation.constraints.Pattern;
 
+import java.time.LocalDateTime;
 import java.util.Set;
 
 @Schema(description = "管理后台 - 用户创建/修改 Request VO")
@@ -66,6 +67,28 @@ public class UserSaveReqVO {
     @Schema(description = "用户头像", example = "https://www.example.com/xxx.png")
     @DiffLogField(name = "用户头像")
     private String avatar;
+
+    // ========== 人事信息字段 ==========
+
+    @Schema(description = "职位", example = "高级工程师")
+    @DiffLogField(name = "职位")
+    private String position;
+
+    @Schema(description = "在职状态：1-在职 2-离职", example = "1")
+    @DiffLogField(name = "在职状态")
+    private Integer employeeStatus;
+
+    @Schema(description = "职级", example = "中级P2-1")
+    @DiffLogField(name = "职级")
+    private String positionLevel;
+
+    @Schema(description = "入职日期")
+    @DiffLogField(name = "入职日期")
+    private LocalDateTime hireDate;
+
+    @Schema(description = "离职日期")
+    @DiffLogField(name = "离职日期")
+    private LocalDateTime resignDate;
 
     // ========== 仅【创建】时，需要传递的字段 ==========
 

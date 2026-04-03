@@ -72,7 +72,7 @@ public class ProjectRoundController {
     @GetMapping("/get")
     @Operation(summary = "获得项目轮次详情")
     @Parameter(name = "id", description = "轮次编号", required = true)
-    @PreAuthorize("@ss.hasPermission('project:info:query')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:info:query', 'project:my-tasks:query')")
     public CommonResult<ProjectRoundRespVO> getProjectRound(@RequestParam("id") Long id) {
         ProjectRoundDO round = projectRoundService.getProjectRound(id);
         return success(convertToRespVO(round));
@@ -81,7 +81,7 @@ public class ProjectRoundController {
     @GetMapping("/list")
     @Operation(summary = "获得服务项的轮次列表")
     @Parameter(name = "serviceItemId", description = "服务项编号", required = true)
-    @PreAuthorize("@ss.hasPermission('project:info:query')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:info:query', 'project:my-tasks:query')")
     public CommonResult<List<ProjectRoundRespVO>> getProjectRoundList(@RequestParam("serviceItemId") Long serviceItemId) {
         List<ProjectRoundDO> list = projectRoundService.getProjectRoundListByServiceItemId(serviceItemId);
         return success(list.stream().map(this::convertToRespVO).collect(Collectors.toList()));

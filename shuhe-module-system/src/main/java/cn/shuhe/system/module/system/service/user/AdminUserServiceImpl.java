@@ -21,6 +21,7 @@ import cn.shuhe.system.module.system.controller.admin.user.vo.user.UserImportRes
 import cn.shuhe.system.module.system.controller.admin.user.vo.user.UserPageReqVO;
 import cn.shuhe.system.module.system.controller.admin.user.vo.user.UserSaveReqVO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.DeptDO;
+import cn.shuhe.system.module.system.dal.dataobject.dept.PostDO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.UserPostDO;
 import cn.shuhe.system.module.system.dal.dataobject.user.AdminUserDO;
 import cn.shuhe.system.module.system.dal.mysql.dept.UserPostMapper;
@@ -100,6 +101,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         user.setStatus(CommonStatusEnum.ENABLE.getStatus()); // 默认开启
         user.setPassword(encodePassword(createReqVO.getPassword())); // 加密密码
         user.setPasswordMustChange(1); // 首次登录需强制修改密码
+        fillPositionFromPostIds(user);
         userMapper.insert(user);
         // 2.2 插入关联岗位
         if (CollectionUtil.isNotEmpty(user.getPostIds())) {
@@ -141,6 +143,7 @@ public class AdminUserServiceImpl implements AdminUserService {
 
         // 2.1 更新用户
         AdminUserDO updateObj = BeanUtils.toBean(updateReqVO, AdminUserDO.class);
+        fillPositionFromPostIds(updateObj);
         userMapper.updateById(updateObj);
         // 2.2 更新岗位
         updateUserPost(updateReqVO, updateObj);
@@ -164,6 +167,19 @@ public class AdminUserServiceImpl implements AdminUserService {
         }
         if (!CollectionUtil.isEmpty(deletePostIds)) {
             userPostMapper.deleteByUserIdAndPostId(userId, deletePostIds);
+        }
+    }
+
+    /**
+     * 如果 position 为空但选了岗位，自动从岗位名称填充职位
+     */
+    private void fillPositionFromPostIds(AdminUserDO user) {
+        if (StrUtil.isNotEmpty(user.getPosition()) || CollUtil.isEmpty(user.getPostIds())) {
+            return;
+        }
+        List<PostDO> posts = postService.getPostList(user.getPostIds());
+        if (CollUtil.isNotEmpty(posts)) {
+            user.setPosition(posts.get(0).getName());
         }
     }
 
