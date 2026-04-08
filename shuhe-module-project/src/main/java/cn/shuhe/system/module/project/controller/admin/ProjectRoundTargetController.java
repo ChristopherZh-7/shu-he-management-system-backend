@@ -30,14 +30,14 @@ public class ProjectRoundTargetController {
 
     @PostMapping("/create")
     @Operation(summary = "创建测试目标")
-    @PreAuthorize("@ss.hasPermission('project:info:create')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:info:create', 'project:my-tasks:create')")
     public CommonResult<Long> createTarget(@Valid @RequestBody ProjectRoundTargetSaveReqVO createReqVO) {
         return success(targetService.createTarget(createReqVO));
     }
 
     @PutMapping("/update")
     @Operation(summary = "更新测试目标")
-    @PreAuthorize("@ss.hasPermission('project:info:update')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:info:update', 'project:my-tasks:update')")
     public CommonResult<Boolean> updateTarget(@Valid @RequestBody ProjectRoundTargetSaveReqVO updateReqVO) {
         targetService.updateTarget(updateReqVO);
         return success(true);
@@ -46,7 +46,7 @@ public class ProjectRoundTargetController {
     @DeleteMapping("/delete")
     @Operation(summary = "删除测试目标")
     @Parameter(name = "id", description = "目标ID", required = true)
-    @PreAuthorize("@ss.hasPermission('project:info:delete')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:info:delete', 'project:my-tasks:delete')")
     public CommonResult<Boolean> deleteTarget(@RequestParam("id") Long id) {
         targetService.deleteTarget(id);
         return success(true);
@@ -72,10 +72,10 @@ public class ProjectRoundTargetController {
 
     @PostMapping("/batch-create")
     @Operation(summary = "批量创建测试目标")
-    @PreAuthorize("@ss.hasPermission('project:info:create')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:info:create', 'project:my-tasks:create')")
     public CommonResult<Boolean> batchCreateTargets(
             @RequestParam("roundId") Long roundId,
-            @Valid @RequestBody List<ProjectRoundTargetSaveReqVO> targets) {
+            @RequestBody List<ProjectRoundTargetSaveReqVO> targets) {
         targetService.batchCreateTargets(roundId, targets);
         return success(true);
     }

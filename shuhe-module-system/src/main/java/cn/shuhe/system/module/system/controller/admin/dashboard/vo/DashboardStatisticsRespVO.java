@@ -142,6 +142,8 @@ public class DashboardStatisticsRespVO {
         private BigDecimal growthRate;
         @Schema(description = "年度累计收入")
         private BigDecimal yearlyRevenue;
+        @Schema(description = "本周收入")
+        private BigDecimal weeklyRevenue;
     }
 
     @Data
@@ -240,6 +242,19 @@ public class DashboardStatisticsRespVO {
         private String timeDesc;
         @Schema(description = "关联ID")
         private Long refId;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MonthlySnapshot {
+        @Schema(description = "月份(1-12)，null表示年度汇总")
+        private Integer month;
+        @Schema(description = "收入统计")
+        private RevenueStats revenue;
+        @Schema(description = "部门排行")
+        private List<RankData> deptRanking;
     }
 
     @Data

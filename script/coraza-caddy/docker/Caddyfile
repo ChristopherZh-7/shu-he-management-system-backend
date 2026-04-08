@@ -43,6 +43,10 @@
 			SecRule REQUEST_URI "@rx ^/admin-api/system/menu/update(\?|$)" "id:10007,phase:1,pass,nolog,ctl:ruleEngine=Off"
 			# CRM 客户更新
 			SecRule REQUEST_URI "@rx ^/admin-api/crm/customer/update(\?|$)" "id:10008,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			# 项目轮次目标批量创建：请求体含批量数据易触发 CRS 误报（仍须登录与权限）
+			SecRule REQUEST_URI "@rx ^/admin-api/project/round-target/batch-create(\?|$)" "id:10017,phase:1,pass,nolog,ctl:ruleEngine=Off"
+			# 项目轮次漏洞创建/更新：请求体含漏洞详情易触发 CRS 误报（仍须登录与权限）
+			SecRule REQUEST_URI "@rx ^/admin-api/project/round-vulnerability/(create|update)(\?|$)" "id:10018,phase:1,pass,nolog,ctl:ruleEngine=Off"
 			Include @owasp_crs/*.conf
 			SecAuditEngine RelevantOnly
 			SecAuditLog /var/log/coraza/audit.log

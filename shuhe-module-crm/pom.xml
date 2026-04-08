@@ -25,6 +25,11 @@
         </dependency>
         <dependency>
             <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-module-finance</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>cn.shuhe</groupId>
             <artifactId>shuhe-module-infra</artifactId>
             <version>${revision}</version>
         </dependency>

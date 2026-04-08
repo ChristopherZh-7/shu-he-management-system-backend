@@ -8,6 +8,7 @@ import cn.hutool.core.util.ObjUtil;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
+import cn.shuhe.system.framework.datapermission.core.util.DataPermissionUtils;
 import cn.shuhe.system.module.bpm.api.task.BpmProcessInstanceApi;
 import cn.shuhe.system.module.bpm.api.task.dto.BpmProcessInstanceCreateReqDTO;
 import cn.shuhe.system.module.crm.controller.admin.business.vo.business.CrmBusinessEarlyInvestmentSubmitReqVO;
@@ -33,8 +34,8 @@ import cn.shuhe.system.module.crm.service.customer.CrmCustomerService;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectSaveReqVO;
 import cn.shuhe.system.module.project.service.ProjectDeptServiceService;
 import cn.shuhe.system.module.project.service.ProjectService;
-import cn.shuhe.system.module.system.dal.dataobject.cost.ContractDeptAllocationDO;
-import cn.shuhe.system.module.system.dal.mysql.cost.ContractDeptAllocationMapper;
+import cn.shuhe.system.module.finance.dal.dataobject.cost.ContractDeptAllocationDO;
+import cn.shuhe.system.module.finance.dal.mysql.cost.ContractDeptAllocationMapper;
 import cn.shuhe.system.module.crm.dal.dataobject.contract.CrmContractDO;
 import cn.shuhe.system.module.crm.dal.mysql.contract.CrmContractMapper;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
@@ -105,7 +106,7 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
     @Resource
     private BpmProcessInstanceApi bpmProcessInstanceApi;
     @Resource
-    private cn.shuhe.system.module.system.service.cost.CostCalculationService costCalculationService;
+    private cn.shuhe.system.module.finance.service.cost.CostCalculationService costCalculationService;
     @Resource
     private ContractDeptAllocationMapper contractDeptAllocationMapper;
     @Resource
@@ -162,6 +163,11 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
         if (totalPrice == null || CollUtil.isEmpty(allocations)) {
             return;
         }
+        boolean hasAnyAmount = allocations.stream()
+                .anyMatch(a -> a.getAmount() != null && a.getAmount().compareTo(BigDecimal.ZERO) > 0);
+        if (!hasAnyAmount) {
+            return;
+        }
         BigDecimal sum = allocations.stream()
                 .map(CrmBusinessSaveReqVO.DeptAllocation::getAmount)
                 .filter(Objects::nonNull)
@@ -195,7 +201,9 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
         businessMapper.updateById(new CrmBusinessDO().setId(id).setAuditStatus(auditStatus));
 
         if (CrmAuditStatusEnum.APPROVE.getStatus().equals(auditStatus)) {
-            // 审批全部通过：创建钉钉群（纯通知，无操作按钮），项目由前端选择创建路径
+            // 审批全部通过：确保所有被分配部门的负责人拥有 READ 权限
+            grantDeptLeaderPermissions(id, business.getDeptAllocations());
+            // 创建钉钉群（纯通知，无操作按钮），项目由前端选择创建路径
             try {
                 CrmBusinessDO updatedBusiness = businessMapper.selectById(id);
                 createDingtalkGroupChatAfterApproval(updatedBusiness);
@@ -472,11 +480,6 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
                 log.info("[createProjectInternally] 项目已存在，更新合同关联: projectId={}, contractId={}",
                         existingProject.getId(), contractId);
                 projectService.updateProjectContractInfo(existingProject.getId(), contractId, contractNo);
-                // 提前投入转合同：同步部门预算到 project_dept_service.dept_budget
-                Map<Integer, BigDecimal> budgetMap = buildDeptTypeBudgetMap(business);
-                if (!budgetMap.isEmpty()) {
-                    projectDeptServiceService.updateDeptBudgetByProjectId(existingProject.getId(), budgetMap);
-                }
                 // 同步历史数据到旧表（保留数据轨迹）
                 String existingCustomerName = existingProject.getCustomerName() != null
                         ? existingProject.getCustomerName() : "";
@@ -514,11 +517,9 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
 
         Long projectId = projectService.createProject(projectReqVO);
 
-        // 构建 deptType -> budget 映射，带入各部门的合同预算
-        Map<Integer, BigDecimal> deptTypeBudgetMap = buildDeptTypeBudgetMap(business);
         DeptTypeDeptBinding deptBinding = buildDeptTypeDeptBindingMaps(business);
         projectDeptServiceService.batchCreateDeptServiceForBusiness(
-                projectId, business.getId(), business.getCustomerId(), customerName, deptTypes, deptTypeBudgetMap,
+                projectId, business.getId(), business.getCustomerId(), customerName, deptTypes,
                 deptBinding.deptTypeToDeptId(), deptBinding.deptTypeToDeptName());
 
         // 合同签订时，把商机的部门金额分配同步到 contract_dept_allocation（历史数据保留）
@@ -623,37 +624,7 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
     }
 
     /**
-     * 从商机的部门分配列表构建 deptType -> budget 映射。
-     * 用于在创建部门服务单时自动带入合同预算。
-     */
-    private Map<Integer, BigDecimal> buildDeptTypeBudgetMap(CrmBusinessDO business) {
-        Map<Integer, BigDecimal> map = new java.util.HashMap<>();
-        if (CollUtil.isEmpty(business.getDeptAllocations())) {
-            return map;
-        }
-        List<Long> deptIds = business.getDeptAllocations().stream()
-                .map(CrmBusinessDO.DeptAllocation::getDeptId)
-                .filter(Objects::nonNull)
-                .toList();
-        if (deptIds.isEmpty()) return map;
-
-        List<DeptRespDTO> depts = deptApi.getDeptList(deptIds);
-        Map<Long, Integer> deptIdTypeMap = depts.stream()
-                .filter(d -> d.getDeptType() != null)
-                .collect(java.util.stream.Collectors.toMap(DeptRespDTO::getId, DeptRespDTO::getDeptType, (a, b) -> a));
-
-        for (CrmBusinessDO.DeptAllocation alloc : business.getDeptAllocations()) {
-            if (alloc.getDeptId() == null || alloc.getAmount() == null) continue;
-            Integer deptType = deptIdTypeMap.get(alloc.getDeptId());
-            if (deptType != null) {
-                map.put(deptType, alloc.getAmount());
-            }
-        }
-        return map;
-    }
-
-    /**
-     * 从商机的部门分配列表构建 deptType -> 承接部门 ID/名称（与 {@link #buildDeptTypeBudgetMap} 同源，用于跳过领取时写入 project_dept_service.dept_id）
+     * 从商机的部门分配列表构建 deptType -> 承接部门 ID/名称，用于跳过领取时写入 project_dept_service.dept_id
      */
     private DeptTypeDeptBinding buildDeptTypeDeptBindingMaps(CrmBusinessDO business) {
         Map<Integer, Long> idMap = new HashMap<>();
@@ -854,6 +825,9 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
         businessMapper.updateById(new CrmBusinessDO().setId(id)
                 .setProcessInstanceId(processInstanceId)
                 .setAuditStatus(CrmAuditStatusEnum.PROCESS.getStatus()));
+
+        // 6. 给所有被分配部门的负责人授予 READ 权限（跨部门负责人也能查看商机）
+        grantDeptLeaderPermissions(id, business.getDeptAllocations());
     }
 
     /**
@@ -922,6 +896,38 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
     }
 
     /**
+     * 为所有被分配部门的负责人授予商机 READ 权限（幂等：已有权限则跳过）
+     */
+    private void grantDeptLeaderPermissions(Long businessId, List<CrmBusinessDO.DeptAllocation> allocations) {
+        if (CollUtil.isEmpty(allocations)) {
+            return;
+        }
+        DataPermissionUtils.executeIgnore(() -> {
+            for (CrmBusinessDO.DeptAllocation alloc : allocations) {
+                if (alloc.getDeptId() == null) {
+                    continue;
+                }
+                try {
+                    DeptRespDTO dept = deptApi.getDept(alloc.getDeptId());
+                    if (dept == null || dept.getLeaderUserId() == null) {
+                        continue;
+                    }
+                    permissionService.createPermission(new CrmPermissionCreateReqBO()
+                            .setUserId(dept.getLeaderUserId())
+                            .setBizType(CrmBizTypeEnum.CRM_BUSINESS.getType())
+                            .setBizId(businessId)
+                            .setLevel(CrmPermissionLevelEnum.READ.getLevel()));
+                    log.info("[grantDeptLeaderPermissions] 已授予部门负责人商机权限: userId={}, businessId={}, deptId={}",
+                            dept.getLeaderUserId(), businessId, alloc.getDeptId());
+                } catch (Exception e) {
+                    log.warn("[grantDeptLeaderPermissions] 授权失败(可能已存在), deptId={}, businessId={}: {}",
+                            alloc.getDeptId(), businessId, e.getMessage());
+                }
+            }
+        });
+    }
+
+    /**
      * 将部门分配列表格式化为可读文本，每行包含部门名称、分配金额和部门负责人。
      * 例：安全服务部 ¥500,000 / 负责人：张三
      */
@@ -929,33 +935,35 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
         if (CollUtil.isEmpty(allocations)) {
             return "（未分配）";
         }
-        StringBuilder sb = new StringBuilder();
-        for (CrmBusinessDO.DeptAllocation alloc : allocations) {
-            if (sb.length() > 0) {
-                sb.append("\n");
-            }
-            String deptName = alloc.getDeptName() != null ? alloc.getDeptName() : "未知部门";
-            String amountStr = alloc.getAmount() != null
-                    ? "¥" + alloc.getAmount().toPlainString()
-                    : "-";
-            // 查询部门负责人姓名
-            String leaderName = "（未设置）";
-            if (alloc.getDeptId() != null) {
-                try {
-                    DeptRespDTO dept = deptApi.getDept(alloc.getDeptId());
-                    if (dept != null && dept.getLeaderUserId() != null) {
-                        AdminUserRespDTO leader = adminUserApi.getUser(dept.getLeaderUserId());
-                        if (leader != null) {
-                            leaderName = leader.getNickname();
-                        }
-                    }
-                } catch (Exception e) {
-                    log.warn("[buildDeptAllocationsText] 获取部门负责人失败, deptId={}", alloc.getDeptId(), e);
+        return DataPermissionUtils.executeIgnore(() -> {
+            StringBuilder sb = new StringBuilder();
+            for (CrmBusinessDO.DeptAllocation alloc : allocations) {
+                if (sb.length() > 0) {
+                    sb.append("\n");
                 }
+                String deptName = alloc.getDeptName() != null ? alloc.getDeptName() : "未知部门";
+                String amountStr = alloc.getAmount() != null
+                        && alloc.getAmount().compareTo(java.math.BigDecimal.ZERO) > 0
+                        ? "¥" + alloc.getAmount().toPlainString()
+                        : "（待合同确定）";
+                String leaderName = "（未设置）";
+                if (alloc.getDeptId() != null) {
+                    try {
+                        DeptRespDTO dept = deptApi.getDept(alloc.getDeptId());
+                        if (dept != null && dept.getLeaderUserId() != null) {
+                            AdminUserRespDTO leader = adminUserApi.getUser(dept.getLeaderUserId());
+                            if (leader != null) {
+                                leaderName = leader.getNickname();
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.warn("[buildDeptAllocationsText] 获取部门负责人失败, deptId={}", alloc.getDeptId(), e);
+                    }
+                }
+                sb.append(deptName).append("  ").append(amountStr).append("  负责人：").append(leaderName);
             }
-            sb.append(deptName).append("  ").append(amountStr).append("  负责人：").append(leaderName);
-        }
-        return sb.toString();
+            return sb.toString();
+        });
     }
 
     /** 获取总经办负责人（老板） */
@@ -1077,7 +1085,7 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
                                 msg.append("（计划 ").append(p.getWorkDays()).append(" 天");
                                 if (p.getUserId() != null) {
                                     try {
-                                        cn.shuhe.system.module.system.controller.admin.cost.vo.UserCostRespVO costVO =
+                                        cn.shuhe.system.module.finance.controller.admin.cost.vo.UserCostRespVO costVO =
                                                 costCalculationService.getUserCost(p.getUserId(), nowYear, nowMonth);
                                         if (costVO != null && costVO.getDailyCost() != null) {
                                             java.math.BigDecimal memberCost = costVO.getDailyCost()
@@ -1549,8 +1557,6 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
             try {
                 Integer deptType = dept.getDeptType();
                 if (deptType != null) {
-                    Map<Integer, BigDecimal> budgetMap = new HashMap<>();
-                    budgetMap.put(deptType, amount);
                     String customerName = getCustomerName(business.getCustomerId());
                     Map<Integer, Long> deptTypeToDeptId = new HashMap<>();
                     Map<Integer, String> deptTypeToDeptName = new HashMap<>();
@@ -1558,7 +1564,7 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
                     deptTypeToDeptName.put(deptType, dept.getName());
                     projectDeptServiceService.batchCreateDeptServiceForBusiness(
                             project.getId(), businessId, business.getCustomerId(), customerName,
-                            Collections.singletonList(deptType), budgetMap,
+                            Collections.singletonList(deptType),
                             deptTypeToDeptId, deptTypeToDeptName);
                 }
             } catch (Exception e) {

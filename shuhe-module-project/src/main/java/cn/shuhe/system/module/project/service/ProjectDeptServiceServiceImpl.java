@@ -17,7 +17,6 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -155,26 +154,17 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     }
 
     @Override
-    public void setDeptServiceManagers(Long id, List<Long> managerIds, List<String> managerNames,
-                                       BigDecimal deptBudget, BigDecimal onsiteBudget, BigDecimal secondLineBudget) {
-        ProjectDeptServiceDO existing = validateDeptServiceExists(id);
-        BigDecimal effectiveDeptBudget = resolveEffectiveDeptBudget(existing.getDeptBudget(), deptBudget);
-        validateBudgetNotExceeded(effectiveDeptBudget, onsiteBudget, secondLineBudget);
+    public void setDeptServiceManagers(Long id, List<Long> managerIds, List<String> managerNames) {
+        validateDeptServiceExists(id);
 
         ProjectDeptServiceDO updateObj = new ProjectDeptServiceDO();
         updateObj.setId(id);
         updateObj.setManagerIds(managerIds);
         updateObj.setManagerNames(managerNames);
-        if (deptBudget != null && existing.getDeptBudget() == null) {
-            updateObj.setDeptBudget(deptBudget); // 提前投入项目：允许首次填写部门总预算
-        }
-        if (onsiteBudget != null) updateObj.setOnsiteBudget(onsiteBudget);
-        if (secondLineBudget != null) updateObj.setSecondLineBudget(secondLineBudget);
 
         resolveActualDept(updateObj, managerIds);
         deptServiceMapper.updateById(updateObj);
-        log.info("【部门服务单】设置负责人，id={}, managerIds={}, deptBudget={}, onsiteBudget={}, secondLineBudget={}",
-                id, managerIds, deptBudget, onsiteBudget, secondLineBudget);
+        log.info("【部门服务单】设置负责人，id={}, managerIds={}", id, managerIds);
 
         addManagersToGroupChat(id, managerIds);
     }
@@ -182,30 +172,21 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     @Override
     public void setSecurityServiceManagers(Long id,
                                             List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
-                                            List<Long> secondLineManagerIds, List<String> secondLineManagerNames,
-                                            BigDecimal deptBudget, BigDecimal onsiteBudget, BigDecimal secondLineBudget) {
+                                            List<Long> secondLineManagerIds, List<String> secondLineManagerNames) {
         ProjectDeptServiceDO deptService = validateDeptServiceExists(id);
         if (deptService.getDeptType() != 1) {
             throw exception(PROJECT_DEPT_SERVICE_NOT_SECURITY_SERVICE);
         }
-        BigDecimal effectiveDeptBudget = resolveEffectiveDeptBudget(deptService.getDeptBudget(), deptBudget);
-        validateBudgetNotExceeded(effectiveDeptBudget, onsiteBudget, secondLineBudget);
 
         ProjectDeptServiceDO updateObj = buildManagerUpdateObj(id,
                 onsiteManagerIds, onsiteManagerNames, secondLineManagerIds, secondLineManagerNames);
-        if (deptBudget != null && deptService.getDeptBudget() == null) {
-            updateObj.setDeptBudget(deptBudget); // 提前投入项目：允许首次填写部门总预算
-        }
-        if (onsiteBudget != null) updateObj.setOnsiteBudget(onsiteBudget);
-        if (secondLineBudget != null) updateObj.setSecondLineBudget(secondLineBudget);
 
         List<Long> firstManagerList = onsiteManagerIds != null && !onsiteManagerIds.isEmpty()
                 ? onsiteManagerIds : secondLineManagerIds;
         resolveActualDept(updateObj, firstManagerList);
 
         deptServiceMapper.updateById(updateObj);
-        log.info("【部门服务单】设置安全服务负责人，id={}, deptBudget={}, onsiteBudget={}, secondLineBudget={}",
-                id, deptBudget, onsiteBudget, secondLineBudget);
+        log.info("【部门服务单】设置安全服务负责人，id={}", id);
 
         List<Long> allIds = mergeIds(onsiteManagerIds, secondLineManagerIds);
         addManagersToGroupChat(id, allIds);
@@ -214,30 +195,21 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     @Override
     public void setDataSecurityManagers(Long id,
                                          List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
-                                         List<Long> secondLineManagerIds, List<String> secondLineManagerNames,
-                                         BigDecimal deptBudget, BigDecimal onsiteBudget, BigDecimal secondLineBudget) {
+                                         List<Long> secondLineManagerIds, List<String> secondLineManagerNames) {
         ProjectDeptServiceDO deptService = validateDeptServiceExists(id);
         if (deptService.getDeptType() != 3) {
             throw exception(PROJECT_DEPT_SERVICE_NOT_DATA_SECURITY);
         }
-        BigDecimal effectiveDeptBudget = resolveEffectiveDeptBudget(deptService.getDeptBudget(), deptBudget);
-        validateBudgetNotExceeded(effectiveDeptBudget, onsiteBudget, secondLineBudget);
 
         ProjectDeptServiceDO updateObj = buildManagerUpdateObj(id,
                 onsiteManagerIds, onsiteManagerNames, secondLineManagerIds, secondLineManagerNames);
-        if (deptBudget != null && deptService.getDeptBudget() == null) {
-            updateObj.setDeptBudget(deptBudget); // 提前投入项目：允许首次填写部门总预算
-        }
-        if (onsiteBudget != null) updateObj.setOnsiteBudget(onsiteBudget);
-        if (secondLineBudget != null) updateObj.setSecondLineBudget(secondLineBudget);
 
         List<Long> firstManagerList = onsiteManagerIds != null && !onsiteManagerIds.isEmpty()
                 ? onsiteManagerIds : secondLineManagerIds;
         resolveActualDept(updateObj, firstManagerList);
 
         deptServiceMapper.updateById(updateObj);
-        log.info("【部门服务单】设置数据安全负责人，id={}, deptBudget={}, onsiteBudget={}, secondLineBudget={}",
-                id, deptBudget, onsiteBudget, secondLineBudget);
+        log.info("【部门服务单】设置数据安全负责人，id={}", id);
 
         List<Long> allIds = mergeIds(onsiteManagerIds, secondLineManagerIds);
         addManagersToGroupChat(id, allIds);
@@ -303,7 +275,6 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     public List<ProjectDeptServiceDO> batchCreateDeptServiceForBusiness(Long projectId, Long businessId,
                                                                          Long customerId, String customerName,
                                                                          List<Integer> deptTypes,
-                                                                         java.util.Map<Integer, BigDecimal> deptTypeBudgetMap,
                                                                          java.util.Map<Integer, Long> deptTypeToDeptId,
                                                                          java.util.Map<Integer, String> deptTypeToDeptName) {
         List<ProjectDeptServiceDO> result = new ArrayList<>();
@@ -316,7 +287,6 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
                 continue;
             }
 
-            BigDecimal deptBudget = deptTypeBudgetMap != null ? deptTypeBudgetMap.get(deptType) : null;
             Long deptId = deptTypeToDeptId != null ? deptTypeToDeptId.get(deptType) : null;
             String deptName = deptTypeToDeptName != null ? deptTypeToDeptName.get(deptType) : null;
 
@@ -328,65 +298,19 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
                     .deptType(deptType)
                     .deptId(deptId)
                     .deptName(deptName)
-                    .status(1) // 待开始（无需领取）
+                    .status(1)
                     .progress(0)
-                    .claimed(true) // 跳过领取流程
-                    .deptBudget(deptBudget) // 从合同 deptAllocations 带入预算
+                    .claimed(true)
                     .build();
 
             deptServiceMapper.insert(deptService);
             result.add(deptService);
 
-            log.info("【部门服务单-商机】批量创建，projectId={}, deptType={}, id={}, deptId={}, deptBudget={}",
-                    projectId, deptType, deptService.getId(), deptId, deptBudget);
+            log.info("【部门服务单-商机】批量创建，projectId={}, deptType={}, id={}, deptId={}",
+                    projectId, deptType, deptService.getId(), deptId);
         }
 
         return result;
-    }
-
-    @Override
-    @DataPermission(enable = false)
-    public void updateDeptBudgetByProjectId(Long projectId, java.util.Map<Integer, BigDecimal> deptTypeBudgetMap) {
-        if (projectId == null || deptTypeBudgetMap == null || deptTypeBudgetMap.isEmpty()) {
-            return;
-        }
-        List<ProjectDeptServiceDO> list = deptServiceMapper.selectListByProjectId(projectId);
-        for (ProjectDeptServiceDO pds : list) {
-            BigDecimal budget = deptTypeBudgetMap.get(pds.getDeptType());
-            if (budget != null) {
-                ProjectDeptServiceDO update = new ProjectDeptServiceDO();
-                update.setId(pds.getId());
-                update.setDeptBudget(budget);
-                deptServiceMapper.updateById(update);
-                log.info("【部门服务单】更新合同预算，id={}, deptType={}, deptBudget={}", pds.getId(), pds.getDeptType(), budget);
-            }
-        }
-    }
-
-    /**
-     * 解析有效的部门总预算（用于校验）。
-     * 优先使用已有值；若为 null 且本次提交了 deptBudget，则用本次值参与校验。
-     */
-    private BigDecimal resolveEffectiveDeptBudget(BigDecimal existing, BigDecimal submitted) {
-        if (existing != null && existing.compareTo(BigDecimal.ZERO) > 0) {
-            return existing;
-        }
-        return submitted;
-    }
-
-    /**
-     * 校验驻场预算 + 二线预算不超过合同总预算。
-     * 仅在 deptBudget 不为 null 时才校验（未设置总预算时不限制）。
-     */
-    private void validateBudgetNotExceeded(BigDecimal deptBudget, BigDecimal onsiteBudget, BigDecimal secondLineBudget) {
-        if (deptBudget == null || deptBudget.compareTo(BigDecimal.ZERO) <= 0) {
-            return;
-        }
-        BigDecimal onsite = onsiteBudget != null ? onsiteBudget : BigDecimal.ZERO;
-        BigDecimal secondLine = secondLineBudget != null ? secondLineBudget : BigDecimal.ZERO;
-        if (onsite.add(secondLine).compareTo(deptBudget) > 0) {
-            throw exception(PROJECT_DEPT_SERVICE_BUDGET_EXCEEDED);
-        }
     }
 
     private ProjectDeptServiceDO validateDeptServiceExists(Long id) {

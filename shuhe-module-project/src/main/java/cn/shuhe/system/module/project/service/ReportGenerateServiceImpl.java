@@ -176,52 +176,39 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
 
     @Override
     public byte[] generateRoundPentestReport(Long roundId, String templateCode) {
-        // 1. 获取轮次信息
         ProjectRoundDO round = projectRoundService.getProjectRound(roundId);
         if (round == null) {
             throw exception(REPORT_GENERATE_FAILED);
         }
 
-        // 2. 获取相关数据
         List<ProjectRoundTargetDO> targets = projectRoundTargetService.getTargetListByRoundId(roundId);
         List<ProjectRoundVulnerabilityDO> vulnerabilities = projectRoundVulnerabilityService.getVulnerabilityListByRoundId(roundId);
 
-        // 3. 获取服务项信息
-        ServiceItemDO serviceItem = null;
-        if (round.getProjectId() != null) {
-            serviceItem = serviceItemService.getServiceItem(round.getProjectId());
-        }
-
-        // 4. 构建数据
+        ServiceItemDO serviceItem = getServiceItemForRound(round);
         Map<String, Object> data = buildRoundReportData(round, targets, vulnerabilities, serviceItem, false);
-
-        // 5. 渲染模板
         return renderRoundTemplate(templateCode, data);
     }
 
     @Override
     public byte[] generateRoundRetestReport(Long roundId, String templateCode) {
-        // 1. 获取轮次信息
         ProjectRoundDO round = projectRoundService.getProjectRound(roundId);
         if (round == null) {
             throw exception(REPORT_GENERATE_FAILED);
         }
 
-        // 2. 获取相关数据
         List<ProjectRoundTargetDO> targets = projectRoundTargetService.getTargetListByRoundId(roundId);
         List<ProjectRoundVulnerabilityDO> vulnerabilities = projectRoundVulnerabilityService.getVulnerabilityListByRoundId(roundId);
 
-        // 3. 获取服务项信息
-        ServiceItemDO serviceItem = null;
-        if (round.getProjectId() != null) {
-            serviceItem = serviceItemService.getServiceItem(round.getProjectId());
-        }
-
-        // 4. 构建数据（复测报告）
+        ServiceItemDO serviceItem = getServiceItemForRound(round);
         Map<String, Object> data = buildRoundReportData(round, targets, vulnerabilities, serviceItem, true);
-
-        // 5. 渲染模板
         return renderRoundTemplate(templateCode, data);
+    }
+
+    private ServiceItemDO getServiceItemForRound(ProjectRoundDO round) {
+        if (round.getServiceItemId() != null) {
+            return serviceItemService.getServiceItem(round.getServiceItemId());
+        }
+        return null;
     }
 
     /**
@@ -234,21 +221,23 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
                                                       boolean isRetest) {
         Map<String, Object> data = new HashMap<>();
 
-        // 基本信息
-        data.put("title", serviceItem != null ? serviceItem.getName() : "安全测试报告");
+        // 基本信息：title 使用客户名称
+        String customerName = serviceItem != null ? serviceItem.getCustomerName() : null;
+        data.put("title", StrUtil.blankToDefault(customerName, "安全测试报告"));
         data.put("subtitle", isRetest ? "复测报告" : "渗透测试报告");
         data.put("roundName", round.getName() != null ? round.getName() : "第" + round.getRoundNo() + "次执行");
         data.put("date", DateUtil.format(new Date(), "yyyy年MM月dd日"));
         data.put("today", DateUtil.format(new Date(), "yyyy年MM月dd日"));
 
-        // 时间信息（deadline 作为截止日期显示）
-        data.put("start_time", formatDateTime(round.getDeadline()));
-        data.put("end_time", formatDateTime(round.getPlanEndTime()));
+        // 时间信息：只显示日期，不含时分
+        data.put("start_time", formatDate(round.getDeadline()));
+        data.put("end_time", formatDate(round.getPlanEndTime()));
         data.put("testers", StrUtil.blankToDefault(round.getExecutorNames(), "待分配"));
 
         // 服务项信息
         if (serviceItem != null) {
-            data.put("customerName", serviceItem.getCustomerName());
+            data.put("customerName", StrUtil.blankToDefault(serviceItem.getCustomerName(), ""));
+            data.put("serviceItemName", StrUtil.blankToDefault(serviceItem.getName(), ""));
             data.put("serviceType", serviceItem.getServiceType());
         }
 
@@ -337,7 +326,6 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
             Map<String, Object> row = new HashMap<>();
             row.put("seq", vulnSeq++);
             row.put("location", vuln.getLocation());
-            row.put("url", StrUtil.blankToDefault(vuln.getUrl(), "-"));
             row.put("vul_type", vuln.getType());
             row.put("risk_level", getSeverityText(vuln.getSeverity()));
             row.put("severity", vuln.getSeverity());
@@ -347,14 +335,19 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
             // 直接传递 HTML 内容，使用 HtmlRenderPolicy 渲染
             row.put("process", StrUtil.blankToDefault(vuln.getProcess(), "-"));
 
-            // 获取目标名称
-            String targetName = targets.stream()
+            // 获取目标信息
+            ProjectRoundTargetDO vulnTarget = targets.stream()
                     .filter(t -> t.getId().equals(vuln.getTargetId()))
-                    .map(ProjectRoundTargetDO::getName)
                     .findFirst()
-                    .orElse("未分配");
+                    .orElse(null);
+            String targetName = vulnTarget != null ? vulnTarget.getName() : "未分配";
+            String targetUrl = vulnTarget != null ? vulnTarget.getUrl() : null;
             row.put("target_name", targetName);
-            row.put("targetName", targetName);  // 驼峰命名兼容
+            row.put("targetName", targetName);
+
+            // url: 优先使用漏洞自身 URL，没有则用目标系统 URL
+            String vulnUrl = StrUtil.blankToDefault(vuln.getUrl(), targetUrl);
+            row.put("url", StrUtil.blankToDefault(vulnUrl, "-"));
 
             // 复测信息
             if (isRetest) {
@@ -391,6 +384,65 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
         }
 
         return data;
+    }
+
+    @Override
+    public byte[] generateRoundPentestReportsZip(Long roundId, String templateCode) {
+        return generateRoundReportsZipInternal(roundId, templateCode, false);
+    }
+
+    @Override
+    public byte[] generateRoundRetestReportsZip(Long roundId, String templateCode) {
+        return generateRoundReportsZipInternal(roundId, templateCode, true);
+    }
+
+    private byte[] generateRoundReportsZipInternal(Long roundId, String templateCode, boolean isRetest) {
+        ProjectRoundDO round = projectRoundService.getProjectRound(roundId);
+        if (round == null) {
+            throw exception(REPORT_GENERATE_FAILED);
+        }
+
+        List<ProjectRoundTargetDO> targets = projectRoundTargetService.getTargetListByRoundId(roundId);
+        List<ProjectRoundVulnerabilityDO> allVulnerabilities = projectRoundVulnerabilityService.getVulnerabilityListByRoundId(roundId);
+
+        ServiceItemDO serviceItem = getServiceItemForRound(round);
+
+        if (targets.isEmpty()) {
+            throw exception(REPORT_GENERATE_FAILED);
+        }
+
+        try (ByteArrayOutputStream zipOut = new ByteArrayOutputStream();
+             java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(zipOut)) {
+
+            for (ProjectRoundTargetDO target : targets) {
+                List<ProjectRoundVulnerabilityDO> targetVulns = allVulnerabilities.stream()
+                        .filter(v -> target.getId().equals(v.getTargetId()))
+                        .collect(Collectors.toList());
+
+                List<ProjectRoundTargetDO> singleTarget = List.of(target);
+                Map<String, Object> data = buildRoundReportData(round, singleTarget, targetVulns, serviceItem, isRetest);
+                data.put("title", StrUtil.blankToDefault(target.getName(), "未命名系统"));
+                data.put("targets_text", StrUtil.blankToDefault(target.getName(), target.getUrl()));
+
+                byte[] docxBytes = renderRoundTemplate(templateCode, data);
+
+                String safeName = target.getName() != null
+                        ? target.getName().replaceAll("[\\\\/:*?\"<>|]", "_")
+                        : "目标_" + target.getId();
+                String entryName = safeName + ".docx";
+
+                zos.putNextEntry(new java.util.zip.ZipEntry(entryName));
+                zos.write(docxBytes);
+                zos.closeEntry();
+            }
+
+            zos.finish();
+            return zipOut.toByteArray();
+
+        } catch (IOException e) {
+            log.error("生成 ZIP 报告失败, roundId={}", roundId, e);
+            throw exception(REPORT_GENERATE_FAILED);
+        }
     }
 
     /**
@@ -502,6 +554,16 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
             return "未设置";
         }
         return dateTime.format(DATETIME_FORMATTER);
+    }
+
+    /**
+     * 格式化日期（不含时分）
+     */
+    private String formatDate(LocalDateTime dateTime) {
+        if (dateTime == null) {
+            return "未设置";
+        }
+        return dateTime.format(DATE_FORMATTER);
     }
 
     /**

@@ -48,7 +48,7 @@ public class CrmBusinessSaveReqVO {
     @DiffLogField(name = "负责人", function = SysAdminUserParseFunction.NAME)
     private Long ownerUserId;
 
-    @Schema(description = "部门金额分配列表")
+    @Schema(description = "部门分配列表（商机阶段仅选部门，金额可不填）")
     @NotEmpty(message = "部门分配不能为空")
     private List<DeptAllocation> deptAllocations;
 
@@ -82,8 +82,7 @@ public class CrmBusinessSaveReqVO {
         @Schema(description = "部门名称", example = "安全服务部")
         private String deptName;
 
-        @Schema(description = "分配金额", requiredMode = Schema.RequiredMode.REQUIRED, example = "500000")
-        @NotNull(message = "分配金额不能为空")
+        @Schema(description = "分配金额（商机阶段可不填，合同阶段必填）", example = "500000")
         private BigDecimal amount;
     }
 

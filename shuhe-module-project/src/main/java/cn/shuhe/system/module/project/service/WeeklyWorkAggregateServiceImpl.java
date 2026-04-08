@@ -24,7 +24,7 @@ import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import cn.shuhe.system.module.system.dal.dataobject.holiday.HolidayDO;
-import cn.shuhe.system.module.system.service.cost.HolidayService;
+import cn.shuhe.system.module.finance.service.cost.HolidayService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

@@ -18,8 +18,7 @@ public class CrmBusinessAddDeptAllocationReqVO {
     @NotNull(message = "部门编号不能为空")
     private Long deptId;
 
-    @Schema(description = "分配金额", requiredMode = Schema.RequiredMode.REQUIRED, example = "500000")
-    @NotNull(message = "分配金额不能为空")
+    @Schema(description = "分配金额（可不填，待合同确定）", example = "500000")
     private BigDecimal amount;
 
 }

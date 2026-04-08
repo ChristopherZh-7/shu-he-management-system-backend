@@ -53,4 +53,22 @@ public interface ReportGenerateService {
      */
     byte[] generateRoundRetestReport(Long roundId, String templateCode);
 
+    /**
+     * 按目标系统分别生成渗透测试报告，打包为 ZIP
+     *
+     * @param roundId 轮次ID
+     * @param templateCode 模板编码
+     * @return ZIP 字节数组，每个目标一个 .docx 文件
+     */
+    byte[] generateRoundPentestReportsZip(Long roundId, String templateCode);
+
+    /**
+     * 按目标系统分别生成复测报告，打包为 ZIP
+     *
+     * @param roundId 轮次ID
+     * @param templateCode 模板编码
+     * @return ZIP 字节数组，每个目标一个 .docx 文件
+     */
+    byte[] generateRoundRetestReportsZip(Long roundId, String templateCode);
+
 }

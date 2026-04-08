@@ -35,7 +35,7 @@ import cn.shuhe.system.module.system.dal.dataobject.user.AdminUserDO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.PostDO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.UserPostDO;
 import cn.shuhe.system.module.system.dal.dataobject.permission.RoleDO;
-import cn.shuhe.system.module.system.service.cost.PositionLevelHistoryService;
+import cn.shuhe.system.module.system.service.position.PositionLevelHistoryService;
 import cn.shuhe.system.module.system.service.permission.PermissionService;
 import cn.shuhe.system.module.system.service.social.SocialUserService;
 import org.springframework.security.crypto.password.PasswordEncoder;

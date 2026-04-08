@@ -23,7 +23,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -119,59 +118,48 @@ public class ProjectDeptServiceController {
     }
 
     @PutMapping("/set-security-service-managers")
-    @Operation(summary = "设置安全服务的驻场和二线负责人（同时设置驻场/二线预算）")
+    @Operation(summary = "设置安全服务的驻场和二线负责人")
     @PreAuthorize("@ss.hasPermission('project:dept-service:update')")
     public CommonResult<Boolean> setSecurityServiceManagers(
             @RequestParam("id") Long id,
             @RequestParam(value = "onsiteManagerIds", required = false) List<Long> onsiteManagerIds,
-            @RequestParam(value = "secondLineManagerIds", required = false) List<Long> secondLineManagerIds,
-            @RequestParam(value = "deptBudget", required = false) BigDecimal deptBudget,
-            @RequestParam(value = "onsiteBudget", required = false) BigDecimal onsiteBudget,
-            @RequestParam(value = "secondLineBudget", required = false) BigDecimal secondLineBudget) {
+            @RequestParam(value = "secondLineManagerIds", required = false) List<Long> secondLineManagerIds) {
 
         List<String> onsiteManagerNames = resolveUserNames(onsiteManagerIds);
         List<String> secondLineManagerNames = resolveUserNames(secondLineManagerIds);
 
         deptServiceService.setSecurityServiceManagers(id,
                 onsiteManagerIds, onsiteManagerNames,
-                secondLineManagerIds, secondLineManagerNames,
-                deptBudget, onsiteBudget, secondLineBudget);
+                secondLineManagerIds, secondLineManagerNames);
         return success(true);
     }
 
     @PutMapping("/set-data-security-managers")
-    @Operation(summary = "设置数据安全的驻场和二线负责人（同时设置驻场/二线预算）")
+    @Operation(summary = "设置数据安全的驻场和二线负责人")
     @PreAuthorize("@ss.hasPermission('project:dept-service:update')")
     public CommonResult<Boolean> setDataSecurityManagers(
             @RequestParam("id") Long id,
             @RequestParam(value = "onsiteManagerIds", required = false) List<Long> onsiteManagerIds,
-            @RequestParam(value = "secondLineManagerIds", required = false) List<Long> secondLineManagerIds,
-            @RequestParam(value = "deptBudget", required = false) BigDecimal deptBudget,
-            @RequestParam(value = "onsiteBudget", required = false) BigDecimal onsiteBudget,
-            @RequestParam(value = "secondLineBudget", required = false) BigDecimal secondLineBudget) {
+            @RequestParam(value = "secondLineManagerIds", required = false) List<Long> secondLineManagerIds) {
 
         List<String> onsiteManagerNames = resolveUserNames(onsiteManagerIds);
         List<String> secondLineManagerNames = resolveUserNames(secondLineManagerIds);
 
         deptServiceService.setDataSecurityManagers(id,
                 onsiteManagerIds, onsiteManagerNames,
-                secondLineManagerIds, secondLineManagerNames,
-                deptBudget, onsiteBudget, secondLineBudget);
+                secondLineManagerIds, secondLineManagerNames);
         return success(true);
     }
 
     @PutMapping("/set-managers")
-    @Operation(summary = "设置安全运营的负责人（同时设置驻场/管理预算）")
+    @Operation(summary = "设置安全运营的负责人")
     @PreAuthorize("@ss.hasPermission('project:dept-service:update')")
     public CommonResult<Boolean> setDeptServiceManagers(
             @RequestParam("id") Long id,
-            @RequestParam("managerIds") List<Long> managerIds,
-            @RequestParam(value = "deptBudget", required = false) BigDecimal deptBudget,
-            @RequestParam(value = "onsiteBudget", required = false) BigDecimal onsiteBudget,
-            @RequestParam(value = "secondLineBudget", required = false) BigDecimal secondLineBudget) {
+            @RequestParam("managerIds") List<Long> managerIds) {
 
         List<String> managerNames = resolveUserNames(managerIds);
-        deptServiceService.setDeptServiceManagers(id, managerIds, managerNames, deptBudget, onsiteBudget, secondLineBudget);
+        deptServiceService.setDeptServiceManagers(id, managerIds, managerNames);
         return success(true);
     }
 
@@ -211,16 +199,6 @@ public class ProjectDeptServiceController {
             Long count = serviceItemMapper.selectCountByProjectIdAndDeptType(
                     deptService.getProjectId(), deptService.getDeptType());
             respVO.setServiceItemCount(count != null ? count.intValue() : 0);
-        }
-
-        // 计算预算规划情况：deptUsedAmount = 已规划到子资金池的金额（onsiteBudget + secondLineBudget）
-        // deptRemainingAmount = 尚未规划的余额（deptBudget - onsiteBudget - secondLineBudget）
-        if (deptService.getDeptBudget() != null) {
-            BigDecimal onsite = deptService.getOnsiteBudget() != null ? deptService.getOnsiteBudget() : BigDecimal.ZERO;
-            BigDecimal secondLine = deptService.getSecondLineBudget() != null ? deptService.getSecondLineBudget() : BigDecimal.ZERO;
-            BigDecimal committed = onsite.add(secondLine);
-            respVO.setDeptUsedAmount(committed);
-            respVO.setDeptRemainingAmount(deptService.getDeptBudget().subtract(committed).max(BigDecimal.ZERO));
         }
 
         return respVO;

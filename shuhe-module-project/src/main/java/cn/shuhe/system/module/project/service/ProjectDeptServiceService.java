@@ -6,7 +6,6 @@ import cn.shuhe.system.module.project.controller.admin.vo.ProjectDeptServiceSave
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDeptServiceDO;
 import jakarta.validation.Valid;
 
-import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -103,39 +102,26 @@ public interface ProjectDeptServiceService {
      * @param managerIds   负责人ID列表
      * @param managerNames 负责人姓名列表
      */
-    void setDeptServiceManagers(Long id, List<Long> managerIds, List<String> managerNames,
-                                BigDecimal deptBudget, BigDecimal onsiteBudget, BigDecimal secondLineBudget);
+    void setDeptServiceManagers(Long id, List<Long> managerIds, List<String> managerNames);
 
     void setSecurityServiceManagers(Long id,
                                      List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
-                                     List<Long> secondLineManagerIds, List<String> secondLineManagerNames,
-                                     BigDecimal deptBudget, BigDecimal onsiteBudget, BigDecimal secondLineBudget);
+                                     List<Long> secondLineManagerIds, List<String> secondLineManagerNames);
 
     void setDataSecurityManagers(Long id,
                                   List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
-                                  List<Long> secondLineManagerIds, List<String> secondLineManagerNames,
-                                  BigDecimal deptBudget, BigDecimal onsiteBudget, BigDecimal secondLineBudget);
+                                  List<Long> secondLineManagerIds, List<String> secondLineManagerNames);
 
     /**
      * 批量创建部门服务单（商机/合同审批通过时使用，直接进入待开始状态）
      *
-     * @param deptTypeBudgetMap   deptType -> 该部门的合同预算（来自商机 deptAllocations），可为 null
-     * @param deptTypeToDeptId   deptType -> 承接部门 ID（来自商机 deptAllocations），可为 null；用于数据权限，避免「跳过领取」后 dept_id 为空
+     * @param deptTypeToDeptId   deptType -> 承接部门 ID（来自商机 deptAllocations），可为 null
      * @param deptTypeToDeptName deptType -> 承接部门名称，可为 null
      */
     List<ProjectDeptServiceDO> batchCreateDeptServiceForBusiness(Long projectId, Long businessId,
                                                                   Long customerId, String customerName,
                                                                   List<Integer> deptTypes,
-                                                                  java.util.Map<Integer, java.math.BigDecimal> deptTypeBudgetMap,
                                                                   java.util.Map<Integer, Long> deptTypeToDeptId,
                                                                   java.util.Map<Integer, String> deptTypeToDeptName);
-
-    /**
-     * 提前投入转合同时，更新已存在项目的各部门服务单预算
-     *
-     * @param projectId         项目ID
-     * @param deptTypeBudgetMap deptType -> 合同预算
-     */
-    void updateDeptBudgetByProjectId(Long projectId, java.util.Map<Integer, java.math.BigDecimal> deptTypeBudgetMap);
 
 }

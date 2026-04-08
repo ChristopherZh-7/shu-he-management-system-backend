@@ -16,7 +16,7 @@ import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceLaunchMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceLaunchMemberMapper;
-import cn.shuhe.system.module.system.api.cost.OutsideCostApi;
+import cn.shuhe.system.module.finance.api.cost.OutsideCostApi;
 import cn.shuhe.system.module.system.api.dept.DeptApi;
 import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;

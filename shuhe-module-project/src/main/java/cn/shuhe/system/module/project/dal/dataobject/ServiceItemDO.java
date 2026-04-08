@@ -6,7 +6,6 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -203,17 +202,8 @@ public class ServiceItemDO extends BaseDO {
      */
     private Integer serviceMemberType;
 
-    // ========== 资金池分配字段 ==========
-
-    /**
-     * 分配给该服务项的金额（二线/管理服务项创建时从资金池中分配）
-     * 驻场服务项的收入按工作日比例从 onsite_budget 计算，此字段不适用
-     */
-    private BigDecimal allocatedAmount;
-
     /**
      * 执行人用户ID（二线/管理服务项指定固定执行人，驻场服务项无需指定）
-     * 该执行人将获得 allocatedAmount 作为该服务项的收入
      */
     private Long executorId;
 

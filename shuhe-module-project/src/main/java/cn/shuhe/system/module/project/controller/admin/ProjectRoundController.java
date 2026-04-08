@@ -146,7 +146,7 @@ public class ProjectRoundController {
 
     @PutMapping("/update-status")
     @Operation(summary = "更新轮次状态")
-    @PreAuthorize("@ss.hasPermission('project:info:update')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:info:update', 'project:my-tasks:update')")
     public CommonResult<Boolean> updateRoundStatus(@RequestParam("id") Long id,
                                                    @RequestParam("status") Integer status) {
         projectRoundService.updateRoundStatus(id, status);
@@ -155,7 +155,7 @@ public class ProjectRoundController {
 
     @PutMapping("/update-progress")
     @Operation(summary = "更新轮次进度")
-    @PreAuthorize("@ss.hasPermission('project:info:update')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:info:update', 'project:my-tasks:update')")
     public CommonResult<Boolean> updateRoundProgress(@RequestParam("id") Long id,
                                                      @RequestParam("progress") Integer progress) {
         projectRoundService.updateRoundProgress(id, progress);
@@ -226,6 +226,54 @@ public class ProjectRoundController {
 
         // 写入响应
         response.getOutputStream().write(reportData);
+        response.getOutputStream().flush();
+    }
+
+    @GetMapping("/export-pentest-reports-zip")
+    @Operation(summary = "按系统导出渗透测试报告（ZIP）", description = "每个测试目标生成独立报告，打包为 ZIP 下载")
+    @Parameter(name = "id", description = "轮次ID", required = true)
+    @Parameter(name = "templateCode", description = "模板编码", required = true)
+    @PreAuthorize("@ss.hasPermission('project:info:query')")
+    public void exportPentestReportsZip(
+            @RequestParam("id") Long id,
+            @RequestParam("templateCode") String templateCode,
+            HttpServletResponse response) throws IOException {
+        byte[] zipData = reportGenerateService.generateRoundPentestReportsZip(id, templateCode);
+
+        ProjectRoundDO round = projectRoundService.getProjectRound(id);
+        String roundName = round.getName() != null ? round.getName() : "第" + round.getRoundNo() + "次执行";
+        String fileName = String.format("渗透测试报告_按系统_%s.zip", roundName);
+
+        response.setContentType("application/zip");
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=" + URLEncoder.encode(fileName, StandardCharsets.UTF_8));
+        response.setContentLength(zipData.length);
+
+        response.getOutputStream().write(zipData);
+        response.getOutputStream().flush();
+    }
+
+    @GetMapping("/export-retest-reports-zip")
+    @Operation(summary = "按系统导出复测报告（ZIP）", description = "每个测试目标生成独立复测报告，打包为 ZIP 下载")
+    @Parameter(name = "id", description = "轮次ID", required = true)
+    @Parameter(name = "templateCode", description = "模板编码", required = true)
+    @PreAuthorize("@ss.hasPermission('project:info:query')")
+    public void exportRetestReportsZip(
+            @RequestParam("id") Long id,
+            @RequestParam("templateCode") String templateCode,
+            HttpServletResponse response) throws IOException {
+        byte[] zipData = reportGenerateService.generateRoundRetestReportsZip(id, templateCode);
+
+        ProjectRoundDO round = projectRoundService.getProjectRound(id);
+        String roundName = round.getName() != null ? round.getName() : "第" + round.getRoundNo() + "次执行";
+        String fileName = String.format("复测报告_按系统_%s.zip", roundName);
+
+        response.setContentType("application/zip");
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=" + URLEncoder.encode(fileName, StandardCharsets.UTF_8));
+        response.setContentLength(zipData.length);
+
+        response.getOutputStream().write(zipData);
         response.getOutputStream().flush();
     }
 

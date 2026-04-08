@@ -26,6 +26,7 @@
         <module>shuhe-module-ai</module>
         <!-- <module>shuhe-module-ticket</module> 工单模块已删除 -->
         <module>shuhe-module-project</module>
+        <module>shuhe-module-finance</module>
         <!--        <module>shuhe-module-iot</module>-->
     </modules>
 
