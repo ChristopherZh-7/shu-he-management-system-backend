@@ -3,9 +3,7 @@ package cn.shuhe.system.module.system.api.dept;
 import cn.shuhe.system.framework.common.util.collection.CollectionUtils;
 import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * 部门 API 接口
@@ -114,5 +112,14 @@ public interface DeptApi {
      * @return 最终找到负责人的部门ID
      */
     Long findLeaderDeptIdRecursively(Long deptId);
+
+    /**
+     * 获取从指定部门到顶级业务部门（deptType != null）的整条管理链上所有负责人的用户ID
+     * 例如：选择"运营服务部1营1排3班"(id=123)，返回 123/121/117 各层的 leaderUserId（去重）
+     *
+     * @param deptId 起始部门ID（通常是最底层的班级）
+     * @return 去重后的负责人用户ID集合
+     */
+    Set<Long> getAncestorChainLeaderUserIds(Long deptId);
 
 }

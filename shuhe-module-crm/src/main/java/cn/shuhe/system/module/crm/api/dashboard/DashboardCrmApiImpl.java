@@ -314,6 +314,16 @@ public class DashboardCrmApiImpl implements DashboardCrmApi {
                 .build();
     }
 
+    @Override
+    public BigDecimal getContractYearlyTotal(Long userId, int year) {
+        try {
+            return contractMapper.selectSumTotalPriceByYear(year);
+        } catch (Exception e) {
+            log.warn("获取合同年度总金额失败", e);
+            return BigDecimal.ZERO;
+        }
+    }
+
     private Integer resolveSceneType(Long userId) {
         if (permissionCommonApi.hasAnyRoles(userId, SUPER_ADMIN_ROLE)) {
             return null;

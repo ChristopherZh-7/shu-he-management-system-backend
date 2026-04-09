@@ -10,9 +10,7 @@ import cn.shuhe.system.module.system.service.dept.DeptService;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 /**
  * 部门 API 实现类
@@ -137,6 +135,32 @@ public class DeptApiImpl implements DeptApi {
         // 如果找到根部门还没有负责人，尝试查找总经办（假设总经办deptType = 0 或特定名称）
         // 这里暂时返回null，让调用方处理
         return null;
+    }
+
+    @Override
+    public Set<Long> getAncestorChainLeaderUserIds(Long deptId) {
+        Set<Long> leaderUserIds = new LinkedHashSet<>();
+        if (deptId == null) {
+            return leaderUserIds;
+        }
+        Set<Long> visited = new HashSet<>();
+        Long currentDeptId = deptId;
+        while (currentDeptId != null && !visited.contains(currentDeptId)) {
+            visited.add(currentDeptId);
+            DeptDO dept = deptService.getDept(currentDeptId);
+            if (dept == null) break;
+            if (dept.getLeaderUserId() != null) {
+                leaderUserIds.add(dept.getLeaderUserId());
+            }
+            if (dept.getDeptType() != null && dept.getParentId() != null) {
+                DeptDO parent = deptService.getDept(dept.getParentId());
+                if (parent == null || parent.getDeptType() == null) {
+                    break;
+                }
+            }
+            currentDeptId = dept.getParentId();
+        }
+        return leaderUserIds;
     }
 
     @Override

@@ -35,6 +35,7 @@ public interface ErrorCodeConstants {
     ErrorCode CONTRACT_CREATE_FAIL_EARLY_INVESTMENT_PROCESSING = new ErrorCode(1_020_000_007, "签合同失败：该商机正在进行提前投入审批，请等待审批完成后再签合同");
     ErrorCode BUSINESS_DEPT_ALLOCATION_EXISTS = new ErrorCode(1_020_002_006, "该部门已在分配列表中，不能重复添加");
     ErrorCode BUSINESS_DEPT_NOT_EXISTS = new ErrorCode(1_020_002_007, "部门不存在");
+    ErrorCode BUSINESS_DELETE_FAIL_NOT_DRAFT = new ErrorCode(1_020_002_008, "商机删除失败，原因：只有未提交状态的商机才能删除");
 
     // ========== 联系人管理 1-020-003-000 ==========
     ErrorCode CONTACT_NOT_EXISTS = new ErrorCode(1_020_003_000, "联系人不存在");

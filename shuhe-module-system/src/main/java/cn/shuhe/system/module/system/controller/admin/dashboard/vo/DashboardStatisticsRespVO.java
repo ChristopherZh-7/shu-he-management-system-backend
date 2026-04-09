@@ -144,6 +144,8 @@ public class DashboardStatisticsRespVO {
         private BigDecimal yearlyRevenue;
         @Schema(description = "本周收入")
         private BigDecimal weeklyRevenue;
+        @Schema(description = "合同年度收入（直接取已签合同金额）")
+        private BigDecimal contractYearlyRevenue;
     }
 
     @Data

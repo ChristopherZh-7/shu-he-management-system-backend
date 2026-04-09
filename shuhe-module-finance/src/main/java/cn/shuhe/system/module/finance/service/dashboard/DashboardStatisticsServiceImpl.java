@@ -327,6 +327,8 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
         LocalDate monthEnd = LocalDate.of(year, month, 1).plusMonths(1).minusDays(1);
         LocalDate cutoff = monthEnd.isAfter(LocalDate.now()) ? LocalDate.now() : monthEnd;
 
+        BigDecimal contractYearlyRevenue = getContractYearlyTotal(year);
+
         BusinessAnalysisReqVO curReq = new BusinessAnalysisReqVO();
         curReq.setYear(year);
         curReq.setCutoffDate(cutoff);
@@ -371,6 +373,7 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
                 .growthRate(growthRate)
                 .yearlyRevenue(curRevenue)
                 .weeklyRevenue(weeklyRevenue)
+                .contractYearlyRevenue(contractYearlyRevenue)
                 .build();
     }
 
@@ -379,6 +382,8 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
      */
     private RevenueStats getYtdRevenueStats(Long userId, int targetYear, LocalDate now) {
         LocalDate cutoff = (targetYear == now.getYear()) ? now : LocalDate.of(targetYear, 12, 31);
+
+        BigDecimal contractYearlyRevenue = getContractYearlyTotal(targetYear);
 
         BusinessAnalysisReqVO req = new BusinessAnalysisReqVO();
         req.setYear(targetYear);
@@ -427,13 +432,23 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
                     .growthRate(growthRate)
                     .yearlyRevenue(yearlyRevenue)
                     .weeklyRevenue(weeklyRevenue)
+                    .contractYearlyRevenue(contractYearlyRevenue)
                     .build();
         }
 
         return RevenueStats.builder()
                 .monthlyRevenue(BigDecimal.ZERO).monthlyCost(BigDecimal.ZERO)
                 .monthlyProfit(BigDecimal.ZERO).growthRate(BigDecimal.ZERO)
-                .yearlyRevenue(BigDecimal.ZERO).weeklyRevenue(BigDecimal.ZERO).build();
+                .yearlyRevenue(BigDecimal.ZERO).weeklyRevenue(BigDecimal.ZERO)
+                .contractYearlyRevenue(contractYearlyRevenue).build();
+    }
+
+    private BigDecimal getContractYearlyTotal(int year) {
+        if (dashboardCrmApi != null) {
+            BigDecimal total = dashboardCrmApi.getContractYearlyTotal(null, year);
+            if (total != null) return total;
+        }
+        return BigDecimal.ZERO;
     }
 
     private BigDecimal computeGrowth(Long userId, int year, int month, BigDecimal currentProfit) {
@@ -607,6 +622,7 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
             }
 
             BigDecimal weeklyRevenue = computeWeeklyRevenue(userId);
+            BigDecimal contractYearlyRev = getContractYearlyTotal(targetYear);
 
             // 逐月快照
             for (int m = 1; m <= maxMonth; m++) {
@@ -617,6 +633,7 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
                 RevenueStats rev = RevenueStats.builder()
                         .monthlyRevenue(mRevenue).monthlyCost(mCost).monthlyProfit(mProfit)
                         .yearlyRevenue(cumRevenue[m]).weeklyRevenue(weeklyRevenue)
+                        .contractYearlyRevenue(contractYearlyRev)
                         .growthRate(BigDecimal.ZERO).build();
 
                 List<RankData> rank = buildMonthDeptRank(rawData[m], m > 1 ? rawData[m - 1] : null);
@@ -634,6 +651,7 @@ public class DashboardStatisticsServiceImpl implements DashboardStatisticsServic
             RevenueStats totalRev = RevenueStats.builder()
                     .monthlyRevenue(avgRevenue).monthlyCost(avgCost).monthlyProfit(avgProfit)
                     .yearlyRevenue(cumRevenue[maxMonth]).weeklyRevenue(weeklyRevenue)
+                    .contractYearlyRevenue(contractYearlyRev)
                     .growthRate(BigDecimal.ZERO).build();
 
             List<RankData> totalRank = buildRankDataFromAnalysis(rawData[maxMonth]);

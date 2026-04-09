@@ -71,6 +71,20 @@ public interface ProjectDeptServiceMapper extends BaseMapperX<ProjectDeptService
     }
 
     /**
+     * 根据项目ID列表分页查询（用于项目成员权限过滤）
+     */
+    default PageResult<ProjectDeptServiceDO> selectPageByProjectIds(ProjectDeptServicePageReqVO reqVO, List<Long> projectIds) {
+        return selectPage(reqVO, new LambdaQueryWrapperX<ProjectDeptServiceDO>()
+                .in(ProjectDeptServiceDO::getProjectId, projectIds)
+                .eqIfPresent(ProjectDeptServiceDO::getDeptType, reqVO.getDeptType())
+                .eqIfPresent(ProjectDeptServiceDO::getStatus, reqVO.getStatus())
+                .eqIfPresent(ProjectDeptServiceDO::getClaimed, reqVO.getClaimed())
+                .likeIfPresent(ProjectDeptServiceDO::getCustomerName, reqVO.getCustomerName())
+                .likeIfPresent(ProjectDeptServiceDO::getContractNo, reqVO.getContractNo())
+                .orderByDesc(ProjectDeptServiceDO::getId));
+    }
+
+    /**
      * 根据部门ID查询服务单列表
      */
     default List<ProjectDeptServiceDO> selectListByDeptId(Long deptId) {

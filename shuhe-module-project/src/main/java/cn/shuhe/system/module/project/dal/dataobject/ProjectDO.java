@@ -47,6 +47,12 @@ public class ProjectDO extends BaseDO {
      */
     private Integer deptType;
 
+    /**
+     * 项目类型
+     * 1-驻场类 2-管理类
+     */
+    private Integer projectType;
+
     // ========== 客户信息 ==========
 
     /**

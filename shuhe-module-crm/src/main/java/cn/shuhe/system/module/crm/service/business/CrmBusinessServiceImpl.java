@@ -527,6 +527,8 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
             syncDeptAllocationsToContract(business, contractId, contractNo, customerName);
         }
 
+        addAncestorChainMembersToProject(projectId, business);
+
         log.info("[createProjectInternally] 商机 {} 创建项目 {} 成功，合同关联: {}", business.getName(), projectId, contractId);
 
         // 群通知（如有群）
@@ -663,6 +665,38 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
     }
 
     private record DeptTypeDeptBinding(Map<Integer, Long> deptTypeToDeptId, Map<Integer, String> deptTypeToDeptName) {
+    }
+
+    /**
+     * 根据商机的部门分配，将整条管理链上的负责人添加为项目成员。
+     * 例如选择了"运营服务部1营1排3班"，则自动把班长→排长→部门主管都加为项目成员。
+     */
+    private void addAncestorChainMembersToProject(Long projectId, CrmBusinessDO business) {
+        if (CollUtil.isEmpty(business.getDeptAllocations())) return;
+        Set<Long> allLeaderIds = new java.util.LinkedHashSet<>();
+        for (CrmBusinessDO.DeptAllocation alloc : business.getDeptAllocations()) {
+            if (alloc.getDeptId() == null) continue;
+            Set<Long> chainLeaders = deptApi.getAncestorChainLeaderUserIds(alloc.getDeptId());
+            allLeaderIds.addAll(chainLeaders);
+        }
+        if (allLeaderIds.isEmpty()) return;
+
+        List<AdminUserRespDTO> users = adminUserApi.getUserList(allLeaderIds);
+        Map<Long, String> userNameMap = new java.util.HashMap<>();
+        if (users != null) {
+            for (AdminUserRespDTO u : users) {
+                userNameMap.put(u.getId(), u.getNickname());
+            }
+        }
+        for (Long userId : allLeaderIds) {
+            String nickname = userNameMap.getOrDefault(userId, "");
+            try {
+                projectService.addProjectMember(projectId, userId, nickname, 2);
+            } catch (Exception e) {
+                log.warn("[addAncestorChainMembersToProject] 添加项目成员失败: userId={}, projectId={}", userId, projectId, e);
+            }
+        }
+        log.info("[addAncestorChainMembersToProject] 项目 {} 已添加 {} 名管理链成员: {}", projectId, allLeaderIds.size(), allLeaderIds);
     }
 
     /**
@@ -1149,6 +1183,9 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
     @CrmPermission(bizType = CrmBizTypeEnum.CRM_BUSINESS, bizId = "#id", level = CrmPermissionLevelEnum.OWNER)
     public void deleteBusiness(Long id) {
         CrmBusinessDO business = validateBusinessExists(id);
+        if (!Integer.valueOf(0).equals(business.getAuditStatus())) {
+            throw exception(BUSINESS_DELETE_FAIL_NOT_DRAFT);
+        }
         validateContractExists(id);
         businessMapper.deleteById(id);
         permissionService.deletePermission(CrmBizTypeEnum.CRM_BUSINESS.getType(), id);
@@ -1570,6 +1607,20 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
             } catch (Exception e) {
                 log.warn("[addDeptAllocation] 创建部门服务单失败, projectId={}, deptId={}: {}",
                         project.getId(), deptId, e.getMessage());
+            }
+        }
+
+        // 7.5 将新部门管理链成员添加为项目成员
+        for (ProjectDO project : projects) {
+            Set<Long> chainLeaders = deptApi.getAncestorChainLeaderUserIds(deptId);
+            for (Long leaderId : chainLeaders) {
+                try {
+                    AdminUserRespDTO user = adminUserApi.getUser(leaderId);
+                    String nickname = user != null ? user.getNickname() : "";
+                    projectService.addProjectMember(project.getId(), leaderId, nickname, 2);
+                } catch (Exception e) {
+                    log.warn("[addDeptAllocation] 添加项目成员失败: userId={}", leaderId, e);
+                }
             }
         }
 

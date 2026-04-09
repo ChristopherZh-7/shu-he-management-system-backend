@@ -68,4 +68,13 @@ public interface DashboardCrmApi {
      * @return 待回款统计，若未实现可返回 null
      */
     DashboardStatisticsRespVO.ReceivableStats getReceivableStats(Long userId);
+
+    /**
+     * 获取合同年度总金额（已签合同）
+     *
+     * @param userId 用户ID
+     * @param year 年份
+     * @return 合同年度总金额（元），若未实现可返回 null
+     */
+    java.math.BigDecimal getContractYearlyTotal(Long userId, int year);
 }

@@ -206,6 +206,24 @@ public interface CrmContractMapper extends BaseMapperX<CrmContractDO> {
         return new BigDecimal(total.toString());
     }
 
+    /**
+     * 合同年度总金额（已提交及以上状态，合同期间与目标年份有交集）
+     */
+    default BigDecimal selectSumTotalPriceByYear(int year) {
+        LocalDateTime yearStart = LocalDateTime.of(year, 1, 1, 0, 0, 0);
+        LocalDateTime yearEnd = LocalDateTime.of(year, 12, 31, 23, 59, 59);
+        QueryWrapper<CrmContractDO> q = new QueryWrapper<>();
+        q.select("COALESCE(SUM(total_price),0) as total");
+        q.ge("audit_status", 10);
+        q.le("start_time", yearEnd);
+        q.ge("end_time", yearStart);
+        List<Map<String, Object>> list = selectMaps(q);
+        if (list == null || list.isEmpty()) return BigDecimal.ZERO;
+        Object total = list.get(0).get("total");
+        if (total == null) return BigDecimal.ZERO;
+        return total instanceof BigDecimal ? (BigDecimal) total : new BigDecimal(total.toString());
+    }
+
     default List<CrmContractDO> selectListByCustomerIdOwnerUserId(Long customerId, Long ownerUserId) {
         return selectList(new LambdaQueryWrapperX<CrmContractDO>()
                 .eq(CrmContractDO::getCustomerId, customerId)

@@ -8,7 +8,9 @@ import cn.shuhe.system.module.system.controller.admin.dept.vo.dept.DeptRespVO;
 import cn.shuhe.system.module.system.controller.admin.dept.vo.dept.DeptSaveReqVO;
 import cn.shuhe.system.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.DeptDO;
+import cn.shuhe.system.module.system.dal.dataobject.user.AdminUserDO;
 import cn.shuhe.system.module.system.service.dept.DeptService;
+import cn.shuhe.system.module.system.service.user.AdminUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,9 +20,8 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
 
@@ -32,6 +33,9 @@ public class DeptController {
 
     @Resource
     private DeptService deptService;
+
+    @Resource
+    private AdminUserService adminUserService;
 
     @PostMapping("create")
     @Operation(summary = "创建部门")
@@ -80,7 +84,9 @@ public class DeptController {
     public CommonResult<List<DeptSimpleRespVO>> getSimpleDeptList() {
         List<DeptDO> list = deptService.getDeptListForSimpleList(
                 new DeptListReqVO().setStatus(CommonStatusEnum.ENABLE.getStatus()));
-        return success(BeanUtils.toBean(list, DeptSimpleRespVO.class));
+        List<DeptSimpleRespVO> voList = BeanUtils.toBean(list, DeptSimpleRespVO.class);
+        fillLeaderNames(list, voList);
+        return success(voList);
     }
 
     @GetMapping("/business-dept-list")
@@ -144,7 +150,28 @@ public class DeptController {
                 filtered.add(dept);
             }
         }
-        return success(BeanUtils.toBean(filtered, DeptSimpleRespVO.class));
+        List<DeptSimpleRespVO> voList = BeanUtils.toBean(filtered, DeptSimpleRespVO.class);
+        fillLeaderNames(filtered, voList);
+        return success(voList);
+    }
+
+    private void fillLeaderNames(List<DeptDO> deptDOs, List<DeptSimpleRespVO> voList) {
+        Set<Long> leaderIds = deptDOs.stream()
+                .map(DeptDO::getLeaderUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (leaderIds.isEmpty()) return;
+        Map<Long, AdminUserDO> userMap = adminUserService.getUserMap(leaderIds);
+        for (int i = 0; i < deptDOs.size(); i++) {
+            Long leaderId = deptDOs.get(i).getLeaderUserId();
+            if (leaderId != null) {
+                voList.get(i).setLeaderUserId(leaderId);
+                AdminUserDO user = userMap.get(leaderId);
+                if (user != null) {
+                    voList.get(i).setLeaderName(user.getNickname());
+                }
+            }
+        }
     }
 
     @GetMapping("/get")

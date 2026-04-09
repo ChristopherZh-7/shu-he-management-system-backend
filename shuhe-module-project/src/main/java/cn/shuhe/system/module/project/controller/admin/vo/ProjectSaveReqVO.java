@@ -22,6 +22,9 @@ public class ProjectSaveReqVO {
     @NotNull(message = "部门类型不能为空")
     private Integer deptType;
 
+    @Schema(description = "项目类型：1驻场类 2管理类", example = "1")
+    private Integer projectType;
+
     // ========== 客户信息 ==========
 
     @Schema(description = "CRM客户ID", example = "1")

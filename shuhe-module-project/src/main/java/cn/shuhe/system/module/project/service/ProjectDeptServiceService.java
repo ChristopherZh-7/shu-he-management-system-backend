@@ -54,6 +54,16 @@ public interface ProjectDeptServiceService {
     PageResult<ProjectDeptServiceDO> getDeptServicePage(ProjectDeptServicePageReqVO pageReqVO);
 
     /**
+     * 获得部门服务单分页（带用户权限过滤）
+     * 超级管理员可以看到所有，普通用户只能看到自己参与的项目的服务单
+     *
+     * @param pageReqVO 分页查询
+     * @param userId    当前用户ID
+     * @return 部门服务单分页
+     */
+    PageResult<ProjectDeptServiceDO> getDeptServicePage(ProjectDeptServicePageReqVO pageReqVO, Long userId);
+
+    /**
      * 根据项目ID获取部门服务单列表
      *
      * @param projectId 项目ID

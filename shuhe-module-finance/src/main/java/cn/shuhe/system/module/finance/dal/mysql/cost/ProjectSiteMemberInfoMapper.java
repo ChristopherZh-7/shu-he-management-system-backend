@@ -151,6 +151,36 @@ public interface ProjectSiteMemberInfoMapper {
     List<Long> selectDistinctUserIdsByDeptType(@Param("deptType") Integer deptType);
 
     /**
+     * 查询管理类项目（project_type=2）中每个成员的收入份额。
+     * 收入 = SUM(finance_allocation.allocated_amount) / 项目成员数
+     */
+    @Select("SELECT " +
+            "  pm.user_id as userId, " +
+            "  pm.project_id as projectId, " +
+            "  p.name as projectName, " +
+            "  p.customer_name as customerName, " +
+            "  p.contract_id as contractId, " +
+            "  pds.dept_type as deptType, " +
+            "  COALESCE(fa_total.total_amount, 0) as totalAllocation, " +
+            "  COALESCE(mc.member_count, 1) as memberCount " +
+            "FROM project_member pm " +
+            "JOIN project p ON p.id = pm.project_id AND p.deleted = 0 AND p.project_type = 2 " +
+            "LEFT JOIN project_dept_service pds ON pds.project_id = p.id AND pds.deleted = 0 " +
+            "LEFT JOIN (" +
+            "  SELECT fa.contract_id, SUM(fa.allocated_amount) as total_amount " +
+            "  FROM finance_allocation fa " +
+            "  WHERE fa.allocation_level = 1 AND fa.deleted = 0 " +
+            "  GROUP BY fa.contract_id" +
+            ") fa_total ON fa_total.contract_id = p.contract_id " +
+            "LEFT JOIN (" +
+            "  SELECT project_id, COUNT(*) as member_count " +
+            "  FROM project_member WHERE deleted = 0 " +
+            "  GROUP BY project_id" +
+            ") mc ON mc.project_id = p.id " +
+            "WHERE pm.deleted = 0")
+    List<Map<String, Object>> selectManagementProjectMemberIncome();
+
+    /**
      * 诊断查询：获取所有驻场成员记录
      */
     @Select("SELECT " +

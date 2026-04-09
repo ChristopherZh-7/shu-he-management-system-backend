@@ -785,6 +785,22 @@ public class BusinessAnalysisCalculator {
         }
     }
 
+    public BigDecimal getBigDecimalValue(Object value) {
+        if (value == null) return BigDecimal.ZERO;
+        if (value instanceof BigDecimal) return (BigDecimal) value;
+        if (value instanceof Number) return new BigDecimal(value.toString());
+        try {
+            return new BigDecimal(value.toString());
+        } catch (NumberFormatException e) {
+            return BigDecimal.ZERO;
+        }
+    }
+
+    public int getIntValueOrDefault(Object value, int defaultVal) {
+        Integer v = getIntValue(value);
+        return v != null ? v : defaultVal;
+    }
+
     // ========== 私有辅助方法 ==========
 
     /**

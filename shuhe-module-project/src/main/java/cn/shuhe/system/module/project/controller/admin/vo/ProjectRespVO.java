@@ -22,6 +22,9 @@ public class ProjectRespVO {
     @Schema(description = "部门类型：1安全服务 2安全运营 3数据安全", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Integer deptType;
 
+    @Schema(description = "项目类型：1驻场类 2管理类", example = "1")
+    private Integer projectType;
+
     // ========== 客户信息 ==========
 
     @Schema(description = "CRM客户ID", example = "1")

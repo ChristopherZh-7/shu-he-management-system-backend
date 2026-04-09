@@ -272,6 +272,23 @@ public class BusinessAnalysisServiceImpl implements BusinessAnalysisService {
             }
         }
 
+        // 管理类项目收入：project_member × finance_allocation / member_count
+        try {
+            List<Map<String, Object>> mgmtIncomeRows = projectSiteMemberInfoMapper.selectManagementProjectMemberIncome();
+            if (CollUtil.isNotEmpty(mgmtIncomeRows)) {
+                for (Map<String, Object> row : mgmtIncomeRows) {
+                    Long userId = calculator.getLongValue(row.get("userId"));
+                    if (userId == null) continue;
+                    BigDecimal totalAllocation = calculator.getBigDecimalValue(row.get("totalAllocation"));
+                    int memberCount = Math.max(calculator.getIntValueOrDefault(row.get("memberCount"), 1), 1);
+                    BigDecimal share = totalAllocation.divide(new BigDecimal(memberCount), 2, java.math.RoundingMode.HALF_UP);
+                    operationIncomeCache.merge(userId, share, BigDecimal::add);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询管理类项目收入失败", e);
+        }
+
         return AnalysisContext.builder()
                 .year(year)
                 .cutoffDate(cutoffDate)

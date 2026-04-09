@@ -23,4 +23,10 @@ public class DeptSimpleRespVO {
     @Schema(description = "部门类型", example = "1")
     private Integer deptType;
 
+    @Schema(description = "负责人用户ID", example = "1")
+    private Long leaderUserId;
+
+    @Schema(description = "负责人姓名", example = "张三")
+    private String leaderName;
+
 }

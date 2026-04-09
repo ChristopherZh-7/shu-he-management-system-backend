@@ -7,10 +7,13 @@ import cn.shuhe.system.module.project.controller.admin.vo.ProjectDeptServicePage
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectDeptServiceSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDeptServiceDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectDeptServiceMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectMemberMapper;
 import cn.shuhe.system.module.system.api.dept.DeptApi;
 import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
+import cn.shuhe.system.module.system.api.permission.PermissionApi;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
+import cn.hutool.core.collection.CollUtil;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -44,6 +47,12 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     @Resource
     @Lazy
     private ProjectService projectService;
+
+    @Resource
+    private ProjectMemberMapper projectMemberMapper;
+
+    @Resource
+    private PermissionApi permissionApi;
 
 
     @Override
@@ -82,6 +91,7 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     }
 
     @Override
+    @DataPermission(enable = false)
     public void deleteDeptService(Long id) {
         // 校验存在
         validateDeptServiceExists(id);
@@ -99,9 +109,23 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     }
 
     @Override
-    @DataPermission(enable = false) // dept_id 在创建时为 NULL，数据权限过滤会导致记录不可见
+    @DataPermission(enable = false)
     public PageResult<ProjectDeptServiceDO> getDeptServicePage(ProjectDeptServicePageReqVO pageReqVO) {
         return deptServiceMapper.selectPage(pageReqVO);
+    }
+
+    @Override
+    @DataPermission(enable = false)
+    public PageResult<ProjectDeptServiceDO> getDeptServicePage(ProjectDeptServicePageReqVO pageReqVO, Long userId) {
+        boolean isSuperAdmin = permissionApi.hasAnyRoles(userId, "super_admin");
+        if (isSuperAdmin) {
+            return deptServiceMapper.selectPage(pageReqVO);
+        }
+        List<Long> projectIds = projectMemberMapper.selectProjectIdsByUserId(userId);
+        if (CollUtil.isEmpty(projectIds)) {
+            return PageResult.empty();
+        }
+        return deptServiceMapper.selectPageByProjectIds(pageReqVO, projectIds);
     }
 
     @Override
@@ -129,6 +153,7 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     }
 
     @Override
+    @DataPermission(enable = false)
     public void updateDeptServiceStatus(Long id, Integer status) {
         // 校验存在
         ProjectDeptServiceDO deptService = validateDeptServiceExists(id);
@@ -154,6 +179,7 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     }
 
     @Override
+    @DataPermission(enable = false)
     public void setDeptServiceManagers(Long id, List<Long> managerIds, List<String> managerNames) {
         validateDeptServiceExists(id);
 
@@ -170,6 +196,7 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     }
 
     @Override
+    @DataPermission(enable = false)
     public void setSecurityServiceManagers(Long id,
                                             List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
                                             List<Long> secondLineManagerIds, List<String> secondLineManagerNames) {
@@ -193,6 +220,7 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     }
 
     @Override
+    @DataPermission(enable = false)
     public void setDataSecurityManagers(Long id,
                                          List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
                                          List<Long> secondLineManagerIds, List<String> secondLineManagerNames) {

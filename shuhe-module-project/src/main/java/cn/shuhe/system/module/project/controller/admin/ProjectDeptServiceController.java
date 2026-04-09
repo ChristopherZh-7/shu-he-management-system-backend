@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
+import static cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 
 @Tag(name = "管理后台 - 部门服务单")
 @RestController
@@ -84,7 +85,7 @@ public class ProjectDeptServiceController {
     @Operation(summary = "获得部门服务单分页")
     @PreAuthorize("@ss.hasPermission('project:dept-service:query')")
     public CommonResult<PageResult<ProjectDeptServiceRespVO>> getDeptServicePage(@Valid ProjectDeptServicePageReqVO pageReqVO) {
-        PageResult<ProjectDeptServiceDO> pageResult = deptServiceService.getDeptServicePage(pageReqVO);
+        PageResult<ProjectDeptServiceDO> pageResult = deptServiceService.getDeptServicePage(pageReqVO, getLoginUserId());
         
         // 转换为 RespVO 并填充项目信息
         List<ProjectDeptServiceRespVO> respList = new ArrayList<>();
@@ -191,6 +192,7 @@ public class ProjectDeptServiceController {
             if (project != null) {
                 respVO.setProjectName(project.getName());
                 respVO.setProjectCode(project.getCode());
+                respVO.setProjectType(project.getProjectType());
             }
         }
 
