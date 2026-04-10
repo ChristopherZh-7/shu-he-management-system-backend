@@ -20,6 +20,7 @@ import cn.shuhe.system.module.crm.controller.admin.contact.vo.CrmContactBusiness
 import cn.shuhe.system.module.crm.controller.admin.statistics.vo.funnel.CrmStatisticsFunnelReqVO;
 import cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessDO;
 import cn.shuhe.system.module.crm.dal.dataobject.customer.CrmCustomerDO;
+import cn.shuhe.system.module.crm.dal.dataobject.permission.CrmPermissionDO;
 import cn.shuhe.system.module.crm.dal.dataobject.contact.CrmContactBusinessDO;
 import cn.shuhe.system.module.crm.dal.mysql.business.CrmBusinessMapper;
 import cn.shuhe.system.module.crm.enums.ErrorCodeConstants;
@@ -338,7 +339,6 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
         businessMapper.updateById(new CrmBusinessDO().setId(businessId)
                 .setEarlyInvestmentStatus(CrmAuditStatusEnum.PROCESS.getStatus())
                 .setEarlyInvestmentProcessInstanceId(processInstanceId)
-                .setEarlyInvestmentPersonnel(reqVO.getPersonnel())
                 .setEarlyInvestmentEstimatedCost(reqVO.getEstimatedCost())
                 .setEarlyInvestmentWorkScope(reqVO.getWorkScope())
                 .setEarlyInvestmentPlanStart(reqVO.getPlanStart())
@@ -375,18 +375,6 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
                 if (reqVO.getRiskHandling() != null) {
                     msg.append("**若合同未签：** ").append(reqVO.getRiskHandling()).append("\n\n");
                 }
-                // 投入人员
-                if (reqVO.getPersonnel() != null && !reqVO.getPersonnel().isEmpty()) {
-                    msg.append("**👥 投入人员**\n\n");
-                    for (CrmBusinessDO.Personnel p : reqVO.getPersonnel()) {
-                        msg.append("- ").append(p.getUserName());
-                        if (p.getWorkDays() != null) {
-                            msg.append("（").append(p.getWorkDays()).append(" 天）");
-                        }
-                        msg.append("\n");
-                    }
-                    msg.append("\n");
-                }
                 // 底部状态
                 msg.append("---\n\n");
                 msg.append("> 申请正在逐级审批中，请等待审批结果。");
@@ -413,24 +401,6 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
                 createProjectInternally(business, null, null);
             } catch (Exception e) {
                 log.error("[updateEarlyInvestmentAuditStatus] 创建项目失败, businessId={}: {}", businessId, e.getMessage(), e);
-            }
-            // 将投入人员拉入商机群
-            if (business.getDingtalkChatId() != null
-                    && business.getEarlyInvestmentPersonnel() != null
-                    && !business.getEarlyInvestmentPersonnel().isEmpty()) {
-                try {
-                    List<Long> personnelUserIds = business.getEarlyInvestmentPersonnel().stream()
-                            .map(CrmBusinessDO.Personnel::getUserId)
-                            .filter(Objects::nonNull)
-                            .collect(java.util.stream.Collectors.toList());
-                    if (!personnelUserIds.isEmpty()) {
-                        dingtalkNotifyApi.addMembersToGroupChat(business.getDingtalkChatId(), personnelUserIds);
-                        log.info("[updateEarlyInvestmentAuditStatus] 已将提前投入人员加入商机群: chatId={}, userIds={}",
-                                business.getDingtalkChatId(), personnelUserIds);
-                    }
-                } catch (Exception e) {
-                    log.warn("[updateEarlyInvestmentAuditStatus] 将投入人员加入群失败", e);
-                }
             }
             // 群通知
             if (business.getDingtalkChatId() != null) {
@@ -525,6 +495,17 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
         // 合同签订时，把商机的部门金额分配同步到 contract_dept_allocation（历史数据保留）
         if (contractId != null) {
             syncDeptAllocationsToContract(business, contractId, contractNo, customerName);
+        }
+
+        // 商机负责人作为项目经理加入项目成员
+        if (business.getOwnerUserId() != null) {
+            AdminUserRespDTO owner = adminUserApi.getUser(business.getOwnerUserId());
+            String ownerName = owner != null ? owner.getNickname() : "";
+            try {
+                projectService.addProjectMember(projectId, business.getOwnerUserId(), ownerName, 1);
+            } catch (Exception e) {
+                log.warn("[createProjectInternally] 添加商机负责人为项目成员失败: userId={}", business.getOwnerUserId(), e);
+            }
         }
 
         addAncestorChainMembersToProject(projectId, business);
@@ -946,15 +927,25 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
                     if (dept == null || dept.getLeaderUserId() == null) {
                         continue;
                     }
+                    Long leaderUserId = dept.getLeaderUserId();
+                    List<CrmPermissionDO> existingPerms = permissionService.getPermissionListByBiz(
+                            CrmBizTypeEnum.CRM_BUSINESS.getType(), businessId);
+                    boolean alreadyHasPermission = existingPerms.stream()
+                            .anyMatch(p -> leaderUserId.equals(p.getUserId()));
+                    if (alreadyHasPermission) {
+                        log.info("[grantDeptLeaderPermissions] 部门负责人已有权限，跳过: userId={}, businessId={}, deptId={}",
+                                leaderUserId, businessId, alloc.getDeptId());
+                        continue;
+                    }
                     permissionService.createPermission(new CrmPermissionCreateReqBO()
-                            .setUserId(dept.getLeaderUserId())
+                            .setUserId(leaderUserId)
                             .setBizType(CrmBizTypeEnum.CRM_BUSINESS.getType())
                             .setBizId(businessId)
                             .setLevel(CrmPermissionLevelEnum.READ.getLevel()));
                     log.info("[grantDeptLeaderPermissions] 已授予部门负责人商机权限: userId={}, businessId={}, deptId={}",
-                            dept.getLeaderUserId(), businessId, alloc.getDeptId());
+                            leaderUserId, businessId, alloc.getDeptId());
                 } catch (Exception e) {
-                    log.warn("[grantDeptLeaderPermissions] 授权失败(可能已存在), deptId={}, businessId={}: {}",
+                    log.warn("[grantDeptLeaderPermissions] 授权失败, deptId={}, businessId={}: {}",
                             alloc.getDeptId(), businessId, e.getMessage());
                 }
             }
@@ -1107,43 +1098,6 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
                                 .append(selfFundedCost.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()).append(" 元\n\n");
                     }
 
-                    // 投入人员 & 计划工时（含费用估算）
-                    java.math.BigDecimal personnelTotalCost = java.math.BigDecimal.ZERO;
-                    if (business.getEarlyInvestmentPersonnel() != null && !business.getEarlyInvestmentPersonnel().isEmpty()) {
-                        msg.append("**投入人员：**\n");
-                        int nowYear = java.time.LocalDate.now().getYear();
-                        int nowMonth = java.time.LocalDate.now().getMonthValue();
-                        for (CrmBusinessDO.Personnel p : business.getEarlyInvestmentPersonnel()) {
-                            msg.append("- ").append(p.getUserName());
-                            if (p.getWorkDays() != null) {
-                                msg.append("（计划 ").append(p.getWorkDays()).append(" 天");
-                                if (p.getUserId() != null) {
-                                    try {
-                                        cn.shuhe.system.module.finance.controller.admin.cost.vo.UserCostRespVO costVO =
-                                                costCalculationService.getUserCost(p.getUserId(), nowYear, nowMonth);
-                                        if (costVO != null && costVO.getDailyCost() != null) {
-                                            java.math.BigDecimal memberCost = costVO.getDailyCost()
-                                                    .multiply(java.math.BigDecimal.valueOf(p.getWorkDays()))
-                                                    .setScale(2, java.math.RoundingMode.HALF_UP);
-                                            personnelTotalCost = personnelTotalCost.add(memberCost);
-                                            msg.append(" × ¥")
-                                               .append(costVO.getDailyCost().setScale(0, java.math.RoundingMode.HALF_UP))
-                                               .append("/天 ≈ **¥").append(memberCost.toPlainString()).append("**");
-                                        }
-                                    } catch (Exception ex) {
-                                        log.warn("[updateBusinessStatus] 获取人员 {} 成本失败", p.getUserName(), ex);
-                                    }
-                                }
-                                msg.append("）");
-                            }
-                            msg.append("\n");
-                        }
-                        if (personnelTotalCost.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                            msg.append("\n**人力成本合计：¥").append(personnelTotalCost.toPlainString()).append("**\n");
-                        }
-                        msg.append("\n");
-                    }
-
                     // 投入周期
                     if (business.getEarlyInvestmentPlanStart() != null || business.getEarlyInvestmentPlanEnd() != null) {
                         msg.append("**投入周期：** ")
@@ -1153,13 +1107,10 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
                                 .append("\n\n");
                     }
 
-                    // 损失合计（自垫 + 人力）
-                    java.math.BigDecimal totalLoss = selfFundedCost.add(personnelTotalCost);
-                    if (totalLoss.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                        msg.append("**📊 预估总损失：¥").append(totalLoss.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString())
-                                .append("**（自垫 ¥").append(selfFundedCost.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString())
-                                .append(" + 人力 ¥").append(personnelTotalCost.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString())
-                                .append("）\n\n");
+                    // 损失合计
+                    if (selfFundedCost.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                        msg.append("**📊 预估总损失：¥").append(selfFundedCost.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString())
+                                .append("**\n\n");
                     }
 
                     // 提示
