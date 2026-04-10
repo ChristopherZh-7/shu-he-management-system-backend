@@ -3,6 +3,7 @@ package cn.shuhe.system.module.system.controller.admin.user;
 import cn.hutool.core.collection.CollUtil;
 import cn.shuhe.system.framework.apilog.core.annotation.ApiAccessLog;
 import cn.shuhe.system.framework.common.enums.CommonStatusEnum;
+import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
 import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.framework.common.pojo.PageParam;
 import cn.shuhe.system.framework.common.pojo.PageResult;
@@ -130,6 +131,7 @@ public class UserController {
 
     @GetMapping({"/list-all-simple", "/simple-list"})
     @Operation(summary = "获取用户精简信息列表", description = "只包含被开启的用户，主要用于前端的下拉选项")
+    @DataPermission(enable = false)
     public CommonResult<List<UserSimpleRespVO>> getSimpleUserList() {
         List<AdminUserDO> list = userService.getUserListByStatus(CommonStatusEnum.ENABLE.getStatus());
         // 拼接数据
