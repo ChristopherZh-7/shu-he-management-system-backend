@@ -6,6 +6,8 @@ import cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectDeptServicePageReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDeptServiceDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -83,6 +85,14 @@ public interface ProjectDeptServiceMapper extends BaseMapperX<ProjectDeptService
                 .likeIfPresent(ProjectDeptServiceDO::getContractNo, reqVO.getContractNo())
                 .orderByDesc(ProjectDeptServiceDO::getId));
     }
+
+    /**
+     * 查询某用户作为负责人的项目ID列表（manager_ids JSON 包含该用户ID）
+     */
+    @Select("SELECT DISTINCT project_id FROM project_dept_service " +
+            "WHERE deleted = 0 AND manager_ids IS NOT NULL " +
+            "AND JSON_CONTAINS(manager_ids, CAST(#{userId} AS CHAR), '$')")
+    List<Long> selectProjectIdsByManagerUserId(@Param("userId") Long userId);
 
     /**
      * 根据部门ID查询服务单列表

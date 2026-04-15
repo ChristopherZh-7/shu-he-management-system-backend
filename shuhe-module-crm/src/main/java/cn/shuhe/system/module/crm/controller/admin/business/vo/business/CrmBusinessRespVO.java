@@ -107,9 +107,6 @@ public class CrmBusinessRespVO {
     @Schema(description = "提前投入 BPM 流程实例编号")
     private String earlyInvestmentProcessInstanceId;
 
-    @Schema(description = "提前投入 - 投入人员列表")
-    private List<cn.shuhe.system.module.crm.dal.dataobject.business.CrmBusinessDO.Personnel> earlyInvestmentPersonnel;
-
     @Schema(description = "提前投入 - 预计自垫资金（元）")
     private java.math.BigDecimal earlyInvestmentEstimatedCost;
 

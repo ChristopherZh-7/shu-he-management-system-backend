@@ -6,14 +6,16 @@ import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectDeptServicePageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectDeptServiceSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDeptServiceDO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectMemberDO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectSiteMemberDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectDeptServiceMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMemberMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectSiteMemberMapper;
 import cn.shuhe.system.module.system.api.dept.DeptApi;
 import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.api.permission.PermissionApi;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
-import cn.hutool.core.collection.CollUtil;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -22,7 +24,9 @@ import org.springframework.validation.annotation.Validated;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.shuhe.system.module.project.enums.ErrorCodeConstants.*;
@@ -50,6 +54,9 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
 
     @Resource
     private ProjectMemberMapper projectMemberMapper;
+
+    @Resource
+    private ProjectSiteMemberMapper projectSiteMemberMapper;
 
     @Resource
     private PermissionApi permissionApi;
@@ -121,11 +128,27 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
         if (isSuperAdmin) {
             return deptServiceMapper.selectPage(pageReqVO);
         }
-        List<Long> projectIds = projectMemberMapper.selectProjectIdsByUserId(userId);
-        if (CollUtil.isEmpty(projectIds)) {
+
+        Set<Long> projectIds = new LinkedHashSet<>();
+
+        // 1. project_member: explicit membership
+        projectIds.addAll(projectMemberMapper.selectProjectIdsByUserId(userId));
+
+        // 2. project_dept_service: user listed as manager in manager_ids JSON
+        projectIds.addAll(deptServiceMapper.selectProjectIdsByManagerUserId(userId));
+
+        // 3. project_site_member: user assigned to a project site
+        List<ProjectSiteMemberDO> siteMembers = projectSiteMemberMapper.selectListByUserId(userId);
+        for (ProjectSiteMemberDO sm : siteMembers) {
+            if (sm.getProjectId() != null) {
+                projectIds.add(sm.getProjectId());
+            }
+        }
+
+        if (projectIds.isEmpty()) {
             return PageResult.empty();
         }
-        return deptServiceMapper.selectPageByProjectIds(pageReqVO, projectIds);
+        return deptServiceMapper.selectPageByProjectIds(pageReqVO, new ArrayList<>(projectIds));
     }
 
     @Override
@@ -181,7 +204,7 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
     @Override
     @DataPermission(enable = false)
     public void setDeptServiceManagers(Long id, List<Long> managerIds, List<String> managerNames) {
-        validateDeptServiceExists(id);
+        ProjectDeptServiceDO deptService = validateDeptServiceExists(id);
 
         ProjectDeptServiceDO updateObj = new ProjectDeptServiceDO();
         updateObj.setId(id);
@@ -192,6 +215,7 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
         deptServiceMapper.updateById(updateObj);
         log.info("【部门服务单】设置负责人，id={}, managerIds={}", id, managerIds);
 
+        ensureProjectMembers(deptService.getProjectId(), managerIds);
         addManagersToGroupChat(id, managerIds);
     }
 
@@ -216,6 +240,7 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
         log.info("【部门服务单】设置安全服务负责人，id={}", id);
 
         List<Long> allIds = mergeIds(onsiteManagerIds, secondLineManagerIds);
+        ensureProjectMembers(deptService.getProjectId(), allIds);
         addManagersToGroupChat(id, allIds);
     }
 
@@ -240,6 +265,7 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
         log.info("【部门服务单】设置数据安全负责人，id={}", id);
 
         List<Long> allIds = mergeIds(onsiteManagerIds, secondLineManagerIds);
+        ensureProjectMembers(deptService.getProjectId(), allIds);
         addManagersToGroupChat(id, allIds);
     }
 
@@ -298,6 +324,29 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
         }
     }
 
+    /**
+     * Ensure each manager also has a project_member record so they can see the project in list queries.
+     */
+    private void ensureProjectMembers(Long projectId, List<Long> managerIds) {
+        if (projectId == null || managerIds == null || managerIds.isEmpty()) return;
+        for (Long uid : managerIds) {
+            ProjectMemberDO existing = projectMemberMapper.selectByProjectIdAndUserId(projectId, uid);
+            if (existing != null) {
+                continue;
+            }
+            AdminUserRespDTO user = adminUserApi.getUser(uid);
+            ProjectMemberDO member = ProjectMemberDO.builder()
+                    .projectId(projectId)
+                    .userId(uid)
+                    .nickname(user != null ? user.getNickname() : null)
+                    .roleType(1)
+                    .joinTime(LocalDateTime.now())
+                    .build();
+            projectMemberMapper.insert(member);
+            log.info("[ensureProjectMembers] added project_member: projectId={}, userId={}", projectId, uid);
+        }
+    }
+
 
     @Override
     public List<ProjectDeptServiceDO> batchCreateDeptServiceForBusiness(Long projectId, Long businessId,
@@ -318,6 +367,19 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
             Long deptId = deptTypeToDeptId != null ? deptTypeToDeptId.get(deptType) : null;
             String deptName = deptTypeToDeptName != null ? deptTypeToDeptName.get(deptType) : null;
 
+            // 自动查找负责人：先看本部门的 leader，没有就往上找父部门
+            List<Long> initialManagerIds = null;
+            List<String> initialManagerNames = null;
+            if (deptId != null) {
+                Long leaderId = deptApi.findLeaderUserIdRecursively(deptId);
+                if (leaderId != null) {
+                    AdminUserRespDTO leader = adminUserApi.getUser(leaderId);
+                    initialManagerIds = List.of(leaderId);
+                    initialManagerNames = List.of(leader != null ? leader.getNickname() : "");
+                    log.info("【部门服务单-商机】自动设置负责人，deptId={}, leaderId={}", deptId, leaderId);
+                }
+            }
+
             ProjectDeptServiceDO deptService = ProjectDeptServiceDO.builder()
                     .projectId(projectId)
                     .businessId(businessId)
@@ -326,6 +388,8 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
                     .deptType(deptType)
                     .deptId(deptId)
                     .deptName(deptName)
+                    .managerIds(initialManagerIds)
+                    .managerNames(initialManagerNames)
                     .status(1)
                     .progress(0)
                     .claimed(true)
@@ -334,8 +398,13 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
             deptServiceMapper.insert(deptService);
             result.add(deptService);
 
-            log.info("【部门服务单-商机】批量创建，projectId={}, deptType={}, id={}, deptId={}",
-                    projectId, deptType, deptService.getId(), deptId);
+            // 负责人也加入 project_member
+            if (initialManagerIds != null) {
+                ensureProjectMembers(projectId, initialManagerIds);
+            }
+
+            log.info("【部门服务单-商机】批量创建，projectId={}, deptType={}, id={}, deptId={}, managerIds={}",
+                    projectId, deptType, deptService.getId(), deptId, initialManagerIds);
         }
 
         return result;

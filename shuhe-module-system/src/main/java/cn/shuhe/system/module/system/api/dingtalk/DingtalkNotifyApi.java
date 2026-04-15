@@ -151,7 +151,7 @@ public interface DingtalkNotifyApi {
     /**
      * 将系统用户批量加入钉钉群
      * <p>
-     * 用于在流程审批通过后，自动将相关人员（如提前投入人员）拉入商机群。
+     * 用于在流程审批通过后，自动将相关人员拉入商机群。
      *
      * @param chatId        钉钉群会话ID
      * @param memberUserIds 要加入群的系统用户ID列表

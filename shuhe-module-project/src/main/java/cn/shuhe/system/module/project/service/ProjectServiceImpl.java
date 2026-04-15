@@ -463,4 +463,14 @@ public class ProjectServiceImpl implements ProjectService {
         return projectMemberMapper.selectProjectIdsByUserId(userId);
     }
 
+    @Override
+    public List<ProjectMemberDO> getProjectMembers(Long projectId) {
+        return projectMemberMapper.selectListByProjectId(projectId);
+    }
+
+    @Override
+    public void deleteProjectMember(Long id) {
+        projectMemberMapper.deleteById(id);
+    }
+
 }

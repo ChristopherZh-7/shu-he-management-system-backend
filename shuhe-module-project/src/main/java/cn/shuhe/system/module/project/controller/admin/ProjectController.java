@@ -7,8 +7,11 @@ import cn.shuhe.system.module.project.controller.admin.vo.ProjectPageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectMemberDO;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import cn.shuhe.system.module.project.service.ProjectService;
+import cn.shuhe.system.module.system.api.user.AdminUserApi;
+import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,7 +21,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
 import static cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
@@ -34,6 +39,9 @@ public class ProjectController {
 
     @Resource
     private ServiceItemMapper serviceItemMapper;
+
+    @Resource
+    private AdminUserApi adminUserApi;
 
     @PostMapping("/create")
     @Operation(summary = "创建项目")
@@ -115,6 +123,57 @@ public class ProjectController {
     public CommonResult<Boolean> exitProject(@RequestParam("id") Long id,
             @RequestParam(value = "exitRemark", required = false) String exitRemark) {
         projectService.exitProject(id, exitRemark);
+        return success(true);
+    }
+
+    // ========== 项目成员管理 ==========
+
+    @GetMapping("/member-list")
+    @Operation(summary = "获得项目成员列表")
+    @Parameter(name = "projectId", description = "项目编号", required = true)
+    @PreAuthorize("@ss.hasPermission('project:project:query')")
+    public CommonResult<List<Map<String, Object>>> getProjectMemberList(@RequestParam("projectId") Long projectId) {
+        List<ProjectMemberDO> members = projectService.getProjectMembers(projectId);
+        List<Map<String, Object>> result = members.stream().map(m -> {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", m.getId());
+            map.put("projectId", m.getProjectId());
+            map.put("userId", m.getUserId());
+            map.put("nickname", m.getNickname());
+            map.put("roleType", m.getRoleType());
+            map.put("joinTime", m.getJoinTime());
+            map.put("remark", m.getRemark());
+            // 获取用户部门信息
+            try {
+                AdminUserRespDTO user = adminUserApi.getUser(m.getUserId());
+                if (user != null) {
+                    map.put("deptName", user.getDeptId() != null ? user.getDeptId().toString() : null);
+                }
+            } catch (Exception ignored) {}
+            return map;
+        }).toList();
+        return success(result);
+    }
+
+    @PostMapping("/add-member")
+    @Operation(summary = "添加项目成员")
+    @PreAuthorize("@ss.hasPermission('project:project:update')")
+    public CommonResult<Boolean> addProjectMember(@RequestParam("projectId") Long projectId,
+                                                   @RequestParam("userId") Long userId,
+                                                   @RequestParam(value = "roleType", defaultValue = "2") Integer roleType,
+                                                   @RequestParam(value = "remark", required = false) String remark) {
+        AdminUserRespDTO user = adminUserApi.getUser(userId);
+        String nickname = user != null ? user.getNickname() : "";
+        projectService.addProjectMember(projectId, userId, nickname, roleType);
+        return success(true);
+    }
+
+    @DeleteMapping("/delete-member")
+    @Operation(summary = "删除项目成员")
+    @Parameter(name = "id", description = "成员记录编号", required = true)
+    @PreAuthorize("@ss.hasPermission('project:project:update')")
+    public CommonResult<Boolean> deleteProjectMember(@RequestParam("id") Long id) {
+        projectService.deleteProjectMember(id);
         return success(true);
     }
 

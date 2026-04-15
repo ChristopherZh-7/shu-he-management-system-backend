@@ -5,7 +5,6 @@ import cn.shuhe.system.module.crm.dal.dataobject.customer.CrmCustomerDO;
 import cn.shuhe.system.module.crm.enums.business.CrmBusinessEndStatusEnum;
 import cn.shuhe.system.module.crm.enums.common.CrmAuditStatusEnum;
 import cn.shuhe.system.module.crm.dal.typehandler.DeptAllocationListTypeHandler;
-import cn.shuhe.system.module.crm.dal.typehandler.PersonnelListTypeHandler;
 import com.baomidou.mybatisplus.annotation.KeySequence;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -129,9 +128,6 @@ public class CrmBusinessDO extends BaseDO {
      */
     private String earlyInvestmentProcessInstanceId;
 
-    /** 提前投入 - 投入人员列表（JSON） */
-    @TableField(typeHandler = PersonnelListTypeHandler.class)
-    private List<Personnel> earlyInvestmentPersonnel;
     /** 提前投入 - 预计自垫资金（元） */
     private BigDecimal earlyInvestmentEstimatedCost;
     /** 提前投入 - 工作内容 */
@@ -155,21 +151,6 @@ public class CrmBusinessDO extends BaseDO {
         private Long deptId;
         private String deptName;
         private BigDecimal amount;
-    }
-
-    /**
-     * 提前投入人员
-     */
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class Personnel {
-        /** 用户编号 */
-        private Long userId;
-        /** 用户姓名 */
-        private String userName;
-        /** 预计投入工时（天） */
-        private Integer workDays;
     }
 
 }

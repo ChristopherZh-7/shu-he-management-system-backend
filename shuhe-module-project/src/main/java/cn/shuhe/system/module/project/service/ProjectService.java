@@ -4,6 +4,7 @@ import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectPageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectMemberDO;
 import cn.shuhe.system.module.system.controller.admin.dashboard.vo.DashboardStatisticsRespVO;
 import jakarta.validation.Valid;
 
@@ -139,5 +140,20 @@ public interface ProjectService {
      * @param contractNo 合同编号字符串
      */
     void updateProjectContractInfo(Long projectId, Long contractId, String contractNo);
+
+    /**
+     * 获取项目成员列表
+     *
+     * @param projectId 项目ID
+     * @return 成员列表
+     */
+    List<ProjectMemberDO> getProjectMembers(Long projectId);
+
+    /**
+     * 删除项目成员
+     *
+     * @param id 成员记录ID
+     */
+    void deleteProjectMember(Long id);
 
 }
