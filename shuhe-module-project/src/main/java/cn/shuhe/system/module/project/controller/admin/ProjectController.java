@@ -43,6 +43,9 @@ public class ProjectController {
     @Resource
     private AdminUserApi adminUserApi;
 
+    @Resource
+    private cn.shuhe.system.module.system.api.dept.DeptApi deptApi;
+
     @PostMapping("/create")
     @Operation(summary = "创建项目")
     @PreAuthorize("@ss.hasPermission('project:project:create')")
@@ -124,6 +127,27 @@ public class ProjectController {
             @RequestParam(value = "exitRemark", required = false) String exitRemark) {
         projectService.exitProject(id, exitRemark);
         return success(true);
+    }
+
+    @GetMapping("/my-role")
+    @Operation(summary = "获取当前用户在项目中的角色及部门信息")
+    @Parameter(name = "projectId", description = "项目编号", required = true)
+    @PreAuthorize("@ss.hasPermission('project:project:query')")
+    public CommonResult<Map<String, Object>> getMyRoleInProject(@RequestParam("projectId") Long projectId) {
+        Long userId = getLoginUserId();
+        Integer roleType = projectService.getUserRoleInProject(projectId, userId);
+        AdminUserRespDTO user = adminUserApi.getUser(userId);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("roleType", roleType);
+        result.put("deptId", user != null ? user.getDeptId() : null);
+
+        if (user != null && user.getDeptId() != null) {
+            cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO dept = deptApi.getDept(user.getDeptId());
+            result.put("deptType", dept != null ? dept.getDeptType() : null);
+        }
+
+        return success(result);
     }
 
     // ========== 项目成员管理 ==========

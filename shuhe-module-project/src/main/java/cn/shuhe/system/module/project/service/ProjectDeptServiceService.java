@@ -122,16 +122,4 @@ public interface ProjectDeptServiceService {
                                   List<Long> onsiteManagerIds, List<String> onsiteManagerNames,
                                   List<Long> secondLineManagerIds, List<String> secondLineManagerNames);
 
-    /**
-     * 批量创建部门服务单（商机/合同审批通过时使用，直接进入待开始状态）
-     *
-     * @param deptTypeToDeptId   deptType -> 承接部门 ID（来自商机 deptAllocations），可为 null
-     * @param deptTypeToDeptName deptType -> 承接部门名称，可为 null
-     */
-    List<ProjectDeptServiceDO> batchCreateDeptServiceForBusiness(Long projectId, Long businessId,
-                                                                  Long customerId, String customerName,
-                                                                  List<Integer> deptTypes,
-                                                                  java.util.Map<Integer, Long> deptTypeToDeptId,
-                                                                  java.util.Map<Integer, String> deptTypeToDeptName);
-
 }

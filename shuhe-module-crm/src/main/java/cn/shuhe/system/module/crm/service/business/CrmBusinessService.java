@@ -257,14 +257,4 @@ public interface CrmBusinessService {
     void sendBusinessGroupNotificationWithAction(Long businessId, String message, String title,
                                                  String actionLabel, String actionUrl);
 
-    /**
-     * 为已有商机补充部门分配
-     * 同时同步到关联的合同、contract_dept_allocation 表和项目服务单
-     *
-     * @param businessId 商机编号
-     * @param deptId     部门编号
-     * @param amount     分配金额
-     */
-    void addDeptAllocation(Long businessId, Long deptId, java.math.BigDecimal amount);
-
 }

@@ -71,7 +71,7 @@ public class ProjectDeptServiceDO extends BaseDO {
     // ========== 部门信息 ==========
 
     /**
-     * 所属部门 ID（领取后填充；商机/提前投入批量创建时从 deptAllocations 写入，供数据权限使用）
+     * 所属部门 ID（商机/提前投入批量创建时从 deptAllocations 写入，供数据权限使用）
      */
     private Long deptId;
 
@@ -85,29 +85,6 @@ public class ProjectDeptServiceDO extends BaseDO {
      * 1-安全服务 2-安全运营 3-数据安全
      */
     private Integer deptType;
-
-    // ========== 领取信息 ==========
-
-    /**
-     * 领取人ID
-     */
-    private Long claimUserId;
-
-    /**
-     * 领取人姓名
-     */
-    private String claimUserName;
-
-    /**
-     * 领取时间
-     */
-    private LocalDateTime claimTime;
-
-    /**
-     * 是否已领取
-     * 0-否 1-是
-     */
-    private Boolean claimed;
 
     // ========== 负责人（独立于其他部门） ==========
 
@@ -159,7 +136,7 @@ public class ProjectDeptServiceDO extends BaseDO {
 
     /**
      * 状态
-     * 0-待领取 1-待开始 2-进行中 3-已暂停 4-已完成 5-已取消
+     * 1-待开始 2-进行中 3-已暂停 4-已完成 5-已退场
      */
     private Integer status;
 

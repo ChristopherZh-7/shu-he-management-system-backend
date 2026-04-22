@@ -110,6 +110,14 @@ public interface ServiceItemService {
     void updateServiceItemStatus(Long id, Integer status);
 
     /**
+     * 分配服务项到具体部门（排/班），并将该部门负责人自动加入项目成员
+     *
+     * @param id     服务项编号
+     * @param deptId 目标部门ID
+     */
+    void assignServiceItemToDept(Long id, Long deptId);
+
+    /**
      * 更新服务项进度
      *
      * @param id       服务项编号

@@ -2,7 +2,6 @@ package cn.shuhe.system.module.project.controller.admin.vo;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.util.List;
@@ -18,8 +17,7 @@ public class ProjectSaveReqVO {
     @NotBlank(message = "项目名称不能为空")
     private String name;
 
-    @Schema(description = "部门类型：1安全服务 2安全运营 3数据安全", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
-    @NotNull(message = "部门类型不能为空")
+    @Schema(description = "部门类型：1安全服务 2安全运营 3数据安全（统一管理后可为空）", example = "1")
     private Integer deptType;
 
     @Schema(description = "项目类型：1驻场类 2管理类", example = "1")

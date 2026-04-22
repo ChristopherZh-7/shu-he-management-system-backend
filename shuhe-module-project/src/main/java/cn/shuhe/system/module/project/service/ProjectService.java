@@ -156,4 +156,13 @@ public interface ProjectService {
      */
     void deleteProjectMember(Long id);
 
+    /**
+     * 获取用户在项目中的角色类型
+     *
+     * @param projectId 项目ID
+     * @param userId    用户ID
+     * @return 角色类型（1-项目经理 2-执行人员 3-审核人员），null表示不是项目成员
+     */
+    Integer getUserRoleInProject(Long projectId, Long userId);
+
 }

@@ -4,7 +4,6 @@ import cn.shuhe.system.module.crm.framework.operatelog.core.CrmCustomerParseFunc
 import cn.shuhe.system.module.crm.framework.operatelog.core.SysAdminUserParseFunction;
 import com.mzt.logapi.starter.annotation.DiffLogField;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -48,8 +47,7 @@ public class CrmBusinessSaveReqVO {
     @DiffLogField(name = "负责人", function = SysAdminUserParseFunction.NAME)
     private Long ownerUserId;
 
-    @Schema(description = "部门分配列表（商机阶段仅选部门，金额可不填）")
-    @NotEmpty(message = "部门分配不能为空")
+    @Schema(description = "部门分配列表（可选，后续在项目管理中分配）")
     private List<DeptAllocation> deptAllocations;
 
     @Schema(description = "预计成交日期")
@@ -57,9 +55,8 @@ public class CrmBusinessSaveReqVO {
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime dealTime;
 
-    @Schema(description = "预计合同总金额", example = "100000.00")
+    @Schema(description = "预计合同总金额（可选）", example = "100000.00")
     @DiffLogField(name = "预计合同总金额")
-    @NotNull(message = "预计合同总金额不能为空")
     private BigDecimal totalPrice;
 
     @Schema(description = "备注", example = "随便")

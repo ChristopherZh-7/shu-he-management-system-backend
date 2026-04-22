@@ -6,6 +6,7 @@ import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
+import cn.shuhe.system.framework.datapermission.core.util.DataPermissionUtils;
 import cn.shuhe.system.framework.excel.core.util.ExcelUtils;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemBatchSaveReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemImportExcelVO;
@@ -40,6 +41,7 @@ import java.util.stream.Collectors;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
 import static cn.shuhe.system.framework.common.util.collection.CollectionUtils.convertList;
+import static cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 
 @Tag(name = "管理后台 - 服务项管理")
 @RestController
@@ -49,6 +51,9 @@ public class ServiceItemController {
 
     @Resource
     private ServiceItemService serviceItemService;
+
+    @Resource
+    private cn.shuhe.system.module.project.service.ProjectService projectService;
 
     @Resource
     private AdminUserService adminUserService;
@@ -84,16 +89,7 @@ public class ServiceItemController {
     @Operation(summary = "创建服务项")
     @PreAuthorize("@ss.hasPermission('project:service-item:create')")
     public CommonResult<Long> createServiceItem(@Valid @RequestBody ServiceItemSaveReqVO createReqVO) {
-        // 根据 deptType 找到对应的部门ID（在哪个页面创建就属于哪个部门）
-        if (createReqVO.getDeptId() == null && createReqVO.getDeptType() != null) {
-            Long deptId = findDeptIdByDeptType(createReqVO.getDeptType());
-            createReqVO.setDeptId(deptId);
-        }
-        // 校验 deptId 不能为空
-        if (createReqVO.getDeptId() == null) {
-            throw cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception(
-                    cn.shuhe.system.module.project.enums.ErrorCodeConstants.SERVICE_ITEM_DEPT_NOT_SET);
-        }
+        validateManagePermission(createReqVO.getProjectId());
         return success(serviceItemService.createServiceItem(createReqVO));
     }
 
@@ -101,13 +97,8 @@ public class ServiceItemController {
     @Operation(summary = "批量创建服务项")
     @PreAuthorize("@ss.hasPermission('project:service-item:create')")
     public CommonResult<List<Long>> batchCreateServiceItem(@Valid @RequestBody ServiceItemBatchSaveReqVO batchReqVO) {
-        // 根据 deptType 找到对应的部门ID（在哪个页面创建就属于哪个部门）
-        Long deptId = findDeptIdByDeptType(batchReqVO.getDeptType());
-        if (deptId == null) {
-            throw cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception(
-                    cn.shuhe.system.module.project.enums.ErrorCodeConstants.SERVICE_ITEM_DEPT_NOT_SET);
-        }
-        return success(serviceItemService.batchCreateServiceItem(batchReqVO, deptId));
+        validateManagePermission(batchReqVO.getProjectId());
+        return success(serviceItemService.batchCreateServiceItem(batchReqVO, null));
     }
 
     @GetMapping("/get-import-template")
@@ -141,32 +132,65 @@ public class ServiceItemController {
             @RequestParam("file") MultipartFile file,
             @RequestParam("projectId") Long projectId,
             @RequestParam("deptType") Integer deptType) throws Exception {
-        // 根据 deptType 找到对应的部门ID（在哪个页面导入就属于哪个部门）
-        Long deptId = findDeptIdByDeptType(deptType);
-        if (deptId == null) {
-            throw cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception(
-                    cn.shuhe.system.module.project.enums.ErrorCodeConstants.SERVICE_ITEM_DEPT_NOT_SET);
-        }
+        // deptId 不在导入时设置，由部门主管后续通过"分配"操作设置
         List<ServiceItemImportExcelVO> list = ExcelUtils.read(file, ServiceItemImportExcelVO.class);
-        return success(serviceItemService.importServiceItemList(projectId, deptType, list, deptId));
+        return success(serviceItemService.importServiceItemList(projectId, deptType, list, null));
     }
 
     /**
-     * 根据部门类型找到对应的部门ID
-     * 
-     * 逻辑：在哪个页面（deptType）创建服务项，就属于哪个部门
-     * 例如：在安全服务页面（deptType=1）创建，就属于安全技术服务部
-     * 
-     * @param deptType 部门类型：1安全服务 2安全运营 3数据安全
-     * @return 对应的部门ID
+     * 校验当前用户是否具有项目管理权限（roleType=1 项目经理 或 roleType=3 审核人员）
+     * 执行人员（roleType=2）不允许执行写操作
      */
+    private void validateManagePermission(Long projectId) {
+        Long userId = getLoginUserId();
+        Integer roleType = projectService.getUserRoleInProject(projectId, userId);
+        if (roleType == null || roleType == 2) {
+            throw cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception(
+                    cn.shuhe.system.framework.common.exception.enums.GlobalErrorCodeConstants.FORBIDDEN);
+        }
+    }
+
+    /**
+     * 校验当前用户是否为项目成员（任何角色均可，用于状态/进度等操作性更新）
+     */
+    private void validateMemberPermission(Long projectId) {
+        Long userId = getLoginUserId();
+        Integer roleType = projectService.getUserRoleInProject(projectId, userId);
+        if (roleType == null) {
+            throw cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception(
+                    cn.shuhe.system.framework.common.exception.enums.GlobalErrorCodeConstants.FORBIDDEN);
+        }
+    }
+
+    /**
+     * 通过服务项ID校验成员权限
+     */
+    private void validateMemberPermissionByServiceItemId(Long serviceItemId) {
+        ServiceItemDO item = serviceItemService.getServiceItem(serviceItemId);
+        if (item != null && item.getProjectId() != null) {
+            validateMemberPermission(item.getProjectId());
+        }
+    }
+
+    /**
+     * 通过服务项ID校验管理权限
+     */
+    private void validateManagePermissionByServiceItemId(Long serviceItemId) {
+        ServiceItemDO item = serviceItemService.getServiceItem(serviceItemId);
+        if (item != null && item.getProjectId() != null) {
+            validateManagePermission(item.getProjectId());
+        }
+    }
+
     private Long findDeptIdByDeptType(Integer deptType) {
         if (deptType == null) {
             return null;
         }
-        // 查找有对应 deptType 的部门
-        DeptDO dept = deptService.getDeptByDeptType(deptType);
-        return dept != null ? dept.getId() : null;
+        // 绕过数据权限查找系统级部门（按 deptType 查找不应受当前用户权限限制）
+        return DataPermissionUtils.executeIgnore(() -> {
+            DeptDO dept = deptService.getDeptByDeptType(deptType);
+            return dept != null ? dept.getId() : null;
+        });
     }
 
     /**
@@ -207,10 +231,44 @@ public class ServiceItemController {
         return currentId;
     }
 
+    @PutMapping("/assign-dept")
+    @Operation(summary = "分配服务项到具体部门（排/班）")
+    @PreAuthorize("@ss.hasPermission('project:service-item:update')")
+    @DataPermission(enable = false)
+    public CommonResult<Boolean> assignServiceItemToDept(
+            @RequestParam("id") Long id,
+            @RequestParam("deptId") Long deptId) {
+        validateManagePermissionByServiceItemId(id);
+        serviceItemService.assignServiceItemToDept(id, deptId);
+        return success(true);
+    }
+
+    @PutMapping("/batch-assign-dept")
+    @Operation(summary = "批量分配服务项到具体部门（排/班）")
+    @PreAuthorize("@ss.hasPermission('project:service-item:update')")
+    @DataPermission(enable = false)
+    public CommonResult<Boolean> batchAssignServiceItemToDept(
+            @RequestParam("ids") List<Long> ids,
+            @RequestParam("deptId") Long deptId) {
+        if (!ids.isEmpty()) {
+            validateManagePermissionByServiceItemId(ids.get(0));
+        }
+        for (Long id : ids) {
+            serviceItemService.assignServiceItemToDept(id, deptId);
+        }
+        return success(true);
+    }
+
     @PutMapping("/update")
     @Operation(summary = "更新服务项")
     @PreAuthorize("@ss.hasPermission('project:service-item:update')")
+    @DataPermission(enable = false)
     public CommonResult<Boolean> updateServiceItem(@Valid @RequestBody ServiceItemSaveReqVO updateReqVO) {
+        if (updateReqVO.getProjectId() != null) {
+            validateManagePermission(updateReqVO.getProjectId());
+        } else if (updateReqVO.getId() != null) {
+            validateManagePermissionByServiceItemId(updateReqVO.getId());
+        }
         serviceItemService.updateServiceItem(updateReqVO);
         return success(true);
     }
@@ -219,7 +277,9 @@ public class ServiceItemController {
     @Operation(summary = "删除服务项")
     @Parameter(name = "id", description = "服务项编号", required = true)
     @PreAuthorize("@ss.hasPermission('project:service-item:delete')")
+    @DataPermission(enable = false)
     public CommonResult<Boolean> deleteServiceItem(@RequestParam("id") Long id) {
+        validateManagePermissionByServiceItemId(id);
         serviceItemService.deleteServiceItem(id);
         return success(true);
     }
@@ -248,11 +308,20 @@ public class ServiceItemController {
     @GetMapping("/page")
     @Operation(summary = "获得服务项分页")
     @PreAuthorize("@ss.hasPermission('project:service-item:query')")
+    @DataPermission(enable = false)
     public CommonResult<PageResult<ServiceItemRespVO>> getServiceItemPage(@Valid ServiceItemPageReqVO pageReqVO) {
-        // 根据 deptType 找到对应的部门ID进行过滤，保证与创建时使用相同的部门ID
-        if (pageReqVO.getDeptType() != null) {
-            Long deptId = findDeptIdByDeptType(pageReqVO.getDeptType());
-            pageReqVO.setDeptId(deptId);
+        // 项目成员权限校验：只有项目成员才能查看
+        Long userId = getLoginUserId();
+        Integer roleType = projectService.getUserRoleInProject(pageReqVO.getProjectId(), userId);
+        if (roleType == null) {
+            return success(new PageResult<>(Collections.emptyList(), 0L));
+        }
+        // 执行者只能看到分配给自己部门的服务项
+        if (roleType == 2 && pageReqVO.getDeptId() == null) {
+            AdminUserDO user = adminUserService.getUser(userId);
+            if (user != null && user.getDeptId() != null) {
+                pageReqVO.setDeptId(user.getDeptId());
+            }
         }
 
         PageResult<ServiceItemDO> pageResult = serviceItemService.getServiceItemPage(pageReqVO);
@@ -279,30 +348,36 @@ public class ServiceItemController {
     @Parameter(name = "serviceMode", description = "服务模式：1-驻场 2-二线", required = false)
     @Parameter(name = "serviceMemberType", description = "服务归属人员类型（安全运营专用）：1-驻场人员 2-管理人员", required = false)
     @PreAuthorize("@ss.hasAnyPermissions('project:service-item:query', 'project:my-tasks:query')")
+    @DataPermission(enable = false)
     public CommonResult<List<ServiceItemRespVO>> getServiceItemList(
             @RequestParam("projectId") Long projectId,
             @RequestParam(value = "deptType", required = false) Integer deptType,
             @RequestParam(value = "serviceMode", required = false) Integer serviceMode,
             @RequestParam(value = "serviceMemberType", required = false) Integer serviceMemberType) {
+        // 项目成员权限校验
+        Long userId = getLoginUserId();
+        Integer roleType = projectService.getUserRoleInProject(projectId, userId);
+        if (roleType == null) {
+            return success(Collections.emptyList());
+        }
+
         List<ServiceItemDO> list;
 
-        // 根据传入的参数组合进行过滤
-        if (serviceMemberType != null && deptType != null) {
-            // 安全运营按服务归属人员类型过滤（驻场人员服务项 / 管理人员服务项）
+        // 执行者强制按自己的部门过滤
+        if (roleType == 2) {
+            AdminUserDO user = adminUserService.getUser(userId);
+            Long userDeptId = (user != null) ? user.getDeptId() : null;
+            list = serviceItemService.getServiceItemListByProjectIdAndDeptId(projectId, userDeptId);
+        } else if (serviceMemberType != null && deptType != null) {
             list = serviceItemService.getServiceItemListByProjectIdAndDeptTypeAndMemberType(projectId, deptType, serviceMemberType);
         } else if (serviceMode != null && deptType != null) {
-            // 同时按部门类型和服务模式过滤（安全服务驻场详情页会用到）
             list = serviceItemService.getServiceItemListByProjectIdAndServiceMode(projectId, serviceMode);
-            // 再按 deptType 过滤
             list = list.stream().filter(item -> deptType.equals(item.getDeptType())).toList();
         } else if (serviceMode != null) {
-            // 只按服务模式过滤
             list = serviceItemService.getServiceItemListByProjectIdAndServiceMode(projectId, serviceMode);
         } else if (deptType != null) {
-            // 只按部门类型过滤（安全运营详情页会用到）
             list = serviceItemService.getServiceItemListByProjectIdAndDeptType(projectId, deptType);
         } else {
-            // 无过滤条件，返回所有服务项
             list = serviceItemService.getServiceItemListByProjectId(projectId);
         }
 
@@ -325,8 +400,10 @@ public class ServiceItemController {
     @PutMapping("/update-status")
     @Operation(summary = "更新服务项状态")
     @PreAuthorize("@ss.hasPermission('project:service-item:update')")
+    @DataPermission(enable = false)
     public CommonResult<Boolean> updateServiceItemStatus(@RequestParam("id") Long id,
             @RequestParam("status") Integer status) {
+        validateMemberPermissionByServiceItemId(id);
         serviceItemService.updateServiceItemStatus(id, status);
         return success(true);
     }
@@ -334,8 +411,10 @@ public class ServiceItemController {
     @PutMapping("/update-progress")
     @Operation(summary = "更新服务项进度")
     @PreAuthorize("@ss.hasPermission('project:service-item:update')")
+    @DataPermission(enable = false)
     public CommonResult<Boolean> updateServiceItemProgress(@RequestParam("id") Long id,
             @RequestParam("progress") Integer progress) {
+        validateMemberPermissionByServiceItemId(id);
         serviceItemService.updateServiceItemProgress(id, progress);
         return success(true);
     }
@@ -344,6 +423,7 @@ public class ServiceItemController {
     @Operation(summary = "根据部门类型获取可选执行人列表", description = "根据部门类型返回对应岗位的用户列表，同时包含同部门无岗位的用户（如实习生）")
     @Parameter(name = "deptType", description = "部门类型：1安全服务 2安全运营 3数据安全", required = true)
     @PreAuthorize("@ss.hasPermission('project:service-item:query')")
+    @DataPermission(enable = false)
     public CommonResult<List<UserSimpleRespVO>> getUserListByDeptType(@RequestParam("deptType") Integer deptType) {
         // 收集所有符合条件的用户（按 userId 去重）
         Map<Long, AdminUserDO> userMap = new LinkedHashMap<>();
@@ -408,6 +488,7 @@ public class ServiceItemController {
     @Operation(summary = "根据部门类型获取管理人员列表", description = "根据部门类型返回管理岗位（组长、主管）的用户列表")
     @Parameter(name = "deptType", description = "部门类型：1安全服务 2安全运营 3数据安全", required = true)
     @PreAuthorize("@ss.hasPermission('project:service-item:query')")
+    @DataPermission(enable = false)
     public CommonResult<List<UserSimpleRespVO>> getManagerListByDeptType(@RequestParam("deptType") Integer deptType) {
         // 获取部门类型对应的管理岗位code列表
         List<String> postCodes = DEPT_TYPE_MANAGER_POST_CODES.get(deptType);

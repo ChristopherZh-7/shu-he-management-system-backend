@@ -33,14 +33,11 @@ import cn.shuhe.system.module.crm.service.contact.CrmContactService;
 import cn.shuhe.system.module.crm.service.contract.CrmContractService;
 import cn.shuhe.system.module.crm.service.customer.CrmCustomerService;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectSaveReqVO;
-import cn.shuhe.system.module.project.service.ProjectDeptServiceService;
 import cn.shuhe.system.module.project.service.ProjectService;
 import cn.shuhe.system.module.finance.dal.dataobject.cost.ContractDeptAllocationDO;
 import cn.shuhe.system.module.finance.dal.mysql.cost.ContractDeptAllocationMapper;
 import cn.shuhe.system.module.crm.dal.dataobject.contract.CrmContractDO;
 import cn.shuhe.system.module.crm.dal.mysql.contract.CrmContractMapper;
-import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
-import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
 import cn.shuhe.system.module.crm.service.permission.CrmPermissionService;
 import cn.shuhe.system.module.crm.service.permission.bo.CrmPermissionCreateReqBO;
 import cn.shuhe.system.module.crm.service.permission.bo.CrmPermissionTransferReqBO;
@@ -89,8 +86,6 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
     @Resource
     private ProjectService projectService;
     @Resource
-    private ProjectDeptServiceService projectDeptServiceService;
-    @Resource
     @Lazy
     private CrmContactService contactService;
     @Resource
@@ -112,8 +107,6 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
     private ContractDeptAllocationMapper contractDeptAllocationMapper;
     @Resource
     private CrmContractMapper contractMapper;
-    @Resource
-    private ProjectMapper projectMapper;
 
     /** 测试阶段：不拉老板（总经办），仅部门主管。配置：shuhe.dingtalk.business-audit.skip-boss=true */
     @Value("${shuhe.dingtalk.business-audit.skip-boss:false}")
@@ -130,13 +123,7 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
         // 1. 校验关联字段
         validateRelationDataExists(createReqVO);
 
-        // 2. 填充部门名称到分配列表
-        fillDeptNames(createReqVO);
-
-        // 3. 校验：部门分配金额之和 = 预计总金额（先填总金额，再分配各部门）
-        validateAllocationSum(createReqVO.getTotalPrice(), createReqVO.getDeptAllocations());
-
-        // 4. 插入商机（初始为未提交状态）
+        // 2. 插入商机（初始为未提交状态）
         CrmBusinessDO business = BeanUtils.toBean(createReqVO, CrmBusinessDO.class);
         business.setAuditStatus(CrmAuditStatusEnum.DRAFT.getStatus());
         businessMapper.insert(business);
@@ -155,41 +142,6 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
         // 7. 记录操作日志（钉钉群在提交审核时创建）
         LogRecordContext.putVariable("business", business);
         return business.getId();
-    }
-
-    /**
-     * 校验部门分配金额之和等于预计总金额（先填总金额，再分配各部门）
-     */
-    private void validateAllocationSum(BigDecimal totalPrice, List<CrmBusinessSaveReqVO.DeptAllocation> allocations) {
-        if (totalPrice == null || CollUtil.isEmpty(allocations)) {
-            return;
-        }
-        boolean hasAnyAmount = allocations.stream()
-                .anyMatch(a -> a.getAmount() != null && a.getAmount().compareTo(BigDecimal.ZERO) > 0);
-        if (!hasAnyAmount) {
-            return;
-        }
-        BigDecimal sum = allocations.stream()
-                .map(CrmBusinessSaveReqVO.DeptAllocation::getAmount)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (sum.compareTo(totalPrice) != 0) {
-            throw exception(BUSINESS_ALLOCATION_SUM_MISMATCH);
-        }
-    }
-
-    private void fillDeptNames(CrmBusinessSaveReqVO reqVO) {
-        if (CollUtil.isEmpty(reqVO.getDeptAllocations())) {
-            return;
-        }
-        for (CrmBusinessSaveReqVO.DeptAllocation allocation : reqVO.getDeptAllocations()) {
-            if (allocation.getDeptName() == null && allocation.getDeptId() != null) {
-                DeptRespDTO dept = deptApi.getDept(allocation.getDeptId());
-                if (dept != null) {
-                    allocation.setDeptName(dept.getName());
-                }
-            }
-        }
     }
 
     /**
@@ -283,10 +235,13 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = CRM_BUSINESS_TYPE, subType = CRM_BUSINESS_EARLY_INVESTMENT_SUB_TYPE, bizNo = "{{#reqVO.businessId}}",
+            success = CRM_BUSINESS_EARLY_INVESTMENT_SUCCESS)
     @CrmPermission(bizType = CrmBizTypeEnum.CRM_BUSINESS, bizId = "#reqVO.businessId", level = CrmPermissionLevelEnum.WRITE)
     public void submitEarlyInvestment(CrmBusinessEarlyInvestmentSubmitReqVO reqVO, Long userId) {
         Long businessId = reqVO.getBusinessId();
         CrmBusinessDO business = validateBusinessExists(businessId);
+        LogRecordContext.putVariable("businessName", business.getName());
         // 校验：商机必须已审批通过
         if (!CrmAuditStatusEnum.APPROVE.getStatus().equals(business.getAuditStatus())) {
             throw exception(BUSINESS_SUBMIT_FAIL_NOT_DRAFT);
@@ -470,12 +425,15 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
             }
         }
 
-        List<Integer> deptTypes = getDeptTypesFromBusinessAllocations(business);
-        Integer primaryDeptType = deptTypes.isEmpty() ? 1 : deptTypes.get(0);
+        // 商机负责人 = 项目经理
+        String ownerName = "";
+        if (business.getOwnerUserId() != null) {
+            AdminUserRespDTO owner = adminUserApi.getUser(business.getOwnerUserId());
+            ownerName = owner != null ? owner.getNickname() : "";
+        }
 
         ProjectSaveReqVO projectReqVO = new ProjectSaveReqVO();
         projectReqVO.setName(business.getName());
-        projectReqVO.setDeptType(primaryDeptType);
         projectReqVO.setCustomerId(business.getCustomerId());
         projectReqVO.setCustomerName(customerName);
         projectReqVO.setBusinessId(business.getId());
@@ -484,40 +442,51 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
         projectReqVO.setDingtalkChatId(business.getDingtalkChatId());
         projectReqVO.setStatus(1); // 进行中
         projectReqVO.setDescription("由商机【" + business.getName() + "】自动创建");
+        if (business.getOwnerUserId() != null) {
+            projectReqVO.setManagerIds(Collections.singletonList(business.getOwnerUserId()));
+            projectReqVO.setManagerNames(Collections.singletonList(ownerName));
+        }
 
         Long projectId = projectService.createProject(projectReqVO);
 
-        DeptTypeDeptBinding deptBinding = buildDeptTypeDeptBindingMaps(business);
-        projectDeptServiceService.batchCreateDeptServiceForBusiness(
-                projectId, business.getId(), business.getCustomerId(), customerName, deptTypes,
-                deptBinding.deptTypeToDeptId(), deptBinding.deptTypeToDeptName());
-
-        // 合同签订时，把商机的部门金额分配同步到 contract_dept_allocation（历史数据保留）
-        if (contractId != null) {
-            syncDeptAllocationsToContract(business, contractId, contractNo, customerName);
-        }
-
-        // 商机负责人作为项目经理加入项目成员
+        // 项目经理加入项目成员
         if (business.getOwnerUserId() != null) {
-            AdminUserRespDTO owner = adminUserApi.getUser(business.getOwnerUserId());
-            String ownerName = owner != null ? owner.getNickname() : "";
             try {
                 projectService.addProjectMember(projectId, business.getOwnerUserId(), ownerName, 1);
             } catch (Exception e) {
                 log.warn("[createProjectInternally] 添加商机负责人为项目成员失败: userId={}", business.getOwnerUserId(), e);
             }
+
+            // 自动将项目经理的整条管理链上的主管加入项目成员（roleType=3 审核人员）
+            try {
+                AdminUserRespDTO ownerUser = adminUserApi.getUser(business.getOwnerUserId());
+                if (ownerUser != null && ownerUser.getDeptId() != null) {
+                    Set<Long> leaderUserIds = deptApi.getAncestorChainLeaderUserIds(ownerUser.getDeptId());
+                    // 排除项目经理自己（如果他同时是某层的负责人）
+                    leaderUserIds.remove(business.getOwnerUserId());
+                    for (Long leaderUserId : leaderUserIds) {
+                        AdminUserRespDTO leader = adminUserApi.getUser(leaderUserId);
+                        String leaderName = leader != null ? leader.getNickname() : "";
+                        projectService.addProjectMember(projectId, leaderUserId, leaderName, 3);
+                        log.info("[createProjectInternally] 已将主管 {} ({}) 加入项目 {} 成员",
+                                leaderUserId, leaderName, projectId);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[createProjectInternally] 添加管理链主管为项目成员失败: ownerUserId={}",
+                        business.getOwnerUserId(), e);
+            }
         }
 
-        addAncestorChainMembersToProject(projectId, business);
-
-        log.info("[createProjectInternally] 商机 {} 创建项目 {} 成功，合同关联: {}", business.getName(), projectId, contractId);
+        log.info("[createProjectInternally] 商机 {} 创建项目 {} 成功，项目经理：{}，合同关联: {}",
+                business.getName(), projectId, ownerName, contractId);
 
         // 群通知（如有群）
         if (business.getDingtalkChatId() != null) {
             try {
                 String msg = contractId != null
-                        ? "📁 **合同已签订，项目已创建！**\n\n商机【" + business.getName() + "】对应项目已创建，请相关部门进入项目管理。"
-                        : "📁 **提前投入项目已创建！**\n\n商机【" + business.getName() + "】对应项目已创建，请相关部门进入项目管理。";
+                        ? "📁 **合同已签订，项目已创建！**\n\n商机【" + business.getName() + "】对应项目已创建，项目经理：" + ownerName + "。"
+                        : "📁 **提前投入项目已创建！**\n\n商机【" + business.getName() + "】对应项目已创建，项目经理：" + ownerName + "。";
                 dingtalkNotifyApi.sendMessageToChat(business.getDingtalkChatId(), "项目创建通知", msg);
             } catch (Exception e) {
                 log.warn("[createProjectInternally] 发送群通知失败", e);
@@ -606,108 +575,6 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
         syncDeptAllocationsToContract(business, contractId, contractNo, customerName, false);
     }
 
-    /**
-     * 从商机的部门分配列表构建 deptType -> 承接部门 ID/名称，用于跳过领取时写入 project_dept_service.dept_id
-     */
-    private DeptTypeDeptBinding buildDeptTypeDeptBindingMaps(CrmBusinessDO business) {
-        Map<Integer, Long> idMap = new HashMap<>();
-        Map<Integer, String> nameMap = new HashMap<>();
-        if (CollUtil.isEmpty(business.getDeptAllocations())) {
-            return new DeptTypeDeptBinding(idMap, nameMap);
-        }
-        List<Long> deptIds = business.getDeptAllocations().stream()
-                .map(CrmBusinessDO.DeptAllocation::getDeptId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-        if (deptIds.isEmpty()) {
-            return new DeptTypeDeptBinding(idMap, nameMap);
-        }
-        List<DeptRespDTO> depts = deptApi.getDeptList(deptIds);
-        Map<Long, DeptRespDTO> deptById = depts.stream()
-                .collect(java.util.stream.Collectors.toMap(DeptRespDTO::getId, d -> d, (a, b) -> a));
-
-        for (CrmBusinessDO.DeptAllocation alloc : business.getDeptAllocations()) {
-            if (alloc.getDeptId() == null) {
-                continue;
-            }
-            DeptRespDTO d = deptById.get(alloc.getDeptId());
-            if (d == null || d.getDeptType() == null) {
-                continue;
-            }
-            Integer deptType = d.getDeptType();
-            idMap.put(deptType, alloc.getDeptId());
-            String name = StrUtil.isNotBlank(alloc.getDeptName()) ? alloc.getDeptName() : d.getName();
-            if (StrUtil.isNotBlank(name)) {
-                nameMap.put(deptType, name);
-            }
-        }
-        return new DeptTypeDeptBinding(idMap, nameMap);
-    }
-
-    private record DeptTypeDeptBinding(Map<Integer, Long> deptTypeToDeptId, Map<Integer, String> deptTypeToDeptName) {
-    }
-
-    /**
-     * 根据商机的部门分配，将整条管理链上的负责人添加为项目成员。
-     * 例如选择了"运营服务部1营1排3班"，则自动把班长→排长→部门主管都加为项目成员。
-     */
-    private void addAncestorChainMembersToProject(Long projectId, CrmBusinessDO business) {
-        if (CollUtil.isEmpty(business.getDeptAllocations())) return;
-        Set<Long> allLeaderIds = new java.util.LinkedHashSet<>();
-        for (CrmBusinessDO.DeptAllocation alloc : business.getDeptAllocations()) {
-            if (alloc.getDeptId() == null) continue;
-            Set<Long> chainLeaders = deptApi.getAncestorChainLeaderUserIds(alloc.getDeptId());
-            allLeaderIds.addAll(chainLeaders);
-        }
-        if (allLeaderIds.isEmpty()) return;
-
-        List<AdminUserRespDTO> users = adminUserApi.getUserList(allLeaderIds);
-        Map<Long, String> userNameMap = new java.util.HashMap<>();
-        if (users != null) {
-            for (AdminUserRespDTO u : users) {
-                userNameMap.put(u.getId(), u.getNickname());
-            }
-        }
-        for (Long userId : allLeaderIds) {
-            String nickname = userNameMap.getOrDefault(userId, "");
-            try {
-                projectService.addProjectMember(projectId, userId, nickname, 2);
-            } catch (Exception e) {
-                log.warn("[addAncestorChainMembersToProject] 添加项目成员失败: userId={}, projectId={}", userId, projectId, e);
-            }
-        }
-        log.info("[addAncestorChainMembersToProject] 项目 {} 已添加 {} 名管理链成员: {}", projectId, allLeaderIds.size(), allLeaderIds);
-    }
-
-    /**
-     * 从商机的部门分配列表中解析部门类型
-     */
-    private List<Integer> getDeptTypesFromBusinessAllocations(CrmBusinessDO business) {
-        List<Integer> deptTypes = new ArrayList<>();
-        if (CollUtil.isEmpty(business.getDeptAllocations())) {
-            deptTypes.add(1); // 默认安全服务
-            return deptTypes;
-        }
-        List<Long> deptIds = business.getDeptAllocations().stream()
-                .map(CrmBusinessDO.DeptAllocation::getDeptId)
-                .filter(Objects::nonNull)
-                .toList();
-        if (!deptIds.isEmpty()) {
-            List<DeptRespDTO> depts = deptApi.getDeptList(deptIds);
-            for (DeptRespDTO dept : depts) {
-                Integer deptType = dept.getDeptType();
-                if (deptType != null && !deptTypes.contains(deptType)) {
-                    deptTypes.add(deptType);
-                }
-            }
-        }
-        if (deptTypes.isEmpty()) {
-            deptTypes.add(1);
-        }
-        return deptTypes;
-    }
-
     private Integer convertBpmResultToAuditStatus(Integer bpmResult) {
         if (bpmResult == null) {
             return CrmAuditStatusEnum.PROCESS.getStatus();
@@ -752,26 +619,9 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
         updateReqVO.setOwnerUserId(null);
         CrmBusinessDO oldBusiness = validateBusinessExists(updateReqVO.getId());
         validateRelationDataExists(updateReqVO);
-        fillDeptNames(updateReqVO);
-        validateAllocationSum(updateReqVO.getTotalPrice(), updateReqVO.getDeptAllocations());
 
         CrmBusinessDO updateObj = BeanUtils.toBean(updateReqVO, CrmBusinessDO.class);
         businessMapper.updateById(updateObj);
-
-        // 审批中时，同步发送更新后的分配详情到钉钉（自有群或固定群）
-        if (CrmAuditStatusEnum.PROCESS.getStatus().equals(oldBusiness.getAuditStatus())
-                && CollUtil.isNotEmpty(updateReqVO.getDeptAllocations())) {
-            try {
-                CrmBusinessDO updated = businessMapper.selectById(updateReqVO.getId());
-                if (updated.getDingtalkChatId() != null) {
-                    sendAllocationMessage(updateReqVO.getId(), true);
-                } else if (StrUtil.isNotEmpty(dingtalkNotifyApi.getBusinessAuditChatId())) {
-                    sendAllocationMessageToFixedGroup(updated, true);
-                }
-            } catch (Exception e) {
-                log.warn("[updateBusiness] 发送钉钉群更新通知失败, businessId={}", updateReqVO.getId(), e);
-            }
-        }
 
         updateReqVO.setOwnerUserId(oldBusiness.getOwnerUserId());
         LogRecordContext.putVariable(DiffParseFunction.OLD_OBJECT, BeanUtils.toBean(oldBusiness, CrmBusinessSaveReqVO.class));
@@ -780,10 +630,13 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = CRM_BUSINESS_TYPE, subType = CRM_BUSINESS_SUBMIT_AUDIT_SUB_TYPE, bizNo = "{{#id}}",
+            success = CRM_BUSINESS_SUBMIT_AUDIT_SUCCESS)
     @CrmPermission(bizType = CrmBizTypeEnum.CRM_BUSINESS, bizId = "#id", level = CrmPermissionLevelEnum.WRITE)
     public void submitBusinessAudit(Long id, Long userId) {
         // 1. 校验商机是否处于未提交状态
         CrmBusinessDO business = validateBusinessExists(id);
+        LogRecordContext.putVariable("businessName", business.getName());
         if (ObjUtil.notEqual(business.getAuditStatus(), CrmAuditStatusEnum.DRAFT.getStatus())) {
             throw exception(BUSINESS_SUBMIT_FAIL_NOT_DRAFT);
         }
@@ -1479,131 +1332,6 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
     @Override
     public PageResult<CrmBusinessDO> getBusinessPageByDate(CrmStatisticsFunnelReqVO pageVO) {
         return businessMapper.selectPage(pageVO);
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    @DataPermission(enable = false)
-    public void addDeptAllocation(Long businessId, Long deptId, BigDecimal amount) {
-        // 1. 校验商机存在
-        CrmBusinessDO business = validateBusinessExists(businessId);
-
-        // 2. 检查该部门是否已在分配列表中
-        List<CrmBusinessDO.DeptAllocation> allocations = business.getDeptAllocations();
-        if (allocations == null) {
-            allocations = new ArrayList<>();
-        }
-        boolean exists = allocations.stream().anyMatch(a -> deptId.equals(a.getDeptId()));
-        if (exists) {
-            throw exception(ErrorCodeConstants.BUSINESS_DEPT_ALLOCATION_EXISTS);
-        }
-
-        // 3. 获取部门信息
-        DeptRespDTO dept = deptApi.getDept(deptId);
-        if (dept == null) {
-            throw exception(ErrorCodeConstants.BUSINESS_DEPT_NOT_EXISTS);
-        }
-
-        // 4. 创建新的部门分配
-        CrmBusinessDO.DeptAllocation newAllocation = new CrmBusinessDO.DeptAllocation();
-        newAllocation.setDeptId(deptId);
-        newAllocation.setDeptName(dept.getName());
-        newAllocation.setAmount(amount);
-        allocations.add(newAllocation);
-
-        // 5. 更新商机的部门分配和总金额
-        BigDecimal newTotalPrice = business.getTotalPrice().add(amount);
-        businessMapper.updateById(new CrmBusinessDO()
-                .setId(businessId)
-                .setDeptAllocations(allocations)
-                .setTotalPrice(newTotalPrice));
-
-        // 6. 同步到关联的合同
-        List<CrmContractDO> contracts = contractMapper.selectListByBusinessId(businessId);
-        for (CrmContractDO contract : contracts) {
-            List<CrmBusinessDO.DeptAllocation> contractAllocations = contract.getDeptAllocations();
-            if (contractAllocations == null) {
-                contractAllocations = new ArrayList<>();
-            }
-            boolean contractExists = contractAllocations.stream().anyMatch(a -> deptId.equals(a.getDeptId()));
-            if (!contractExists) {
-                contractAllocations.add(newAllocation);
-                contractMapper.updateById(new CrmContractDO()
-                        .setId(contract.getId())
-                        .setDeptAllocations(contractAllocations)
-                        .setTotalPrice(contract.getTotalPrice().add(amount)));
-            }
-            // 同步到 contract_dept_allocation 表
-            syncContractDeptAllocations(contract.getId(), contract.getNo(),
-                    getCustomerName(contract.getCustomerId()),
-                    Collections.singletonList(newAllocation));
-        }
-
-        // 7. 如果项目已创建，补充部门服务单
-        List<ProjectDO> projects = projectMapper.selectListByBusinessId(businessId);
-        for (ProjectDO project : projects) {
-            try {
-                Integer deptType = dept.getDeptType();
-                if (deptType != null) {
-                    String customerName = getCustomerName(business.getCustomerId());
-                    Map<Integer, Long> deptTypeToDeptId = new HashMap<>();
-                    Map<Integer, String> deptTypeToDeptName = new HashMap<>();
-                    deptTypeToDeptId.put(deptType, deptId);
-                    deptTypeToDeptName.put(deptType, dept.getName());
-                    projectDeptServiceService.batchCreateDeptServiceForBusiness(
-                            project.getId(), businessId, business.getCustomerId(), customerName,
-                            Collections.singletonList(deptType),
-                            deptTypeToDeptId, deptTypeToDeptName);
-                }
-            } catch (Exception e) {
-                log.warn("[addDeptAllocation] 创建部门服务单失败, projectId={}, deptId={}: {}",
-                        project.getId(), deptId, e.getMessage());
-            }
-        }
-
-        // 7.5 将新部门管理链成员添加为项目成员
-        for (ProjectDO project : projects) {
-            Set<Long> chainLeaders = deptApi.getAncestorChainLeaderUserIds(deptId);
-            for (Long leaderId : chainLeaders) {
-                try {
-                    AdminUserRespDTO user = adminUserApi.getUser(leaderId);
-                    String nickname = user != null ? user.getNickname() : "";
-                    projectService.addProjectMember(project.getId(), leaderId, nickname, 2);
-                } catch (Exception e) {
-                    log.warn("[addDeptAllocation] 添加项目成员失败: userId={}", leaderId, e);
-                }
-            }
-        }
-
-        // 8. 把新部门主管拉入商机钉钉群
-        if (business.getDingtalkChatId() != null && dept.getLeaderUserId() != null) {
-            try {
-                dingtalkNotifyApi.addMembersToGroupChat(business.getDingtalkChatId(),
-                        Collections.singletonList(dept.getLeaderUserId()));
-                log.info("[addDeptAllocation] 已将部门主管加入商机群: chatId={}, userId={}",
-                        business.getDingtalkChatId(), dept.getLeaderUserId());
-            } catch (Exception e) {
-                log.warn("[addDeptAllocation] 拉入钉钉群失败, deptId={}", deptId, e);
-            }
-        }
-
-        // 9. 给新部门主管添加商机 CRM 数据权限（使其在"我参与的"中可见）
-        if (dept.getLeaderUserId() != null) {
-            try {
-                permissionService.createPermission(new CrmPermissionCreateReqBO()
-                        .setUserId(dept.getLeaderUserId())
-                        .setBizType(CrmBizTypeEnum.CRM_BUSINESS.getType())
-                        .setBizId(businessId)
-                        .setLevel(CrmPermissionLevelEnum.READ.getLevel()));
-                log.info("[addDeptAllocation] 已添加部门主管商机权限: userId={}, businessId={}",
-                        dept.getLeaderUserId(), businessId);
-            } catch (Exception e) {
-                log.warn("[addDeptAllocation] 添加CRM权限失败, userId={}: {}", dept.getLeaderUserId(), e.getMessage());
-            }
-        }
-
-        log.info("[addDeptAllocation] 补充部门分配成功: businessId={}, deptId={}, amount={}",
-                businessId, deptId, amount);
     }
 
     private String getCustomerName(Long customerId) {

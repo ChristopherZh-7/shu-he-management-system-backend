@@ -38,7 +38,7 @@ public class ProjectDeptServiceSaveReqVO {
 
     // ========== 状态和进度 ==========
 
-    @Schema(description = "状态：0待领取 1待开始 2进行中 3已暂停 4已完成 5已取消", example = "1")
+    @Schema(description = "状态：1待开始 2进行中 3已暂停 4已完成 5已退场", example = "1")
     private Integer status;
 
     @Schema(description = "进度百分比 0-100", example = "50")

@@ -50,20 +50,6 @@ public class ProjectDeptServiceRespVO {
     @Schema(description = "项目类型：1驻场类 2管理类", example = "1")
     private Integer projectType;
 
-    // ========== 领取信息 ==========
-
-    @Schema(description = "领取人ID", example = "1")
-    private Long claimUserId;
-
-    @Schema(description = "领取人姓名", example = "张三")
-    private String claimUserName;
-
-    @Schema(description = "领取时间")
-    private LocalDateTime claimTime;
-
-    @Schema(description = "是否已领取", example = "true")
-    private Boolean claimed;
-
     // ========== 负责人 ==========
 
     @Schema(description = "负责人ID列表", example = "[1, 2]")
@@ -88,7 +74,7 @@ public class ProjectDeptServiceRespVO {
 
     // ========== 状态和进度 ==========
 
-    @Schema(description = "状态：0待领取 1待开始 2进行中 3已暂停 4已完成 5已取消", example = "1")
+    @Schema(description = "状态：1待开始 2进行中 3已暂停 4已完成 5已退场", example = "1")
     private Integer status;
 
     @Schema(description = "进度百分比 0-100", example = "50")

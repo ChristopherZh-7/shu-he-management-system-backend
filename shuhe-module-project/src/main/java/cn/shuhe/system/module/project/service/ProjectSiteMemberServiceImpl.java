@@ -2,12 +2,15 @@ package cn.shuhe.system.module.project.service;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
+import cn.shuhe.system.framework.datapermission.core.util.DataPermissionUtils;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectSiteMemberRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectSiteMemberSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectSiteDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectSiteMemberDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectSiteMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectSiteMemberMapper;
+import cn.shuhe.system.module.system.api.user.AdminUserApi;
+import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -39,6 +42,9 @@ public class ProjectSiteMemberServiceImpl implements ProjectSiteMemberService {
     @Resource
     @Lazy
     private ProjectService projectService;
+
+    @Resource
+    private AdminUserApi adminUserApi;
 
     @Override
     public Long createMember(ProjectSiteMemberSaveReqVO createReqVO) {
@@ -74,8 +80,25 @@ public class ProjectSiteMemberServiceImpl implements ProjectSiteMemberService {
         log.info("[createMember][创建驻场人员成功，id={}，siteId={}，userId={}，userName={}]",
                 member.getId(), member.getSiteId(), member.getUserId(), member.getUserName());
 
-        // 将驻场人员加入项目钉钉群
+        // 自动加入项目成员（管理人员→roleType=3审核人员，驻场人员→roleType=2执行人员）
         if (member.getProjectId() != null && member.getUserId() != null) {
+            DataPermissionUtils.executeIgnore(() -> {
+                Integer existingRole = projectService.getUserRoleInProject(member.getProjectId(), member.getUserId());
+                if (existingRole == null) {
+                    int roleType = (member.getMemberType() != null
+                            && member.getMemberType() == ProjectSiteMemberDO.MEMBER_TYPE_MANAGEMENT) ? 3 : 2;
+                    String nickname = member.getUserName();
+                    if (nickname == null || nickname.isEmpty()) {
+                        AdminUserRespDTO user = adminUserApi.getUser(member.getUserId());
+                        nickname = user != null ? user.getNickname() : "";
+                    }
+                    projectService.addProjectMember(member.getProjectId(), member.getUserId(), nickname, roleType);
+                    log.info("[createMember][自动将用户加入项目成员，projectId={}，userId={}，roleType={}]",
+                            member.getProjectId(), member.getUserId(), roleType);
+                }
+            });
+
+            // 将驻场人员加入项目钉钉群
             projectService.addUsersToProjectGroupChat(member.getProjectId(), List.of(member.getUserId()));
         }
 

@@ -73,8 +73,7 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
 
         // 转换并插入
         ProjectDeptServiceDO deptService = BeanUtils.toBean(createReqVO, ProjectDeptServiceDO.class);
-        deptService.setStatus(0); // 默认待领取状态
-        deptService.setClaimed(false);
+        deptService.setStatus(1); // 默认待开始状态
         deptService.setProgress(0);
         deptServiceMapper.insert(deptService);
 
@@ -347,68 +346,6 @@ public class ProjectDeptServiceServiceImpl implements ProjectDeptServiceService 
         }
     }
 
-
-    @Override
-    public List<ProjectDeptServiceDO> batchCreateDeptServiceForBusiness(Long projectId, Long businessId,
-                                                                         Long customerId, String customerName,
-                                                                         List<Integer> deptTypes,
-                                                                         java.util.Map<Integer, Long> deptTypeToDeptId,
-                                                                         java.util.Map<Integer, String> deptTypeToDeptName) {
-        List<ProjectDeptServiceDO> result = new ArrayList<>();
-
-        for (Integer deptType : deptTypes) {
-            ProjectDeptServiceDO existing = deptServiceMapper.selectByProjectIdAndDeptType(projectId, deptType);
-            if (existing != null) {
-                log.warn("【部门服务单-商机】部门服务单已存在，跳过创建，projectId={}, deptType={}", projectId, deptType);
-                result.add(existing);
-                continue;
-            }
-
-            Long deptId = deptTypeToDeptId != null ? deptTypeToDeptId.get(deptType) : null;
-            String deptName = deptTypeToDeptName != null ? deptTypeToDeptName.get(deptType) : null;
-
-            // 自动查找负责人：先看本部门的 leader，没有就往上找父部门
-            List<Long> initialManagerIds = null;
-            List<String> initialManagerNames = null;
-            if (deptId != null) {
-                Long leaderId = deptApi.findLeaderUserIdRecursively(deptId);
-                if (leaderId != null) {
-                    AdminUserRespDTO leader = adminUserApi.getUser(leaderId);
-                    initialManagerIds = List.of(leaderId);
-                    initialManagerNames = List.of(leader != null ? leader.getNickname() : "");
-                    log.info("【部门服务单-商机】自动设置负责人，deptId={}, leaderId={}", deptId, leaderId);
-                }
-            }
-
-            ProjectDeptServiceDO deptService = ProjectDeptServiceDO.builder()
-                    .projectId(projectId)
-                    .businessId(businessId)
-                    .customerId(customerId)
-                    .customerName(customerName)
-                    .deptType(deptType)
-                    .deptId(deptId)
-                    .deptName(deptName)
-                    .managerIds(initialManagerIds)
-                    .managerNames(initialManagerNames)
-                    .status(1)
-                    .progress(0)
-                    .claimed(true)
-                    .build();
-
-            deptServiceMapper.insert(deptService);
-            result.add(deptService);
-
-            // 负责人也加入 project_member
-            if (initialManagerIds != null) {
-                ensureProjectMembers(projectId, initialManagerIds);
-            }
-
-            log.info("【部门服务单-商机】批量创建，projectId={}, deptType={}, id={}, deptId={}, managerIds={}",
-                    projectId, deptType, deptService.getId(), deptId, initialManagerIds);
-        }
-
-        return result;
-    }
 
     private ProjectDeptServiceDO validateDeptServiceExists(Long id) {
         ProjectDeptServiceDO deptService = deptServiceMapper.selectById(id);

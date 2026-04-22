@@ -147,16 +147,26 @@ public interface DeptService {
     List<DeptDO> getDeptListByDeptType(Integer deptType);
 
     /**
-     * 根据部门类型获取单个部门（返回第一个匹配的部门）
+     * 根据部门类型获取顶级大部门（层级最高的那个）
      * 
-     * 用于服务项创建时，根据 deptType 找到对应的部门
+     * 如果多个部门有相同 deptType（大部门及其子部门），优先返回层级最高的（parentId 最接近公司根节点的）
      *
      * @param deptType 部门类型：1安全服务 2安全运营 3数据安全
-     * @return 部门信息，如果不存在则返回 null
+     * @return 顶级大部门信息，如果不存在则返回 null
      */
     default DeptDO getDeptByDeptType(Integer deptType) {
         List<DeptDO> list = getDeptListByDeptType(deptType);
-        return list != null && !list.isEmpty() ? list.get(0) : null;
+        if (list == null || list.isEmpty()) {
+            return null;
+        }
+        // 优先返回最顶层的部门：找 parentId 不在结果集中的那个（即没有更上级的同 deptType 部门）
+        java.util.Set<Long> ids = list.stream().map(DeptDO::getId).collect(java.util.stream.Collectors.toSet());
+        for (DeptDO dept : list) {
+            if (dept.getParentId() == null || !ids.contains(dept.getParentId())) {
+                return dept;
+            }
+        }
+        return list.get(0);
     }
 
 }

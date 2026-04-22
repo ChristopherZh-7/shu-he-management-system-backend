@@ -1,6 +1,7 @@
 package cn.shuhe.system.module.project.controller.admin;
 
 import cn.shuhe.system.framework.common.pojo.CommonResult;
+import cn.shuhe.system.framework.datapermission.core.annotation.DataPermission;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectSiteMemberRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectSiteMemberSaveReqVO;
 import cn.shuhe.system.module.project.service.ProjectSiteMemberService;
@@ -32,6 +33,7 @@ public class ProjectSiteMemberController {
     @PostMapping("/create")
     @Operation(summary = "创建驻场人员")
     @PreAuthorize("@ss.hasPermission('project:site:update')")
+    @DataPermission(enable = false)
     public CommonResult<Long> createMember(@Valid @RequestBody ProjectSiteMemberSaveReqVO createReqVO) {
         return success(memberService.createMember(createReqVO));
     }
@@ -39,6 +41,7 @@ public class ProjectSiteMemberController {
     @PutMapping("/update")
     @Operation(summary = "更新驻场人员")
     @PreAuthorize("@ss.hasPermission('project:site:update')")
+    @DataPermission(enable = false)
     public CommonResult<Boolean> updateMember(@Valid @RequestBody ProjectSiteMemberSaveReqVO updateReqVO) {
         memberService.updateMember(updateReqVO);
         return success(true);
@@ -48,6 +51,7 @@ public class ProjectSiteMemberController {
     @Operation(summary = "删除驻场人员")
     @Parameter(name = "id", description = "人员ID", required = true)
     @PreAuthorize("@ss.hasPermission('project:site:update')")
+    @DataPermission(enable = false)
     public CommonResult<Boolean> deleteMember(@RequestParam("id") Long id) {
         memberService.deleteMember(id);
         return success(true);
@@ -57,6 +61,7 @@ public class ProjectSiteMemberController {
     @Operation(summary = "获取驻场人员详情")
     @Parameter(name = "id", description = "人员ID", required = true)
     @PreAuthorize("@ss.hasPermission('project:site:query')")
+    @DataPermission(enable = false)
     public CommonResult<ProjectSiteMemberRespVO> getMember(@RequestParam("id") Long id) {
         return success(memberService.getMemberDetail(id));
     }
@@ -65,6 +70,7 @@ public class ProjectSiteMemberController {
     @Operation(summary = "获取驻场点的人员列表")
     @Parameter(name = "siteId", description = "驻场点ID", required = true)
     @PreAuthorize("@ss.hasPermission('project:site:query')")
+    @DataPermission(enable = false)
     public CommonResult<List<ProjectSiteMemberRespVO>> getListBySite(@RequestParam("siteId") Long siteId) {
         return success(memberService.getListBySiteId(siteId));
     }
@@ -73,6 +79,7 @@ public class ProjectSiteMemberController {
     @Operation(summary = "获取项目的所有驻场人员")
     @Parameter(name = "projectId", description = "项目ID", required = true)
     @PreAuthorize("@ss.hasPermission('project:site:query')")
+    @DataPermission(enable = false)
     public CommonResult<List<ProjectSiteMemberRespVO>> getListByProject(@RequestParam("projectId") Long projectId) {
         return success(memberService.getListByProjectId(projectId));
     }
@@ -81,6 +88,7 @@ public class ProjectSiteMemberController {
     @Operation(summary = "标记人员已离开")
     @Parameter(name = "id", description = "人员ID", required = true)
     @PreAuthorize("@ss.hasPermission('project:site:update')")
+    @DataPermission(enable = false)
     public CommonResult<Boolean> setMemberLeft(@RequestParam("id") Long id) {
         memberService.setMemberLeft(id);
         return success(true);

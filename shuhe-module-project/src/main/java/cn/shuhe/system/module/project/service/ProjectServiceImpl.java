@@ -161,7 +161,7 @@ public class ProjectServiceImpl implements ProjectService {
         }
 
         // 3. 所有非超管用户（包括部门负责人）只能看到自己参与的项目
-        // 说明：项目可见性基于项目成员关系，当用户领取合同时会被自动添加为项目成员
+        // 说明：项目可见性基于项目成员关系，用户被分配为负责人时会自动添加为项目成员
         List<Long> projectIds = projectMemberMapper.selectProjectIdsByUserId(userId);
         log.info("【getProjectPage】用户 {} 参与的项目IDs: {}", userId, projectIds);
         if (CollUtil.isEmpty(projectIds)) {
@@ -218,13 +218,13 @@ public class ProjectServiceImpl implements ProjectService {
 
     /**
      * 生成项目编号
-     * 格式：PRJ-{部门类型}-{年月日}-{4位随机数}
-     * 例如：PRJ-1-20260116-0001
+     * 格式：PRJ-{年月日}-{4位随机数}
+     * 例如：PRJ-20260421-0001
      */
     private String generateProjectCode(Integer deptType) {
         String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String random = String.format("%04d", ThreadLocalRandom.current().nextInt(10000));
-        return StrUtil.format("PRJ-{}-{}-{}", deptType, date, random);
+        return StrUtil.format("PRJ-{}-{}", date, random);
     }
 
     @Override
@@ -471,6 +471,19 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     public void deleteProjectMember(Long id) {
         projectMemberMapper.deleteById(id);
+    }
+
+    @Override
+    public Integer getUserRoleInProject(Long projectId, Long userId) {
+        if (projectId == null || userId == null) {
+            return null;
+        }
+        // 超级管理员视为项目经理权限
+        if (permissionApi.hasAnyRoles(userId, "super_admin")) {
+            return 1;
+        }
+        ProjectMemberDO member = projectMemberMapper.selectByProjectIdAndUserId(projectId, userId);
+        return member != null ? member.getRoleType() : null;
     }
 
 }

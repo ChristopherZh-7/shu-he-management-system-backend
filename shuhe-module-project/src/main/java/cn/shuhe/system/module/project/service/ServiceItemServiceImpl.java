@@ -12,6 +12,7 @@ import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import cn.shuhe.system.module.system.service.dept.DeptService;
+import cn.shuhe.system.framework.datapermission.core.util.DataPermissionUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -59,6 +60,16 @@ public class ServiceItemServiceImpl implements ServiceItemService {
 
     @Resource
     private DeptService deptService;
+
+    @Resource
+    @org.springframework.context.annotation.Lazy
+    private ProjectService projectService;
+
+    @Resource
+    private cn.shuhe.system.module.system.api.user.AdminUserApi adminUserApi;
+
+    @Resource
+    private cn.shuhe.system.module.system.api.dept.DeptApi deptApi;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -114,7 +125,42 @@ public class ServiceItemServiceImpl implements ServiceItemService {
         }
 
         serviceItemMapper.insert(serviceItem);
+
+        // 自动将服务项对应 deptType 的部门负责人加入项目成员
+        autoAddDeptLeaderToProject(serviceItem.getProjectId(), serviceItem.getDeptType());
+
         return serviceItem.getId();
+    }
+
+    /**
+     * 自动将指定 deptType 的大部门负责人加入项目成员（roleType=3 审核人员）
+     * 解决跨部门场景：PM在A部门链上，但为B部门创建服务项时，B部门主管需要能看到项目
+     */
+    private void autoAddDeptLeaderToProject(Long projectId, Integer deptType) {
+        if (projectId == null || deptType == null) {
+            return;
+        }
+        try {
+            // 绕过数据权限查找部门（跨部门查询不应受当前用户权限限制）
+            cn.shuhe.system.module.system.dal.dataobject.dept.DeptDO dept =
+                    DataPermissionUtils.executeIgnore(() -> deptService.getDeptByDeptType(deptType));
+            if (dept == null || dept.getLeaderUserId() == null) {
+                return;
+            }
+            Long leaderUserId = dept.getLeaderUserId();
+            // 检查是否已是项目成员（避免重复添加或覆盖更高权限角色）
+            Integer existingRole = projectService.getUserRoleInProject(projectId, leaderUserId);
+            if (existingRole != null) {
+                return;
+            }
+            cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO leader = adminUserApi.getUser(leaderUserId);
+            String leaderName = leader != null ? leader.getNickname() : "";
+            projectService.addProjectMember(projectId, leaderUserId, leaderName, 3);
+            log.info("[autoAddDeptLeaderToProject] 已将 deptType={} 的部门负责人 {} ({}) 加入项目 {} 成员",
+                    deptType, leaderUserId, leaderName, projectId);
+        } catch (Exception e) {
+            log.warn("[autoAddDeptLeaderToProject] 自动添加部门负责人失败: projectId={}, deptType={}", projectId, deptType, e);
+        }
     }
 
     @Override
@@ -219,6 +265,38 @@ public class ServiceItemServiceImpl implements ServiceItemService {
         updateObj.setId(id);
         updateObj.setProgress(progress);
         serviceItemMapper.updateById(updateObj);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void assignServiceItemToDept(Long id, Long deptId) {
+        // 1. 校验服务项存在
+        ServiceItemDO serviceItem = validateServiceItemExists(id);
+
+        // 2. 更新 deptId
+        ServiceItemDO updateObj = new ServiceItemDO();
+        updateObj.setId(id);
+        updateObj.setDeptId(deptId);
+        serviceItemMapper.updateById(updateObj);
+        log.info("[assignServiceItemToDept] 服务项 {} 已分配到部门 {}", id, deptId);
+
+        // 3. 将目标部门的负责人加入项目成员（roleType=2 执行人员）
+        if (serviceItem.getProjectId() != null) {
+            cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO dept = deptApi.getDept(deptId);
+            if (dept != null && dept.getLeaderUserId() != null) {
+                Long leaderUserId = dept.getLeaderUserId();
+                cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO leader = adminUserApi.getUser(leaderUserId);
+                String leaderName = leader != null ? leader.getNickname() : "";
+                try {
+                    projectService.addProjectMember(serviceItem.getProjectId(), leaderUserId, leaderName, 2);
+                    log.info("[assignServiceItemToDept] 已将部门 {} 负责人 {} ({}) 加入项目 {} 成员",
+                            deptId, leaderUserId, leaderName, serviceItem.getProjectId());
+                } catch (Exception e) {
+                    log.warn("[assignServiceItemToDept] 添加部门负责人为项目成员失败: deptId={}, leaderUserId={}",
+                            deptId, leaderUserId, e);
+                }
+            }
+        }
     }
 
     /**

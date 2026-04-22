@@ -95,6 +95,12 @@ public interface LogRecordConstants {
     String CRM_BUSINESS_FOLLOW_UP_SUCCESS = "商机跟进【{{#businessName}}】";
     String CRM_BUSINESS_UPDATE_STATUS_SUB_TYPE = "更新商机结束状态";
     String CRM_BUSINESS_UPDATE_STATUS_SUCCESS = "更新了商机【{{#businessName}}】的结束状态";
+    String CRM_BUSINESS_SUBMIT_AUDIT_SUB_TYPE = "提交审批";
+    String CRM_BUSINESS_SUBMIT_AUDIT_SUCCESS = "提交了商机【{{#businessName}}】的审批申请";
+    String CRM_BUSINESS_ADD_DEPT_SUB_TYPE = "追加部门";
+    String CRM_BUSINESS_ADD_DEPT_SUCCESS = "为商机【{{#businessName}}】追加了部门【{{#deptName}}】";
+    String CRM_BUSINESS_EARLY_INVESTMENT_SUB_TYPE = "提前投入申请";
+    String CRM_BUSINESS_EARLY_INVESTMENT_SUCCESS = "为商机【{{#businessName}}】提交了提前投入审批申请";
 
     // ======================= CRM_CONTRACT_CONFIG 合同配置 =======================
 
