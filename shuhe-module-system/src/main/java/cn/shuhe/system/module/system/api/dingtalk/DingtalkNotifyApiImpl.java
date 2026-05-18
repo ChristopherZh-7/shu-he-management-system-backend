@@ -41,6 +41,14 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
     @Resource
     private LocalAddressResolver localAddressResolver;
 
+    /**
+     * 测试阶段全局开关：是否启用钉钉。默认 true（生产/正式走钉钉）；
+     * application-local.yaml 中可置 false：所有 sendXxx / addMembersToGroupChat 直接 noop 返回 true。
+     * 影响范围：work notice / private message / chat message / 群创建 / 群成员管理 / action card
+     */
+    @Value("${shuhe.dingtalk.enabled:true}")
+    private boolean dingtalkEnabled;
+
     /** 本地/环境配置：审批链接 baseUrl，钉钉配置为空时使用。如 http://localhost:5666 */
     @Value("${shuhe.dingtalk.business-audit.approve-base-url:}")
     private String approveBaseUrlFromConfig;
@@ -60,6 +68,10 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
 
     @Override
     public boolean sendWorkNotice(DingtalkNotifySendReqDTO reqDTO) {
+        if (!dingtalkEnabled) {
+            log.info("【测试开关】shuhe.dingtalk.enabled=false，跳过 sendWorkNotice，title={}", reqDTO.getTitle());
+            return true;
+        }
         if (CollUtil.isEmpty(reqDTO.getUserIds())) {
             log.warn("发送钉钉通知失败：接收人列表为空");
             return false;
@@ -107,6 +119,10 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
 
     @Override
     public boolean sendWorkNoticeToDeptTypeLeaders(Integer deptType, String title, String content) {
+        if (!dingtalkEnabled) {
+            log.info("【测试开关】shuhe.dingtalk.enabled=false，跳过 sendWorkNoticeToDeptTypeLeaders, title={}", title);
+            return true;
+        }
         // 1. 获取部门类型对应的负责人用户ID列表
         List<Long> leaderUserIds = getLeaderUserIdsByDeptType(deptType);
         if (CollUtil.isEmpty(leaderUserIds)) {
@@ -124,6 +140,10 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
 
     @Override
     public boolean sendPrivateMessage(DingtalkNotifySendReqDTO reqDTO) {
+        if (!dingtalkEnabled) {
+            log.info("【测试开关】shuhe.dingtalk.enabled=false，跳过 sendPrivateMessage, title={}", reqDTO.getTitle());
+            return true;
+        }
         if (CollUtil.isEmpty(reqDTO.getUserIds())) {
             log.warn("单聊机器人发送失败：接收人列表为空");
             return false;
@@ -202,6 +222,10 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
 
     @Override
     public String createGroupChat(String chatName, Long ownerUserId, List<Long> memberUserIds) {
+        if (!dingtalkEnabled) {
+            log.info("【测试开关】shuhe.dingtalk.enabled=false，跳过 createGroupChat, chatName={}", chatName);
+            return null;
+        }
         // 1. 获取启用的钉钉配置
         List<DingtalkConfigDO> configs = dingtalkConfigService.getEnabledDingtalkConfigList();
         if (CollUtil.isEmpty(configs)) {
@@ -255,6 +279,10 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
 
     @Override
     public String createBusinessAuditGroupChat(String chatName, Long ownerUserId, List<Long> memberUserIds) {
+        if (!dingtalkEnabled) {
+            log.info("【测试开关】shuhe.dingtalk.enabled=false，跳过 createBusinessAuditGroupChat, chatName={}", chatName);
+            return null;
+        }
         String templateId = getBusinessAuditTemplateId();
         if (StrUtil.isNotEmpty(templateId)) {
             return createSceneGroupInternal(chatName, ownerUserId, memberUserIds, templateId);
@@ -372,6 +400,10 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
 
     @Override
     public boolean sendMessageToChat(String chatId, String title, String content) {
+        if (!dingtalkEnabled) {
+            log.info("【测试开关】shuhe.dingtalk.enabled=false，跳过 sendMessageToChat, title={}", title);
+            return true;
+        }
         if (chatId == null || chatId.isEmpty()) {
             log.warn("发送群消息失败：chatId 为空");
             return false;
@@ -392,6 +424,10 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
 
     @Override
     public boolean addMembersToGroupChat(String chatId, List<Long> memberUserIds) {
+        if (!dingtalkEnabled) {
+            log.info("【测试开关】shuhe.dingtalk.enabled=false，跳过 addMembersToGroupChat, chatId={}", chatId);
+            return true;
+        }
         if (chatId == null || chatId.isEmpty() || CollUtil.isEmpty(memberUserIds)) {
             log.warn("加群成员失败：chatId 或 memberUserIds 为空");
             return false;
@@ -423,6 +459,10 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
     @Override
     public boolean sendActionCardToChat(String chatId, String title, String content,
                                        String buttonTitle, String buttonUrl) {
+        if (!dingtalkEnabled) {
+            log.info("【测试开关】shuhe.dingtalk.enabled=false，跳过 sendActionCardToChat, title={}", title);
+            return true;
+        }
         if (chatId == null || chatId.isEmpty()) {
             log.warn("发送群互动卡片失败：chatId 为空");
             return false;
@@ -445,6 +485,10 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
     @Override
     public boolean sendActionCardMessage(List<Long> userIds, String title, String content,
                                           String buttonTitle, String buttonUrl) {
+        if (!dingtalkEnabled) {
+            log.info("【测试开关】shuhe.dingtalk.enabled=false，跳过 sendActionCardMessage, title={}", title);
+            return true;
+        }
         if (CollUtil.isEmpty(userIds)) {
             log.warn("发送钉钉ActionCard消息失败：接收人列表为空");
             return false;
@@ -497,6 +541,10 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
                                           String outsideType, String startTime, String endTime,
                                           String duration, String projectName,
                                           String reason, String destination) {
+        if (!dingtalkEnabled) {
+            log.info("【测试开关】shuhe.dingtalk.enabled=false，跳过 startOutsideOaApproval, projectName={}", projectName);
+            return null;
+        }
         if (userId == null) {
             log.warn("发起钉钉OA外出申请失败：发起人用户ID为空");
             return null;
@@ -551,6 +599,10 @@ public class DingtalkNotifyApiImpl implements DingtalkNotifyApi {
                                                String outsideType, String startTime, String endTime,
                                                double durationValue, String projectName,
                                                String reason, String destination) {
+        if (!dingtalkEnabled) {
+            log.info("【测试开关】shuhe.dingtalk.enabled=false，跳过 startOutsideSuiteOaApproval, projectName={}", projectName);
+            return null;
+        }
         if (userId == null) {
             log.warn("发起钉钉OA外出申请(套件模式)失败：发起人用户ID为空");
             return null;

@@ -55,12 +55,25 @@ public interface ProjectService {
     PageResult<ProjectDO> getProjectPage(ProjectPageReqVO pageReqVO, Long userId);
 
     /**
-     * 获得指定部门类型的项目列表
+     * 获得项目列表（带用户可见性过滤）。
      *
-     * @param deptType 部门类型
+     * <p><b>历史背景</b>：本接口最初用于前端「安全服务 / 数据安全 / 安全运营」三 tab 切换，
+     * 按 {@code project.dept_type} 字段分类返回。但：
+     * <ul>
+     *   <li>V2026_04_21 已将 {@code project.dept_type} 改为 nullable，新建项目均不填该字段</li>
+     *   <li>V2026_05_18 merge 将 5081/5091/5166 三个分类菜单软删合并为统一 5080「项目管理」入口，
+     *       设计意图为「项目本身不再绑定单一 dept_type，三个分类入口应展示同一份全量项目」</li>
+     * </ul>
+     *
+     * <p><b>当前语义</b>：忽略 {@code deptType} 参数，与 {@link #getProjectPage(ProjectPageReqVO, Long)}
+     * 完全一致地返回用户可见项目（超管看全部、非超管看参与的项目）。前端三 tab 因此显示同一份数据，
+     * 这是已知现象，待前端将三 tab 合并为单一入口后下线本接口。
+     *
+     * @param deptType 部门类型（保留以兼容旧前端调用，内部已不再用于过滤）
+     * @param userId   当前登录用户 ID
      * @return 项目列表
      */
-    List<ProjectDO> getProjectListByDeptType(Integer deptType);
+    List<ProjectDO> getProjectListByDeptType(Integer deptType, Long userId);
 
     /**
      * 更新项目状态

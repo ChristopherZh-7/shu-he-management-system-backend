@@ -12,8 +12,11 @@ import cn.shuhe.system.module.project.dal.dataobject.ProjectDeptServiceDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectDeptServiceMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMemberMapper;
+import cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils;
 import cn.shuhe.system.module.system.api.dingtalk.DingtalkNotifyApi;
 import cn.shuhe.system.module.system.api.permission.PermissionApi;
+import cn.shuhe.system.module.system.api.user.AdminUserApi;
+import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import cn.shuhe.system.module.finance.controller.admin.cost.vo.UserCostRespVO;
 import cn.shuhe.system.module.finance.service.cost.CostCalculationService;
 import cn.shuhe.system.module.system.controller.admin.dashboard.vo.DashboardStatisticsRespVO;
@@ -68,6 +71,9 @@ public class ProjectServiceImpl implements ProjectService {
     private DingtalkNotifyApi dingtalkNotifyApi;
 
     @Resource
+    private AdminUserApi adminUserApi;
+
+    @Resource
     private CostCalculationService costCalculationService;
 
     @Override
@@ -84,7 +90,20 @@ public class ProjectServiceImpl implements ProjectService {
         }
 
         projectMapper.insert(project);
-        return project.getId();
+        Long projectId = project.getId();
+
+        // 3. 自动登记创建者为项目经理（roleType=1）
+        // 否则非超管创建者会在自己的项目里查不到 roleType、列表 / 详情 / 权限校验全部失败
+        Long creatorUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (creatorUserId != null) {
+            addProjectMember(projectId, creatorUserId, resolveNickname(creatorUserId, null), 1);
+        }
+
+        // 4. 同步登记 managerIds 中的所有负责人为项目经理（roleType=1）
+        registerManagersAsMembers(projectId, createReqVO.getManagerIds(),
+                createReqVO.getManagerNames(), creatorUserId);
+
+        return projectId;
     }
 
     @Override
@@ -97,15 +116,61 @@ public class ProjectServiceImpl implements ProjectService {
         ProjectDO updateObj = BeanUtils.toBean(updateReqVO, ProjectDO.class);
         projectMapper.updateById(updateObj);
 
-        // 3. 检测新增的负责人，加入钉钉群
+        // 3. 检测新增的负责人，登记为项目成员 + 加入钉钉群
+        // addProjectMember 内部已会调用 addUsersToProjectGroupChat
         if (updateReqVO.getManagerIds() != null && !updateReqVO.getManagerIds().isEmpty()) {
             List<Long> oldManagerIds = existing.getManagerIds() != null ? existing.getManagerIds() : List.of();
-            List<Long> newManagerIds = updateReqVO.getManagerIds().stream()
-                    .filter(id -> !oldManagerIds.contains(id))
+            List<Long> newIds = updateReqVO.getManagerIds().stream()
+                    .filter(id -> id != null && !oldManagerIds.contains(id))
                     .toList();
-            if (!newManagerIds.isEmpty()) {
-                addUsersToProjectGroupChat(updateReqVO.getId(), newManagerIds);
+            if (!newIds.isEmpty()) {
+                List<String> reqNames = updateReqVO.getManagerNames();
+                for (int i = 0; i < updateReqVO.getManagerIds().size(); i++) {
+                    Long mgrId = updateReqVO.getManagerIds().get(i);
+                    if (mgrId == null || oldManagerIds.contains(mgrId)) {
+                        continue;
+                    }
+                    String name = (reqNames != null && i < reqNames.size()) ? reqNames.get(i) : null;
+                    addProjectMember(updateReqVO.getId(), mgrId, resolveNickname(mgrId, name), 1);
+                }
             }
+        }
+    }
+
+    /**
+     * 把 managerIds 列表里的所有用户登记为项目经理（roleType=1），跳过 null 和已经登记过的创建者
+     */
+    private void registerManagersAsMembers(Long projectId, List<Long> managerIds,
+                                            List<String> managerNames, Long creatorUserId) {
+        if (CollUtil.isEmpty(managerIds)) {
+            return;
+        }
+        for (int i = 0; i < managerIds.size(); i++) {
+            Long mgrId = managerIds.get(i);
+            if (mgrId == null || mgrId.equals(creatorUserId)) {
+                continue;
+            }
+            String hintName = (managerNames != null && i < managerNames.size()) ? managerNames.get(i) : null;
+            addProjectMember(projectId, mgrId, resolveNickname(mgrId, hintName), 1);
+        }
+    }
+
+    /**
+     * 优先用调用方传入的 nickname；为空时退到查 AdminUser；都拿不到给空串
+     */
+    private String resolveNickname(Long userId, String hintName) {
+        if (StrUtil.isNotBlank(hintName)) {
+            return hintName;
+        }
+        if (userId == null) {
+            return "";
+        }
+        try {
+            AdminUserRespDTO user = adminUserApi.getUser(userId);
+            return user != null && StrUtil.isNotBlank(user.getNickname()) ? user.getNickname() : "";
+        } catch (Exception e) {
+            log.warn("【项目成员】查询用户 {} nickname 失败: {}", userId, e.getMessage());
+            return "";
         }
     }
 
@@ -182,8 +247,24 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public List<ProjectDO> getProjectListByDeptType(Integer deptType) {
-        return projectMapper.selectListByDeptType(deptType);
+    public List<ProjectDO> getProjectListByDeptType(Integer deptType, Long userId) {
+        // deptType 参数已不再用于过滤：V2026_04_21 把 project.dept_type 改为 nullable、V2026_05_18 merge
+        // 设计意图为「三 tab 看到同一份全量项目」。此处只兜底用户可见性，避免脱权拉全量。
+        if (userId != null && permissionApi.hasAnyRoles(userId, "super_admin")) {
+            return projectMapper.selectList(new cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX<ProjectDO>()
+                    .orderByDesc(ProjectDO::getId));
+        }
+        if (userId == null) {
+            return List.of();
+        }
+        List<Long> projectIds = projectMemberMapper.selectProjectIdsByUserId(userId);
+        if (CollUtil.isEmpty(projectIds)) {
+            return List.of();
+        }
+        return projectMapper.selectList(
+                new cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX<ProjectDO>()
+                        .in(ProjectDO::getId, projectIds)
+                        .orderByDesc(ProjectDO::getId));
     }
 
     @Override

@@ -101,11 +101,11 @@ public class ProjectController {
     }
 
     @GetMapping("/list")
-    @Operation(summary = "获得项目列表（根据部门类型）")
+    @Operation(summary = "获得项目列表（根据部门类型，带用户可见性过滤）")
     @Parameter(name = "deptType", description = "部门类型", required = true)
     @PreAuthorize("@ss.hasPermission('project:project:query')")
     public CommonResult<List<ProjectRespVO>> getProjectList(@RequestParam("deptType") Integer deptType) {
-        List<ProjectDO> list = projectService.getProjectListByDeptType(deptType);
+        List<ProjectDO> list = projectService.getProjectListByDeptType(deptType, getLoginUserId());
         return success(BeanUtils.toBean(list, ProjectRespVO.class));
     }
 

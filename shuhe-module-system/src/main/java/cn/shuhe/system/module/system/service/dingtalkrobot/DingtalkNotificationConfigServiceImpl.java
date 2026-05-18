@@ -12,6 +12,7 @@ import org.springframework.validation.annotation.Validated;
 
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
@@ -52,6 +53,13 @@ public class DingtalkNotificationConfigServiceImpl implements DingtalkNotificati
 
     @Resource
     private AdminUserService adminUserService;
+
+    /**
+     * 测试阶段全局开关：是否启用钉钉通知。
+     * 复用 DingtalkNotifyApiImpl 同名 key；关闭时所有事件驱动的 robot 通知统一 noop（用户主动点测试发送的入口不受影响）。
+     */
+    @Value("${shuhe.dingtalk.enabled:true}")
+    private boolean dingtalkEnabled;
 
     // 模板变量正则：${variableName}
     private static final Pattern VARIABLE_PATTERN = Pattern.compile("\\$\\{([^}]+)}");
@@ -132,6 +140,10 @@ public class DingtalkNotificationConfigServiceImpl implements DingtalkNotificati
                                     Long businessId, String businessNo,
                                     Map<String, Object> variables,
                                     Long ownerUserId, Long creatorUserId) {
+        if (!dingtalkEnabled) {
+            log.info("【测试开关】shuhe.dingtalk.enabled=false，跳过 triggerNotification, event={}/{}, businessNo={}", eventModule, eventType, businessNo);
+            return;
+        }
         // 1. 查找匹配的配置
         List<DingtalkNotificationConfigDO> configs = getEnabledConfigsByEvent(eventType, eventModule);
         if (CollUtil.isEmpty(configs)) {

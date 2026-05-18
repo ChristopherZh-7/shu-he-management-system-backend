@@ -45,6 +45,14 @@ public class ServiceLaunchController {
         return success(serviceLaunchService.createServiceLaunch(createReqVO));
     }
 
+    @GetMapping("/bpm-enabled")
+    @Operation(summary = "查询当前 service-launch 是否启用 BPM 审批",
+            description = "测试阶段开关：返回 false 时，前端创建后不应再调用 createProcessInstance。"
+                    + "由 shuhe.bpm.service-launch.enabled 配置控制，默认 true（走标准审批流程）。")
+    public CommonResult<Boolean> getBpmServiceLaunchEnabled() {
+        return success(serviceLaunchService.isBpmServiceLaunchEnabled());
+    }
+
     @PutMapping("/update")
     @Operation(summary = "更新统一服务发起")
     @PreAuthorize("@ss.hasPermission('project:service-launch:update')")

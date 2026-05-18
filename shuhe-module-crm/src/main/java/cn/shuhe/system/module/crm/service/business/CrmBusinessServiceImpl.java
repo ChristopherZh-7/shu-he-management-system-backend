@@ -115,6 +115,14 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
     @Value("${shuhe.dingtalk.business-audit.test-only-user-id:0}")
     private Long businessAuditTestOnlyUserId;
 
+    /**
+     * 测试阶段开关：CRM 商机相关 BPM 是否启用。
+     * 默认 true（生产/正式走 BPM 审批流程）；application-local.yaml 中可置 false 跳过审批。
+     * 影响范围：submitBusinessAudit（商机审批主流程）、submitEarlyInvestment（早期投资审批）
+     */
+    @Value("${shuhe.bpm.crm-business.enabled:true}")
+    private boolean bpmCrmBusinessEnabled;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     @LogRecord(type = CRM_BUSINESS_TYPE, subType = CRM_BUSINESS_CREATE_SUB_TYPE, bizNo = "{{#business.id}}",
@@ -283,14 +291,22 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
         eiVariables.put("eiReason", reqVO.getReason());
         eiVariables.put("eiEstimatedCost", reqVO.getEstimatedCost());
 
-        // 创建 BPM 流程
-        String processInstanceId = bpmProcessInstanceApi.createProcessInstance(userId,
-                new BpmProcessInstanceCreateReqDTO()
-                        .setProcessDefinitionKey(EARLY_INVESTMENT_PROCESS_DEFINITION_KEY)
-                        .setBusinessKey(String.valueOf(businessId))
-                        .setVariables(eiVariables));
+        // 测试阶段开关：bpmCrmBusinessEnabled=false 时跳过早期投资 BPM，先写入 DEV-BYPASS 流程ID
+        // 然后调用 updateEarlyInvestmentAuditStatus 模拟 listener 触发，确保走完「创建项目」等下游逻辑
+        String processInstanceId;
+        if (bpmCrmBusinessEnabled) {
+            processInstanceId = bpmProcessInstanceApi.createProcessInstance(userId,
+                    new BpmProcessInstanceCreateReqDTO()
+                            .setProcessDefinitionKey(EARLY_INVESTMENT_PROCESS_DEFINITION_KEY)
+                            .setBusinessKey(String.valueOf(businessId))
+                            .setVariables(eiVariables));
+        } else {
+            processInstanceId = "DEV-BYPASS-" + UUID.randomUUID();
+            log.warn("【测试开关】shuhe.bpm.crm-business.enabled=false，已跳过早期投资 BPM，"
+                    + "businessId={} 将走 listener 同等代码路径触发项目自动创建", businessId);
+        }
 
-        // 保存申请详情到商机记录
+        // 保存申请详情到商机记录（先置 PROCESS，下面如果是 dev 跳过会被覆盖为 APPROVE 同时触发创建项目）
         businessMapper.updateById(new CrmBusinessDO().setId(businessId)
                 .setEarlyInvestmentStatus(CrmAuditStatusEnum.PROCESS.getStatus())
                 .setEarlyInvestmentProcessInstanceId(processInstanceId)
@@ -338,6 +354,12 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
             } catch (Exception e) {
                 log.warn("[submitEarlyInvestment] 发送群通知失败", e);
             }
+        }
+
+        // 【测试开关 dev-bypass】跳过 BPM 时手动触发 listener 同等回调，
+        // 让其走完「自动创建项目」等下游逻辑（bpmResult=2 表示审批通过 APPROVE）
+        if (!bpmCrmBusinessEnabled) {
+            updateEarlyInvestmentAuditStatus(businessId, 2);
         }
     }
 
@@ -683,12 +705,20 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
         // 部门分配明细（含部门名称、金额、部门负责人）
         variables.put("deptAllocationsText", buildDeptAllocationsText(business.getDeptAllocations()));
 
-        // 4. 创建 BPM 审批流程实例
-        String processInstanceId = bpmProcessInstanceApi.createProcessInstance(userId,
-                new BpmProcessInstanceCreateReqDTO()
-                        .setProcessDefinitionKey(BPM_PROCESS_DEFINITION_KEY)
-                        .setBusinessKey(String.valueOf(id))
-                        .setVariables(variables));
+        // 4. 测试阶段开关：bpmCrmBusinessEnabled=false 时跳过 BPM，先写 DEV-BYPASS processInstanceId
+        //    然后在方法末尾手动调用 listener 同等回调走完「钉钉群创建」等下游逻辑
+        String processInstanceId;
+        if (bpmCrmBusinessEnabled) {
+            processInstanceId = bpmProcessInstanceApi.createProcessInstance(userId,
+                    new BpmProcessInstanceCreateReqDTO()
+                            .setProcessDefinitionKey(BPM_PROCESS_DEFINITION_KEY)
+                            .setBusinessKey(String.valueOf(id))
+                            .setVariables(variables));
+        } else {
+            processInstanceId = "DEV-BYPASS-" + UUID.randomUUID();
+            log.warn("【测试开关】shuhe.bpm.crm-business.enabled=false，已跳过商机审批 BPM，"
+                    + "businessId={} 将走 listener 同等代码路径", id);
+        }
         // 5. 更新商机状态为审批中（钉钉群在审批全部通过后才创建）
         businessMapper.updateById(new CrmBusinessDO().setId(id)
                 .setProcessInstanceId(processInstanceId)
@@ -696,6 +726,11 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
 
         // 6. 给所有被分配部门的负责人授予 READ 权限（跨部门负责人也能查看商机）
         grantDeptLeaderPermissions(id, business.getDeptAllocations());
+
+        // 7. 【测试开关 dev-bypass】跳过 BPM 时手动触发 listener 同等回调（bpmResult=2 表示 APPROVE）
+        if (!bpmCrmBusinessEnabled) {
+            updateBusinessAuditStatus(id, 2);
+        }
     }
 
     /**

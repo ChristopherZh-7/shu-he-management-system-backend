@@ -23,6 +23,7 @@ import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -68,6 +69,21 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
 
     @Resource
     private ServiceItemService serviceItemService;
+
+    /**
+     * 测试阶段开关：BPM 是否启用。默认 true（生产/正式走 BPM）；
+     * application-local.yaml 中可置 false 跳过审批，创建后直接 status=2 完成。
+     */
+    @Value("${shuhe.bpm.service-launch.enabled:true}")
+    private boolean bpmServiceLaunchEnabled;
+
+    /**
+     * 测试阶段开关：BPM 是否启用（供 Controller 暴露给前端查询）
+     */
+    @Override
+    public boolean isBpmServiceLaunchEnabled() {
+        return bpmServiceLaunchEnabled;
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -147,6 +163,18 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
         }
 
         serviceLaunchMapper.insert(launch);
+
+        // 8. 测试阶段：bpmServiceLaunchEnabled=false 时，跳过 BPM 直接标记为已通过
+        //    这是一个仅用于本地/测试环境的兜底开关，prod 环境应该让其保持 true 走标准流程。
+        if (!bpmServiceLaunchEnabled) {
+            ServiceLaunchDO bypass = new ServiceLaunchDO();
+            bypass.setId(launch.getId());
+            bypass.setStatus(2); // 2 = 已通过
+            bypass.setProcessInstanceId("DEV-BYPASS-" + UUID.randomUUID());
+            serviceLaunchMapper.updateById(bypass);
+            log.warn("【测试开关】shuhe.bpm.service-launch.enabled=false，已跳过 BPM 审批，"
+                    + "launchId={} 直接 status=2 已通过", launch.getId());
+        }
 
         return launch.getId();
     }

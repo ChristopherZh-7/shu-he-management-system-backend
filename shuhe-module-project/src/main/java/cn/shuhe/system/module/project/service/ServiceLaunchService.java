@@ -15,6 +15,12 @@ import java.util.Map;
 public interface ServiceLaunchService {
 
     /**
+     * 测试阶段开关：BPM 是否启用（由 shuhe.bpm.service-launch.enabled 控制）
+     * 给 Controller 暴露给前端查询，前端用来决定是否需要调用 createProcessInstance
+     */
+    boolean isBpmServiceLaunchEnabled();
+
+    /**
      * 创建统一服务发起
      *
      * @param createReqVO 创建信息

@@ -226,7 +226,23 @@ wx:
 
 # 戍合配置项，设置当前项目所有自定义的配置
 shuhe:
+  # ===== 测试阶段开关：跳过 BPM 审批 =====
+  # service-launch（借调/服务发起）创建后是否走 BPM 审批流程
+  # true（默认）：走标准流程，前端调 createProcessInstance 启流程，等审批通过后才能执行
+  # false：测试阶段开关，后端创建后直接 status=2（已通过），processInstanceId 打 DEV-BYPASS-xxx 标记
+  #        前端通过 /service-launch/bpm-enabled 接口查询此值，false 时跳过 createProcessInstance
+  bpm:
+    service-launch:
+      enabled: false  # 项目模块 - 借调申请跳过审批
+    crm-business:
+      enabled: false  # CRM 模块 - 商机审批 + 早期投资审批 跳过
   dingtalk:
+    # ===== 测试阶段开关：钉钉全部副作用 =====
+    # true（默认）：正常调钉钉 API（建群 / 发通知 / 加群成员 / OA 外出 ...）
+    # false：所有 sendXxx / createGroupChat / addMembersToGroupChat / startOutside*OaApproval 直接 noop
+    #        建群返 null（业务方收到 null 不写 chat_id），发通知/加成员返 true（业务感知成功）
+    #        影响范围见 DingtalkNotifyApiImpl 各方法首部的开关判断
+    enabled: false
     # auto-base-url-port: 80   # 生产 nginx 部署用 80；本地直连可改 48080
     business-audit:
       skip-boss: true           # 测试阶段：不拉老板，群主用商机负责人，仅拉部门主管
