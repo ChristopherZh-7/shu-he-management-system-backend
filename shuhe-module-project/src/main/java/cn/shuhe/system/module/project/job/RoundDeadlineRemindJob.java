@@ -53,6 +53,9 @@ public class RoundDeadlineRemindJob implements JobHandler {
     private ServiceItemMapper serviceItemMapper;
 
     @Resource
+    private cn.shuhe.system.module.project.service.ServiceItemService serviceItemService;
+
+    @Resource
     private ProjectSiteMapper projectSiteMapper;
 
     @Resource
@@ -160,7 +163,9 @@ public class RoundDeadlineRemindJob implements JobHandler {
         
         // 3. 构建通知变量
         Map<String, Object> variables = new HashMap<>();
-        variables.put("serviceItemName", serviceItem.getName());
+        String serviceTypeName = serviceItemService.resolveServiceTypeLabel(
+                serviceItem.getDeptType(), serviceItem.getServiceType());
+        variables.put("serviceTypeName", serviceTypeName);
         variables.put("roundName", round.getName());
         variables.put("deadline", round.getDeadline() != null ? 
                 round.getDeadline().format(DATE_FORMATTER) : "未设置");
@@ -183,8 +188,8 @@ public class RoundDeadlineRemindJob implements JobHandler {
                 null
         );
         
-        log.info("[定时任务] 执行计划提醒通知已发送，roundId={}，serviceItemName={}，notifyUsers={}", 
-                round.getId(), serviceItem.getName(), notifyUserIds);
+        log.info("[定时任务] 执行计划提醒通知已发送，roundId={}，serviceTypeName={}，notifyUsers={}",
+                round.getId(), serviceTypeName, notifyUserIds);
         
         // 5. 标记已提醒
         markAsReminded(round.getId());

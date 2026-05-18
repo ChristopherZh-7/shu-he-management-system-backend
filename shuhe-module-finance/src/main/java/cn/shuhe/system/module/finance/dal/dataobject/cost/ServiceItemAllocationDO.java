@@ -101,12 +101,6 @@ public class ServiceItemAllocationDO extends BaseDO {
     private Long serviceItemId;
 
     /**
-     * 服务项名称（冗余，方便查询展示）
-     * 对于安全运营分配，存储"管理费"或"驻场费"
-     */
-    private String serviceItemName;
-
-    /**
      * 分配金额
      */
     private BigDecimal allocatedAmount;

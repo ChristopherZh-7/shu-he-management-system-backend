@@ -18,7 +18,7 @@ public interface ServiceItemInfoMapper {
     /**
      * 根据服务项ID查询服务项信息
      */
-    @Select("SELECT id, code, name, dept_type as deptType, service_type as serviceType, " +
+    @Select("SELECT id, code, dept_type as deptType, service_type as serviceType, " +
             "customer_id as customerId, customer_name as customerName, " +
             "contract_id as contractId, contract_no as contractNo, " +
             "dept_id as deptId, frequency_type as frequencyType, " +
@@ -30,7 +30,7 @@ public interface ServiceItemInfoMapper {
     /**
      * 根据合同ID查询该合同下的所有服务项
      */
-    @Select("SELECT id, code, name, dept_type as deptType, service_type as serviceType, " +
+    @Select("SELECT id, code, dept_type as deptType, service_type as serviceType, " +
             "customer_id as customerId, customer_name as customerName, " +
             "contract_id as contractId, contract_no as contractNo, " +
             "dept_id as deptId, max_count as maxCount, used_count as usedCount, status " +
@@ -41,7 +41,7 @@ public interface ServiceItemInfoMapper {
     /**
      * 根据部门ID查询该部门的所有服务项
      */
-    @Select("SELECT id, code, name, dept_type as deptType, service_type as serviceType, " +
+    @Select("SELECT id, code, dept_type as deptType, service_type as serviceType, " +
             "customer_id as customerId, customer_name as customerName, " +
             "contract_id as contractId, contract_no as contractNo, " +
             "dept_id as deptId, max_count as maxCount, used_count as usedCount, status " +
@@ -103,7 +103,7 @@ public interface ServiceItemInfoMapper {
      * 只查询该部门实际执行过的服务项
      */
     @Select("SELECT DISTINCT " +
-            "  pi.id, pi.code, pi.name, pi.dept_type as deptType, pi.service_type as serviceType, " +
+            "  pi.id, pi.code, pi.dept_type as deptType, pi.service_type as serviceType, " +
             "  pi.customer_id as customerId, pi.customer_name as customerName, " +
             "  pi.contract_id as contractId, pi.contract_no as contractNo, " +
             "  pi.dept_id as deptId, pi.frequency_type as frequencyType, " +
@@ -132,7 +132,7 @@ public interface ServiceItemInfoMapper {
      * @param serviceMemberType 服务归属人员类型（安全运营专用：1-驻场人员，2-管理人员）
      */
     @Select("<script>" +
-            "SELECT id, code, name, dept_type as deptType, service_type as serviceType, " +
+            "SELECT id, code, dept_type as deptType, service_type as serviceType, " +
             "  service_mode as serviceMode, service_member_type as serviceMemberType, " +
             "  customer_id as customerId, customer_name as customerName, " +
             "  contract_id as contractId, contract_no as contractNo, " +
@@ -172,7 +172,7 @@ public interface ServiceItemInfoMapper {
             "  pr.round_no as roundNumber, " +
             "  pr.executor_ids as executorIds, " +
             "  COALESCE(pr.actual_end_time, pr.update_time) as actualEndTime, " +
-            "  pi.name as serviceItemName, " +
+            "  pi.service_type as serviceType, " +
             "  pi.customer_name as customerName, " +
             "  pi.max_count as maxCount, " +
             "  pi.frequency_type as frequencyType, " +
@@ -207,7 +207,7 @@ public interface ServiceItemInfoMapper {
             "  pr.round_no as roundNumber, " +
             "  pr.executor_ids as executorIds, " +
             "  COALESCE(pr.actual_end_time, pr.update_time) as actualEndTime, " +
-            "  pi.name as serviceItemName, " +
+            "  pi.service_type as serviceType, " +
             "  pi.customer_name as customerName, " +
             "  pi.max_count as maxCount, " +
             "  pi.frequency_type as frequencyType, " +
@@ -232,7 +232,7 @@ public interface ServiceItemInfoMapper {
      */
     @Select("SELECT " +
             "  pi.id as serviceItemId, " +
-            "  pi.name as serviceItemName, " +
+            "  pi.service_type as serviceType, " +
             "  pi.customer_name as customerName, " +
             "  COALESCE(fa.allocated_amount, 0) as allocatedAmount, " +
             "  pi.dept_type as deptType " +

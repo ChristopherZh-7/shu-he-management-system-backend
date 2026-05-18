@@ -15,9 +15,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class ServiceItemImportExcelVO {
 
-    @ExcelProperty("服务项名称")
-    private String name;
-
     @ExcelProperty("服务类型")
     private String serviceType;
 

@@ -237,8 +237,10 @@ public class ReportGenerateServiceImpl implements ReportGenerateService {
         // 服务项信息
         if (serviceItem != null) {
             data.put("customerName", StrUtil.blankToDefault(serviceItem.getCustomerName(), ""));
-            data.put("serviceItemName", StrUtil.blankToDefault(serviceItem.getName(), ""));
             data.put("serviceType", serviceItem.getServiceType());
+            data.put("serviceTypeName", StrUtil.blankToDefault(
+                    serviceItemService.resolveServiceTypeLabel(serviceItem.getDeptType(), serviceItem.getServiceType()),
+                    ""));
         }
 
         // 漏洞统计

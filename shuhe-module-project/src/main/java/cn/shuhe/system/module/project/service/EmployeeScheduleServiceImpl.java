@@ -42,6 +42,10 @@ public class EmployeeScheduleServiceImpl implements EmployeeScheduleService {
     private ServiceItemMapper serviceItemMapper;
 
     @Resource
+    @org.springframework.context.annotation.Lazy
+    private ServiceItemService serviceItemService;
+
+    @Resource
     private AdminUserApi adminUserApi;
 
     @Resource
@@ -116,12 +120,13 @@ public class EmployeeScheduleServiceImpl implements EmployeeScheduleService {
                 userStatus.put("status", "busy");
                 ProjectRoundDO currentRound = inProgressRounds.get(0);
                 
-                // 获取服务项名称作为任务描述
+                // 获取服务类型中文 label 作为任务描述（原服务项名称已废弃）
                 String taskDescription = currentRound.getName();
                 if (taskDescription == null && currentRound.getServiceItemId() != null) {
                     ServiceItemDO serviceItem = serviceItemMapper.selectById(currentRound.getServiceItemId());
                     if (serviceItem != null) {
-                        taskDescription = serviceItem.getName();
+                        taskDescription = serviceItemService.resolveServiceTypeLabel(
+                                serviceItem.getDeptType(), serviceItem.getServiceType());
                     }
                 }
                 

@@ -2,6 +2,7 @@ package cn.shuhe.system.module.project.controller.admin;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.json.JSONUtil;
+import cn.shuhe.system.framework.common.enums.CommonStatusEnum;
 import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
@@ -16,6 +17,7 @@ import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.service.ServiceItemService;
+import cn.shuhe.system.module.system.controller.admin.dept.vo.dept.DeptListReqVO;
 import cn.shuhe.system.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.DeptDO;
 import cn.shuhe.system.module.system.dal.dataobject.dept.PostDO;
@@ -105,17 +107,15 @@ public class ServiceItemController {
     @Operation(summary = "获取导入服务项模板")
     public void getImportTemplate(HttpServletResponse response,
             @RequestParam("deptType") Integer deptType) throws IOException {
-        // 手动创建导出 demo
+        // 手动创建导出 demo（V2026_05_20_02 起不再需要填「服务项名称」）
         List<ServiceItemImportExcelVO> list = Arrays.asList(
                 ServiceItemImportExcelVO.builder()
-                        .name("某银行渗透测试")
                         .serviceType("penetration_test")
                         .customerName("某银行")
                         .planStartTime("2026-01-20 09:00:00")
                         .planEndTime("2026-01-25 18:00:00")
                         .remark("示例服务项1").build(),
                 ServiceItemImportExcelVO.builder()
-                        .name("某企业安全评估")
                         .serviceType("security_assessment")
                         .customerName("某企业")
                         .planStartTime("2026-02-01 09:00:00")
@@ -469,6 +469,70 @@ public class ServiceItemController {
                 convertList(new ArrayList<>(users), AdminUserDO::getDeptId));
 
         // 转换为简单响应
+        List<UserSimpleRespVO> result = users.stream().map(user -> {
+            UserSimpleRespVO vo = new UserSimpleRespVO();
+            vo.setId(user.getId());
+            vo.setNickname(user.getNickname());
+            vo.setDeptId(user.getDeptId());
+            DeptDO dept = deptMap.get(user.getDeptId());
+            if (dept != null) {
+                vo.setDeptName(dept.getName());
+            }
+            return vo;
+        }).collect(Collectors.toList());
+
+        return success(result);
+    }
+
+    @GetMapping("/user-list-for-site-member")
+    @Operation(summary = "获取可选驻场人员列表",
+            description = "返回公司所有启用用户，排除「总经办」本部门（老板/总经理） + 「人事行政」整棵子树")
+    @PreAuthorize("@ss.hasPermission('project:service-item:query')")
+    @DataPermission(enable = false)
+    public CommonResult<List<UserSimpleRespVO>> getUserListForSiteMember() {
+        List<DeptDO> allDepts = deptService.getDeptListForSimpleList(
+                new DeptListReqVO().setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        if (CollUtil.isEmpty(allDepts)) {
+            return success(Collections.emptyList());
+        }
+
+        Long zongjingbanId = null;
+        Set<Long> renshiRootIds = new HashSet<>();
+        for (DeptDO dept : allDepts) {
+            if (dept.getName() == null) continue;
+            if (dept.getName().contains("总经办")) {
+                zongjingbanId = dept.getId();
+            }
+            if (dept.getName().contains("人事行政")) {
+                renshiRootIds.add(dept.getId());
+            }
+        }
+
+        Set<Long> excludedDeptIds = new HashSet<>();
+        if (zongjingbanId != null) {
+            excludedDeptIds.add(zongjingbanId);
+        }
+        for (Long rsId : renshiRootIds) {
+            excludedDeptIds.add(rsId);
+            excludedDeptIds.addAll(deptService.getChildDeptIdListFromCache(rsId));
+        }
+
+        Set<Long> allowedDeptIds = allDepts.stream()
+                .map(DeptDO::getId)
+                .filter(id -> !excludedDeptIds.contains(id))
+                .collect(Collectors.toSet());
+        if (allowedDeptIds.isEmpty()) {
+            return success(Collections.emptyList());
+        }
+
+        List<AdminUserDO> users = adminUserService.getUserListByDeptIds(allowedDeptIds);
+        if (CollUtil.isEmpty(users)) {
+            return success(Collections.emptyList());
+        }
+
+        Map<Long, DeptDO> deptMap = deptService.getDeptMap(
+                convertList(users, AdminUserDO::getDeptId));
+
         List<UserSimpleRespVO> result = users.stream().map(user -> {
             UserSimpleRespVO vo = new UserSimpleRespVO();
             vo.setId(user.getId());

@@ -50,11 +50,6 @@ public class ServiceItemDO extends BaseDO {
     private String code;
 
     /**
-     * 服务项名称
-     */
-    private String name;
-
-    /**
      * 部门类型
      * 1-安全服务 2-安全运营 3-数据安全
      */

@@ -16,6 +16,9 @@ import cn.shuhe.system.module.system.dal.mysql.user.AdminUserMapper;
 import cn.shuhe.system.module.system.dal.dataobject.dept.DeptDO;
 import cn.shuhe.system.module.system.dal.dataobject.user.AdminUserDO;
 import cn.shuhe.system.module.system.api.dingtalk.DingtalkNotifyApi;
+import cn.shuhe.system.module.system.api.dict.DictDataApi;
+import cn.shuhe.system.framework.common.biz.system.dict.dto.DictDataRespDTO;
+import cn.hutool.core.util.StrUtil;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -55,6 +58,47 @@ public class OutsideCostRecordServiceImpl implements OutsideCostRecordService {
 
     @Resource
     private DingtalkNotifyApi dingtalkNotifyApi;
+
+    @Resource
+    private DictDataApi dictDataApi;
+
+    /**
+     * 部门类型 → 服务类型字典 type 映射（与 project 模块 ServiceItemServiceImpl 保持一致）。
+     */
+    private static final Map<Integer, String> DEPT_TYPE_SERVICE_DICT_MAP = Map.of(
+            1, "project_service_type_security",
+            2, "project_service_type_operation",
+            3, "project_service_type_data");
+
+    /**
+     * 把服务类型字典 value 反查为字典 label（中文）。
+     * 字典查询失败或 value 为空时返回空串，避免钉钉消息出现 null。
+     */
+    @Override
+    public String resolveServiceTypeLabel(Integer deptType, String value) {
+        if (StrUtil.isBlank(value)) {
+            return "";
+        }
+        String dictType = deptType == null ? null : DEPT_TYPE_SERVICE_DICT_MAP.get(deptType);
+        if (StrUtil.isBlank(dictType)) {
+            return value;
+        }
+        try {
+            List<DictDataRespDTO> list = dictDataApi.getDictDataList(dictType);
+            if (list == null) {
+                return value;
+            }
+            return list.stream()
+                    .filter(d -> value.equals(d.getValue()))
+                    .map(DictDataRespDTO::getLabel)
+                    .filter(StrUtil::isNotBlank)
+                    .findFirst()
+                    .orElse(value);
+        } catch (Exception ex) {
+            log.warn("[外出费用] 服务类型字典查询失败 dictType={} value={}: {}", dictType, value, ex.getMessage());
+            return value;
+        }
+    }
 
     @Override
     public PageResult<OutsideCostRecordRespVO> getOutsideCostRecordPage(OutsideCostRecordPageReqVO reqVO) {
@@ -207,13 +251,13 @@ public class OutsideCostRecordServiceImpl implements OutsideCostRecordService {
         String content = String.format(
                 "### 外出费用待填写金额\n\n" +
                 "**合同编号**：%s\n\n" +
-                "**服务项**：%s\n\n" +
+                "**服务类型**：%s\n\n" +
                 "**目标部门**：%s\n\n" +
                 "**外出地点**：%s\n\n" +
                 "**外出事由**：%s\n\n" +
                 "您被指派为此次外出的费用结算人，请填写费用金额。",
                 record.getContractNo(),
-                record.getServiceItemName(),
+                resolveServiceTypeLabel(record.getDeptType(), record.getServiceType()),
                 record.getTargetDeptName(),
                 destination,
                 reason
@@ -302,7 +346,8 @@ public class OutsideCostRecordServiceImpl implements OutsideCostRecordService {
         record.setContractNo((String) requestInfo.get("contractNo"));
         record.setContractName((String) requestInfo.get("contractName"));
         record.setServiceItemId(getLongValue(requestInfo.get("serviceItemId")));
-        record.setServiceItemName((String) requestInfo.get("serviceItemName"));
+        record.setServiceType((String) requestInfo.get("serviceType"));
+        record.setDeptType(getIntegerValue(requestInfo.get("deptType")));
         record.setRequestDeptId(requestDeptId);
         record.setRequestDeptName((String) requestInfo.get("requestDeptName"));
         record.setRequestUserId(getLongValue(requestInfo.get("requestUserId")));
@@ -374,7 +419,6 @@ public class OutsideCostRecordServiceImpl implements OutsideCostRecordService {
         record.setContractNo((String) launchInfo.get("contractNo"));
         record.setContractName((String) launchInfo.get("contractName"));
         record.setServiceItemId(getLongValue(launchInfo.get("serviceItemId")));
-        record.setServiceItemName((String) launchInfo.get("serviceItemName"));
         record.setServiceType((String) launchInfo.get("serviceType"));
         record.setDeptType(getIntegerValue(launchInfo.get("deptType")));
         // 支出部门 = 请求方部门（考虑代发起后的实际部门）

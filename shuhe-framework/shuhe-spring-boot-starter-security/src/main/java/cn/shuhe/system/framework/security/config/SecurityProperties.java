@@ -60,6 +60,43 @@ public class SecurityProperties {
     private String switchAdminTargetUsername = "admin";
 
     /**
+     * 是否开启开发环境一键登录功能（仅 local / dev profile 启用，prod 永远禁用）
+     *
+     * 与 {@link #switchAdminEnabled} 的区别：
+     * - switchAdminEnabled 只允许切到 1 个固定 admin、需要 admin 密码
+     * - devLoginAsEnabled 支持切到任意 userId、无需密码（开发用）
+     */
+    private Boolean devLoginAsEnabled = false;
+
+    /**
+     * 允许调用「开发环境一键登录」的发起方 user id 白名单
+     * 空列表 = 任何已登录用户都能调（仍受 devLoginAsEnabled 总开关约束）
+     */
+    private List<Long> devLoginAsAllowedUserIds = Collections.emptyList();
+
+    /**
+     * 「开发环境一键登录」头像下拉里展示的常用账号清单
+     * username 必填，label 可选（用于前端展示更友好的名字）
+     */
+    private List<DevLoginAsPresetUser> devLoginAsPresetUsers = Collections.emptyList();
+
+    /**
+     * 「开发环境一键登录」常用账号配置项
+     */
+    @Data
+    public static class DevLoginAsPresetUser {
+        /**
+         * 目标用户登录名（必须与 system_users.username 一致）
+         */
+        @NotEmpty(message = "username 不能为空")
+        private String username;
+        /**
+         * 展示名（前端下拉里显示，缺省回退 username）
+         */
+        private String label;
+    }
+
+    /**
      * 免登录的 URL 列表
      */
     private List<String> permitAllUrls = Collections.emptyList();

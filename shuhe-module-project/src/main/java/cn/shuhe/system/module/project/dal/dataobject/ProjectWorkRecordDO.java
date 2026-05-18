@@ -59,11 +59,6 @@ public class ProjectWorkRecordDO extends BaseDO {
     private Long serviceItemId;
 
     /**
-     * 服务项名称（冗余）
-     */
-    private String serviceItemName;
-
-    /**
      * 服务类型（字典值，冗余）
      */
     private String serviceType;

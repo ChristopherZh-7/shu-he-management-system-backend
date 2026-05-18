@@ -23,6 +23,9 @@ public interface ErrorCodeConstants {
     ErrorCode AUTH_DINGTALK_INAPP_TOKEN_FAIL = new ErrorCode(1_002_000_012, "钉钉端内换票失败：{}");
     ErrorCode AUTH_SWITCH_ADMIN_DISABLED = new ErrorCode(1_002_000_013, "未开启「切换管理员账号」功能");
     ErrorCode AUTH_SWITCH_ADMIN_NOT_ALLOWED = new ErrorCode(1_002_000_014, "当前账号无权切换为管理员");
+    ErrorCode AUTH_DEV_LOGIN_AS_DISABLED = new ErrorCode(1_002_000_015, "未开启「开发环境一键登录」功能（仅 local/dev profile 启用）");
+    ErrorCode AUTH_DEV_LOGIN_AS_NOT_ALLOWED = new ErrorCode(1_002_000_016, "当前账号不在「开发环境一键登录」白名单内");
+    ErrorCode AUTH_DEV_LOGIN_AS_TARGET_NOT_EXISTS = new ErrorCode(1_002_000_017, "目标用户不存在或已禁用");
 
     // ========== 菜单模块 1-002-001-000 ==========
     ErrorCode MENU_NAME_DUPLICATE = new ErrorCode(1_002_001_000, "已经存在该名字的菜单");

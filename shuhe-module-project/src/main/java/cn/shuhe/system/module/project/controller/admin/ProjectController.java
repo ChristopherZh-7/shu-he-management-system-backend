@@ -3,6 +3,7 @@ package cn.shuhe.system.module.project.controller.admin;
 import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
+import cn.shuhe.system.framework.datapermission.core.util.DataPermissionUtils;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectPageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectSaveReqVO;
@@ -10,6 +11,7 @@ import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectMemberDO;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import cn.shuhe.system.module.project.service.ProjectService;
+import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -21,9 +23,14 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
 import static cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
@@ -152,28 +159,56 @@ public class ProjectController {
 
     // ========== 项目成员管理 ==========
 
+    private static final DateTimeFormatter MEMBER_JOIN_TIME_FMT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     @GetMapping("/member-list")
     @Operation(summary = "获得项目成员列表")
     @Parameter(name = "projectId", description = "项目编号", required = true)
     @PreAuthorize("@ss.hasPermission('project:project:query')")
     public CommonResult<List<Map<String, Object>>> getProjectMemberList(@RequestParam("projectId") Long projectId) {
         List<ProjectMemberDO> members = projectService.getProjectMembers(projectId);
+        if (members.isEmpty()) {
+            return success(Collections.emptyList());
+        }
+
+        // 批量回填最新 nickname / deptName，绕过数据权限避免跨部门用户被拦
+        Set<Long> userIds = members.stream()
+                .map(ProjectMemberDO::getUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty()
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> adminUserApi.getUserMap(userIds));
+        Set<Long> deptIds = userMap.values().stream()
+                .map(AdminUserRespDTO::getDeptId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, DeptRespDTO> deptMap = deptIds.isEmpty()
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> deptApi.getDeptMap(deptIds));
+
         List<Map<String, Object>> result = members.stream().map(m -> {
             Map<String, Object> map = new HashMap<>();
             map.put("id", m.getId());
             map.put("projectId", m.getProjectId());
             map.put("userId", m.getUserId());
-            map.put("nickname", m.getNickname());
             map.put("roleType", m.getRoleType());
-            map.put("joinTime", m.getJoinTime());
             map.put("remark", m.getRemark());
-            // 获取用户部门信息
-            try {
-                AdminUserRespDTO user = adminUserApi.getUser(m.getUserId());
-                if (user != null) {
-                    map.put("deptName", user.getDeptId() != null ? user.getDeptId().toString() : null);
-                }
-            } catch (Exception ignored) {}
+            map.put("joinTime", m.getJoinTime() != null
+                    ? m.getJoinTime().format(MEMBER_JOIN_TIME_FMT) : null);
+
+            AdminUserRespDTO user = userMap.get(m.getUserId());
+            String nickname = user != null && user.getNickname() != null
+                    && !user.getNickname().isEmpty()
+                    ? user.getNickname()
+                    : m.getNickname();
+            map.put("nickname", nickname);
+            if (user != null && user.getDeptId() != null) {
+                map.put("deptId", user.getDeptId());
+                DeptRespDTO dept = deptMap.get(user.getDeptId());
+                map.put("deptName", dept != null ? dept.getName() : null);
+            }
             return map;
         }).toList();
         return success(result);
@@ -198,6 +233,39 @@ public class ProjectController {
     @PreAuthorize("@ss.hasPermission('project:project:update')")
     public CommonResult<Boolean> deleteProjectMember(@RequestParam("id") Long id) {
         projectService.deleteProjectMember(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-member-role")
+    @Operation(summary = "修改项目成员的角色（roleType）",
+            description = "1=项目经理 / 2=执行人员 / 3=审核人员（部门负责人通常应为 3 有 canManage 权限）")
+    @PreAuthorize("@ss.hasPermission('project:project:update')")
+    public CommonResult<Boolean> updateProjectMemberRole(
+            @RequestParam("id") Long id,
+            @RequestParam("roleType") Integer roleType) {
+        projectService.updateProjectMemberRole(id, roleType);
+        return success(true);
+    }
+
+    // ========== 项目部门可见性管理（业界路径 2·部门下所有人都能看到项目） ==========
+
+    @GetMapping("/dept-visibility")
+    @Operation(summary = "获取项目的可见部门 id 列表",
+            description = "返回该项目在 project_dept_visibility 表中配置的所有 dept_id，部门下用户都能看到该项目")
+    @Parameter(name = "projectId", description = "项目编号", required = true)
+    @PreAuthorize("@ss.hasPermission('project:project:query')")
+    public CommonResult<List<Long>> getProjectDeptVisibility(@RequestParam("projectId") Long projectId) {
+        return success(projectService.getProjectDeptVisibilityIds(projectId));
+    }
+
+    @PutMapping("/dept-visibility/replace")
+    @Operation(summary = "全量替换项目的可见部门 id 列表",
+            description = "幂等覆盖：传入的 deptIds 集合即为最终状态；传空数组 = 清空所有可见部门")
+    @PreAuthorize("@ss.hasPermission('project:project:update')")
+    public CommonResult<Boolean> replaceProjectDeptVisibility(
+            @RequestParam("projectId") Long projectId,
+            @RequestParam(value = "deptIds", required = false) List<Long> deptIds) {
+        projectService.replaceProjectDeptVisibility(projectId, deptIds);
         return success(true);
     }
 

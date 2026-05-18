@@ -50,6 +50,9 @@ public class CrmBusinessSaveReqVO {
     @Schema(description = "部门分配列表（可选，后续在项目管理中分配）")
     private List<DeptAllocation> deptAllocations;
 
+    @Schema(description = "涉及部门 id 数组（多选）·决定该商机派生的项目对哪些部门可见", example = "[101, 102]")
+    private List<Long> involvedDeptIds;
+
     @Schema(description = "预计成交日期")
     @DiffLogField(name = "预计成交日期")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)

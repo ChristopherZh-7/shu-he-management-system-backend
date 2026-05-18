@@ -161,7 +161,13 @@ public class DeptController {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         if (leaderIds.isEmpty()) return;
-        Map<Long, AdminUserDO> userMap = adminUserService.getUserMap(leaderIds);
+        // 禁用数据权限：getSimpleDeptList 的目的是给前端做下拉/树形展示，
+        // 必须能列出全公司所有部门 + 各自负责人；直接调 service 层 getUserMap
+        // 会被 @DataPermission 切面按当前登录人 dept 范围裁剪，导致非超管用户
+        // 只能看见自己 dept 内 user 的 nickname，其它部门的负责人显示不出来。
+        // 通过 DataPermissionUtils.executeIgnore 临时关掉数据权限，与 AdminUserApiImpl.getUserList 一致。
+        Map<Long, AdminUserDO> userMap = cn.shuhe.system.framework.datapermission.core.util.DataPermissionUtils
+                .executeIgnore(() -> adminUserService.getUserMap(leaderIds));
         for (int i = 0; i < deptDOs.size(); i++) {
             Long leaderId = deptDOs.get(i).getLeaderUserId();
             if (leaderId != null) {

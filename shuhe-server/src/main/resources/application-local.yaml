@@ -258,6 +258,35 @@ shuhe:
     switch-admin-allowed-user-ids:
       - 249
     switch-admin-target-username: admin
+    # ===== 开发环境一键登录（仅 local/dev 使用，prod 禁止配置 dev-login-as-enabled: true）=====
+    # 头像下拉出现「切换测试账号」按钮，点击直接切换到下方 preset 里的任意账号（无需密码）
+    dev-login-as-enabled: true
+    # 白名单·谁能调切换接口（空 = 任何已登录用户都能调）
+    # 包含所有 preset 用户 id，方便互相切换；如要更严格可只填开发者 id
+    dev-login-as-allowed-user-ids: [1, 225, 226, 227, 228, 248, 249, 250, 253, 254]
+    # 常用测试账号清单·label 缺省回退 nickname / username
+    # 用户自己增删账号·改完 yaml 重启后端即可立刻生效（前端会自动拉新清单）
+    dev-login-as-preset-users:
+      - username: admin
+        label: admin（超管 / 普通角色）
+      - username: liujiayan
+        label: liujiayan 刘佳燕（CRM 管理员 / 人事）
+      - username: zhengyi
+        label: zhengyi 郑屹（安全服务主管 / 组长）
+      - username: wangyiyao
+        label: wangyiyao 王怡瑶（安全服务工程师）
+      - username: zhanyuwen
+        label: zhanyuwen 詹裕文（安全运营主管）
+      - username: linzefeng
+        label: linzefeng 林泽锋（安全运营组长）
+      - username: xushihao
+        label: xushihao 许仕豪(安全运营工程师)
+      - username: xiedianyu
+        label: xiedianyu 谢典余（数据安全主管）
+      - username: chenhao
+        label: chenhao 陈浩（数据安全工程师）
+      - username: guotaoxun
+        label: guotaoxun 郭桃勋（总经理）
   pay:
     order-notify-url: https://yutou.mynatapp.cc/admin-api/pay/notify/order # 支付渠道的【支付】回调地址
     refund-notify-url: https://yutou.mynatapp.cc/admin-api/pay/notify/refund # 支付渠道的【退款】回调地址

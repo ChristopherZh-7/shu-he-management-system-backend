@@ -110,6 +110,33 @@ public interface ProjectService {
     void addProjectMember(Long projectId, Long userId, String nickname, Integer roleType);
 
     /**
+     * 修改项目成员的角色（roleType）
+     *
+     * @param id        project_member 主键
+     * @param roleType  1=项目经理 / 2=执行人员 / 3=审核人员
+     */
+    void updateProjectMemberRole(Long id, Integer roleType);
+
+    /**
+     * 全量设置项目「可见部门」（项目维度部门可见性）
+     *
+     * 按 (projectId, deptIds) 写入 project_dept_visibility 表，部门下所有 user 都能看到该项目。
+     * 实现幂等：先删后插，与 deptIds 严格保持一致。
+     *
+     * @param projectId 项目 id
+     * @param deptIds   可见部门 id 列表（传 null / 空 = 清空所有可见部门）
+     */
+    void replaceProjectDeptVisibility(Long projectId, List<Long> deptIds);
+
+    /**
+     * 获取项目的「可见部门」id 列表（项目维度部门可见性）
+     *
+     * @param projectId 项目 id
+     * @return 可见部门 id 列表，未设置时返回空列表
+     */
+    List<Long> getProjectDeptVisibilityIds(Long projectId);
+
+    /**
      * 将指定用户加入项目关联的钉钉群（若群不存在则忽略）
      *
      * @param projectId 项目ID

@@ -25,7 +25,6 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
                 .eqIfPresent(ServiceItemDO::getDeptId, reqVO.getDeptId())
                 .eqIfPresent(ServiceItemDO::getServiceType, reqVO.getServiceType())
                 .eqIfPresent(ServiceItemDO::getStatus, reqVO.getStatus())
-                .likeIfPresent(ServiceItemDO::getName, reqVO.getName())
                 .likeIfPresent(ServiceItemDO::getCode, reqVO.getCode())
                 .likeIfPresent(ServiceItemDO::getCustomerName, reqVO.getCustomerName())
                 .betweenIfPresent(ServiceItemDO::getCreateTime, reqVO.getCreateTime())
@@ -186,6 +185,27 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
         return selectCount(new LambdaQueryWrapperX<ServiceItemDO>()
                 .eq(ServiceItemDO::getDeptServiceId, deptServiceId)
                 .eq(ServiceItemDO::getVisible, 1));
+    }
+
+    /**
+     * 根据 项目 + 部门类型 + 服务类型 反查服务项。
+     *
+     * <p>用于工单 service_launch 接单时由 listener 反查具体服务项 id；按 id desc 取最新。
+     * 同 (projectId, deptType, serviceType) 下若有多个匹配则取最近创建的（id 最大）。
+     */
+    default ServiceItemDO selectByProjectIdDeptTypeAndServiceType(Long projectId,
+                                                                   Integer deptType,
+                                                                   String serviceType) {
+        if (projectId == null || serviceType == null) {
+            return null;
+        }
+        return selectOne(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getProjectId, projectId)
+                .eqIfPresent(ServiceItemDO::getDeptType, deptType)
+                .eq(ServiceItemDO::getServiceType, serviceType)
+                .eq(ServiceItemDO::getVisible, 1)
+                .orderByDesc(ServiceItemDO::getId)
+                .last("LIMIT 1"));
     }
 
 }

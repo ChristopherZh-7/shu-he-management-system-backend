@@ -29,9 +29,6 @@ public class ServiceItemAllocationRespVO {
     @Schema(description = "服务项ID（服务项分配时有值）", example = "200")
     private Long serviceItemId;
 
-    @Schema(description = "服务项名称（安全运营分配时为管理费/驻场费）", example = "渗透测试")
-    private String serviceItemName;
-
     @Schema(description = "服务项编号", example = "SVC-2026-001")
     private String serviceItemCode;
 

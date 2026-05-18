@@ -18,9 +18,6 @@ public class ServiceItemSaveReqVO {
     @NotNull(message = "所属项目不能为空")
     private Long projectId;
 
-    @Schema(description = "服务项名称（可选，不填则自动生成）", example = "某银行渗透测试")
-    private String name;
-
     @Schema(description = "部门类型：1安全服务 2安全运营 3数据安全", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     @NotNull(message = "部门类型不能为空")
     private Integer deptType;

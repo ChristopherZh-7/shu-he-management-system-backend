@@ -80,12 +80,16 @@ public class AdminUserApiImpl implements AdminUserApi {
 
     @Override
     public void validateUserList(Collection<Long> ids) {
-        userService.validateUserList(ids);
+        // 禁用数据权限：跨模块 API 校验「用户是否存在 + 是否启用」属于数据拼接类查询，
+        // 不应受当前登录用户的部门数据权限限制（典型场景：CRM 添加跨部门协作者会因 dept 范围误拦报「用户不存在」）。
+        // 与本类 getUserList 的处理一致（见 L63 注释）。
+        DataPermissionUtils.executeIgnore(() -> userService.validateUserList(ids));
     }
 
     @Override
     public void validateUserListExists(Collection<Long> ids) {
-        userService.validateUserListExists(ids);
+        // 同 validateUserList：禁用数据权限避免跨部门误拦
+        DataPermissionUtils.executeIgnore(() -> userService.validateUserListExists(ids));
     }
 
 }

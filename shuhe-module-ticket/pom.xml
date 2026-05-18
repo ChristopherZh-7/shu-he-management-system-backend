@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>cn.shuhe</groupId>
+        <artifactId>shuhe</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>shuhe-module-ticket</artifactId>
+    <packaging>jar</packaging>
+
+    <name>${project.artifactId}</name>
+    <description>
+        ticket 模块下，统一工单中心，作为跨业务任务的入口和聚合层。
+        承载提单、分派、流转、通知、状态追踪；与 outside_request / service_launch
+        等现有业务通过事件适配层联动，业务表保持原状。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-module-system</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-module-infra</artifactId>
+            <version>${revision}</version>
+        </dependency>
+
+        <!-- 业务组件：数据权限 -->
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-spring-boot-starter-biz-data-permission</artifactId>
+        </dependency>
+
+        <!-- Web 相关 -->
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- DB 相关 -->
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-spring-boot-starter-mybatis</artifactId>
+        </dependency>
+
+        <!-- Test 测试相关 -->
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

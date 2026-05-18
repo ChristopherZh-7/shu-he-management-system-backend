@@ -219,6 +219,7 @@ public class CrmBusinessController {
                     user -> businessVO.setCreatorName(user.getNickname()));
             MapUtils.findAndThen(userMap, businessVO.getOwnerUserId(), user -> {
                 businessVO.setOwnerUserName(user.getNickname());
+                businessVO.setOwnerUserDeptId(user.getDeptId());
                 MapUtils.findAndThen(deptMap, user.getDeptId(), dept -> businessVO.setOwnerUserDeptName(dept.getName()));
             });
             // 2.4 将部门分配列表转换为 DeptAllocationVO（含部门负责人姓名）

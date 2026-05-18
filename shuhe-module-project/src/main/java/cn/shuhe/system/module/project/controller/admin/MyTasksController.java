@@ -48,6 +48,9 @@ public class MyTasksController {
     private ProjectMapper projectMapper;
 
     @Resource
+    private cn.shuhe.system.module.project.service.ServiceItemService serviceItemService;
+
+    @Resource
     private ServiceItemMapper serviceItemMapper;
 
     @Resource
@@ -142,8 +145,9 @@ public class MyTasksController {
             for (ServiceItemDO item : items) {
                 MyTasksRespVO.TaskServiceItem tsi = new MyTasksRespVO.TaskServiceItem();
                 tsi.setServiceItemId(item.getId());
-                tsi.setName(item.getName());
                 tsi.setServiceType(item.getServiceType());
+                tsi.setServiceTypeName(
+                        serviceItemService.resolveServiceTypeLabel(item.getDeptType(), item.getServiceType()));
                 tsi.setServiceMode(item.getServiceMode());
                 tsi.setStatus(item.getStatus());
                 tsi.setProgress(item.getProgress());

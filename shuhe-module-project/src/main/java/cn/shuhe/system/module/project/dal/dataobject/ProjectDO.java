@@ -94,6 +94,15 @@ public class ProjectDO extends BaseDO {
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<String> managerNames;
 
+    /**
+     * 涉及部门 id 数组（JSON）
+     *
+     * 从 CrmBusinessDO.involvedDeptIds 派生而来；这些部门会被同步写入
+     * project_dept_visibility 表，使部门下所有人都能在「项目管理」看到该项目。
+     */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private List<Long> involvedDeptIds;
+
     // ========== 状态 ==========
 
     /**

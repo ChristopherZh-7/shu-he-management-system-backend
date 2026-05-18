@@ -28,9 +28,6 @@ public class ServiceLaunchRespVO {
     @Schema(description = "关联服务项ID")
     private Long serviceItemId;
 
-    @Schema(description = "服务项名称")
-    private String serviceItemName;
-
     @Schema(description = "服务类型")
     private String serviceType;
 

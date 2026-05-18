@@ -109,7 +109,11 @@
         </dependency>
 
         <!-- 工单相关模块 -->
-        <!-- 工单模块已删除 -->
+        <dependency>
+            <groupId>cn.shuhe</groupId>
+            <artifactId>shuhe-module-ticket</artifactId>
+            <version>${revision}</version>
+        </dependency>
 
         <!-- 项目管理模块 -->
         <dependency>

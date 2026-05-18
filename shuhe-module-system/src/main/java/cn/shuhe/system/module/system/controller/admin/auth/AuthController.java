@@ -202,4 +202,23 @@ public class AuthController {
         return success(authService.switchToAdmin(getLoginUserId(), token, reqVO));
     }
 
+    @PostMapping("/dev/login-as")
+    @Operation(summary = "开发环境一键切换登录用户",
+            description = "仅 local/dev profile 启用（shuhe.security.dev-login-as-enabled=true）。" +
+                    "无需目标密码、支持切到任意 userId。prod 强制返回 AUTH_DEV_LOGIN_AS_DISABLED。")
+    public CommonResult<AuthLoginRespVO> devLoginAs(HttpServletRequest request,
+                                                    @RequestBody @Valid AuthDevLoginAsReqVO reqVO) {
+        String token = SecurityFrameworkUtils.obtainAuthorization(request,
+                securityProperties.getTokenHeader(), securityProperties.getTokenParameter());
+        return success(authService.devLoginAs(getLoginUserId(), token, reqVO));
+    }
+
+    @GetMapping("/dev/login-as/preset-users")
+    @Operation(summary = "开发环境一键切换·常用账号清单",
+            description = "返回 application-*.yaml 中 shuhe.security.dev-login-as-preset-users 配置的账号清单。" +
+                    "未启用功能时返回空数组，前端据此决定是否在头像下拉里展示按钮。")
+    public CommonResult<java.util.List<AuthDevLoginAsPresetUserRespVO>> getDevLoginAsPresetUsers() {
+        return success(authService.getDevLoginAsPresetUsers());
+    }
+
 }

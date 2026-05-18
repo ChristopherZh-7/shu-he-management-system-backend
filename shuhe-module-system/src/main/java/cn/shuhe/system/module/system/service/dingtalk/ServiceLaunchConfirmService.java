@@ -243,11 +243,8 @@ public class ServiceLaunchConfirmService {
         if (StrUtil.isNotEmpty(launchInfo.getCustomerName())) {
             sb.append(launchInfo.getCustomerName());
         }
-        // 添加服务类型中文名称（优先使用中文名称，其次使用服务项名称）
+        // 添加服务类型中文名称
         String serviceTypeName = launchInfo.getServiceTypeName();
-        if (StrUtil.isEmpty(serviceTypeName)) {
-            serviceTypeName = launchInfo.getServiceItemName();
-        }
         if (StrUtil.isNotEmpty(serviceTypeName)) {
             if (sb.length() > 0) {
                 sb.append("-");

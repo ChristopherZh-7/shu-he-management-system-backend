@@ -46,7 +46,7 @@ INSERT INTO `system_dingtalk_notification_config` (
     '⏰ 服务执行计划即将到期',
     '### ⏰ 服务执行计划即将到期
 
-**服务项名称：** ${serviceItemName}
+**服务类型：** ${serviceTypeName}
 
 **执行计划：** ${roundName}
 

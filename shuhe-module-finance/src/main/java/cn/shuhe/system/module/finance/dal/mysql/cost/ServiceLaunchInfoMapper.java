@@ -20,7 +20,7 @@ public interface ServiceLaunchInfoMapper {
      *       如果为空则使用 execute_dept_id（发起时选择的执行部门）
      */
     @Select("SELECT sl.id, sl.contract_id AS contractId, sl.project_id AS projectId, " +
-            "sl.service_item_id AS serviceItemId, si.name AS serviceItemName, " +
+            "sl.service_item_id AS serviceItemId, " +
             "si.service_type AS serviceType, si.dept_type AS deptType, " +
             "sl.service_item_dept_id AS serviceItemDeptId, d1.name AS serviceItemDeptName, " +
             "COALESCE(sl.actual_execute_dept_id, sl.execute_dept_id) AS executeDeptId, d2.name AS executeDeptName, " +

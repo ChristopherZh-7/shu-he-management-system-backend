@@ -29,9 +29,6 @@ public class ProjectWorkRecordSaveReqVO {
     @Schema(description = "服务项ID（可选）", example = "1")
     private Long serviceItemId;
 
-    @Schema(description = "服务项名称", example = "日常巡检")
-    private String serviceItemName;
-
     @Schema(description = "记录日期", requiredMode = Schema.RequiredMode.REQUIRED, example = "2026-01-28")
     @NotNull(message = "记录日期不能为空")
     private LocalDate recordDate;

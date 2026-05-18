@@ -133,8 +133,8 @@ poi-tl 支持自动处理合并单元格的复制。
 | 变量名 | 说明 | 示例 |
 |-------|------|------|
 | `{{projectName}}` | 项目名称 | XX银行渗透测试项目 |
-| `{{serviceItemName}}` | 服务项名称 | 渗透测试 |
-| `{{serviceType}}` | 服务类型编码 | penetration_test |
+| `{{serviceTypeName}}` | 服务类型中文（字典 label） | 渗透测试 |
+| `{{serviceType}}` | 服务类型编码（字典 value） | penetration_test |
 | `{{requestUserName}}` | 发起人姓名 | 张三 |
 | `{{requestDeptName}}` | 发起人部门 | 安全服务部 |
 | `{{targetDeptName}}` | 目标部门 | 安全运营部 |

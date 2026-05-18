@@ -251,6 +251,71 @@ public class AdminAuthServiceImpl implements AdminAuthService {
         return createTokenAfterLoginSuccess(target.getId(), target.getUsername(), LoginLogTypeEnum.LOGIN_SWITCH_ADMIN, target);
     }
 
+    @Override
+    @DataPermission(enable = false)
+    public AuthLoginRespVO devLoginAs(Long sourceUserId, String accessToken, AuthDevLoginAsReqVO reqVO) {
+        if (Boolean.FALSE.equals(securityProperties.getDevLoginAsEnabled())) {
+            throw exception(AUTH_DEV_LOGIN_AS_DISABLED);
+        }
+        if (sourceUserId == null || StrUtil.isBlank(accessToken)) {
+            throw exception(AUTH_DEV_LOGIN_AS_NOT_ALLOWED);
+        }
+        java.util.List<Long> allowedIds = securityProperties.getDevLoginAsAllowedUserIds();
+        if (CollUtil.isNotEmpty(allowedIds) && !allowedIds.contains(sourceUserId)) {
+            throw exception(AUTH_DEV_LOGIN_AS_NOT_ALLOWED);
+        }
+
+        AdminUserDO target = userService.getUser(reqVO.getTargetUserId());
+        if (target == null || CommonStatusEnum.isDisable(target.getStatus())) {
+            throw exception(AUTH_DEV_LOGIN_AS_TARGET_NOT_EXISTS);
+        }
+
+        oauth2TokenService.removeAccessToken(accessToken);
+        log.warn("[dev-login-as] fromUserId={} -> targetUserId={} targetUsername={}",
+                sourceUserId, target.getId(), target.getUsername());
+
+        return createTokenAfterLoginSuccess(target.getId(), target.getUsername(),
+                LoginLogTypeEnum.LOGIN_SWITCH_ADMIN, target);
+    }
+
+    @Override
+    @DataPermission(enable = false)
+    public java.util.List<AuthDevLoginAsPresetUserRespVO> getDevLoginAsPresetUsers() {
+        if (Boolean.FALSE.equals(securityProperties.getDevLoginAsEnabled())) {
+            return java.util.Collections.emptyList();
+        }
+        java.util.List<SecurityProperties.DevLoginAsPresetUser> presets =
+                securityProperties.getDevLoginAsPresetUsers();
+        if (CollUtil.isEmpty(presets)) {
+            return java.util.Collections.emptyList();
+        }
+        java.util.List<AuthDevLoginAsPresetUserRespVO> result = new java.util.ArrayList<>(presets.size());
+        for (SecurityProperties.DevLoginAsPresetUser preset : presets) {
+            if (preset == null || StrUtil.isBlank(preset.getUsername())) {
+                continue;
+            }
+            AdminUserDO user;
+            try {
+                user = userService.getUserByUsername(preset.getUsername());
+            } catch (Exception e) {
+                log.warn("[dev-login-as] 查 username={} 失败，跳过: {}", preset.getUsername(), e.getMessage());
+                continue;
+            }
+            if (user == null || CommonStatusEnum.isDisable(user.getStatus())) {
+                continue;
+            }
+            String label = StrUtil.blankToDefault(preset.getLabel(),
+                    StrUtil.blankToDefault(user.getNickname(), user.getUsername()));
+            result.add(AuthDevLoginAsPresetUserRespVO.builder()
+                    .userId(user.getId())
+                    .username(user.getUsername())
+                    .nickname(user.getNickname())
+                    .label(label)
+                    .build());
+        }
+        return result;
+    }
+
     @VisibleForTesting
     void validateCaptcha(AuthLoginReqVO reqVO) {
         ResponseModel response = doValidateCaptcha(reqVO);

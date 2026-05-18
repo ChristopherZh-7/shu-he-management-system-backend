@@ -48,6 +48,10 @@ public class ProjectWorkRecordServiceImpl implements ProjectWorkRecordService {
     private ServiceItemMapper serviceItemMapper;
 
     @Resource
+    @org.springframework.context.annotation.Lazy
+    private ServiceItemService serviceItemService;
+
+    @Resource
     private SecurityOperationContractMapper securityOperationContractMapper;
 
     @Resource
@@ -83,14 +87,10 @@ public class ProjectWorkRecordServiceImpl implements ProjectWorkRecordService {
             fillProjectName(record);
         }
         
-        // 5. 填充服务项信息（如果没传）
+        // 5. 填充服务项的服务类型（冗余存储，便于按类型统计；服务项名称字段已废弃）
         if (record.getServiceItemId() != null) {
             ServiceItemDO serviceItem = serviceItemMapper.selectById(record.getServiceItemId());
             if (serviceItem != null) {
-                if (record.getServiceItemName() == null) {
-                    record.setServiceItemName(serviceItem.getName());
-                }
-                // 填充服务类型
                 record.setServiceType(serviceItem.getServiceType());
             }
         }
@@ -153,14 +153,10 @@ public class ProjectWorkRecordServiceImpl implements ProjectWorkRecordService {
             fillProjectName(updateRecord);
         }
         
-        // 填充服务项信息
+        // 填充服务项的服务类型（冗余存储；服务项名称字段已废弃）
         if (updateRecord.getServiceItemId() != null) {
             ServiceItemDO serviceItem = serviceItemMapper.selectById(updateRecord.getServiceItemId());
             if (serviceItem != null) {
-                if (updateRecord.getServiceItemName() == null) {
-                    updateRecord.setServiceItemName(serviceItem.getName());
-                }
-                // 填充服务类型
                 updateRecord.setServiceType(serviceItem.getServiceType());
             }
         }

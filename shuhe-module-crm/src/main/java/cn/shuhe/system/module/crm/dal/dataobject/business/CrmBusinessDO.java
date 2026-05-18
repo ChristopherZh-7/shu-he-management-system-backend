@@ -79,6 +79,19 @@ public class CrmBusinessDO extends BaseDO {
     private List<DeptAllocation> deptAllocations;
 
     /**
+     * 涉及部门 id 数组（JSON，多选）
+     *
+     * 用于派生项目可见性：商机赢单（提前投入 / 合同签订）创建项目时，
+     * 会把这些部门写入 project.involved_dept_ids + project_dept_visibility，
+     * 实现「部门下所有人都能看到该项目」。
+     *
+     * 与 deptAllocations 区别：deptAllocations 关注金额拆分，
+     * involvedDeptIds 只关注"谁参与"，业务关注点不同；二者可并存。
+     */
+    @TableField(typeHandler = com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler.class)
+    private List<Long> involvedDeptIds;
+
+    /**
      * 审批状态
      *
      * 枚举 {@link CrmAuditStatusEnum}

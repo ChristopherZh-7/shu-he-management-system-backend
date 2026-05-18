@@ -64,4 +64,16 @@ public interface OutsideCostRecordService {
      * 统计合同的外出费用笔数
      */
     Integer countByContractId(Long contractId);
+
+    /**
+     * 把服务类型字典 value 反查为字典 label（中文）。
+     *
+     * <p>例：{@code resolveServiceTypeLabel(1, "penetration_test")} → {@code "渗透测试"}。
+     * 字典查询失败 / value 为空时返回空串，便于钉钉消息文案不出现 null。
+     *
+     * @param deptType         部门类型（1-安全服务 2-安全运营 3-数据安全），决定查哪个字典 type
+     * @param serviceTypeValue 服务类型字典 value
+     * @return 字典 label，查询失败时退回原 value
+     */
+    String resolveServiceTypeLabel(Integer deptType, String serviceTypeValue);
 }

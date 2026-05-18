@@ -36,11 +36,11 @@ public class MyTasksRespVO {
         @Schema(description = "服务项ID")
         private Long serviceItemId;
 
-        @Schema(description = "服务项名称")
-        private String name;
-
-        @Schema(description = "服务类型")
+        @Schema(description = "服务类型（字典值）")
         private String serviceType;
+
+        @Schema(description = "服务类型中文 label（后端预翻译，前端可直接展示）")
+        private String serviceTypeName;
 
         @Schema(description = "服务模式：1-驻场 2-二线")
         private Integer serviceMode;

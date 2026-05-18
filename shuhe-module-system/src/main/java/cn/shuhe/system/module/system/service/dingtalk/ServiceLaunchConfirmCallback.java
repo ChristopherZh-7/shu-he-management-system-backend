@@ -31,7 +31,6 @@ public interface ServiceLaunchConfirmCallback {
     class LaunchInfo {
         private Long id;
         private Long serviceItemId;
-        private String serviceItemName;
         private String serviceType;       // 服务类型代码（字典值）
         private String serviceTypeName;   // 服务类型中文名称（字典标签）
         private String customerName;

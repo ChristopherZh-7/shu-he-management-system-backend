@@ -16,11 +16,8 @@ public class ServiceItemRespVO {
     @Schema(description = "所属项目ID", example = "1")
     private Long projectId;
 
-    @Schema(description = "服务项编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "PRJ-1-20260116-0001")
+    @Schema(description = "服务项编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "SVC-1-20260518-8556")
     private String code;
-
-    @Schema(description = "服务项名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "某银行渗透测试")
-    private String name;
 
     @Schema(description = "部门类型：1安全服务 2安全运营 3数据安全", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Integer deptType;

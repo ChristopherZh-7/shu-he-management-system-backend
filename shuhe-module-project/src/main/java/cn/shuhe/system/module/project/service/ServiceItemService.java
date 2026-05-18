@@ -48,6 +48,18 @@ public interface ServiceItemService {
     ServiceItemDO getServiceItem(Long id);
 
     /**
+     * 把服务类型字典 value（英文）反查为字典 label（中文）。
+     *
+     * <p>所有需要把 {@code service_type} 渲染给用户看的位置都调用此方法，
+     * 前后端均直接显示服务类型中文 label。
+     *
+     * @param deptType         部门类型（1-安全服务 2-安全运营 3-数据安全），决定查哪个字典 type
+     * @param serviceTypeValue 服务类型字典 value，如 {@code "penetration_test"}
+     * @return 字典 label（如 {@code "渗透测试"}）；字典查询失败时退回原 value；value 为空时返 {@code null}
+     */
+    String resolveServiceTypeLabel(Integer deptType, String serviceTypeValue);
+
+    /**
      * 获得服务项分页
      *
      * @param pageReqVO 分页查询

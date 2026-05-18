@@ -39,8 +39,6 @@ public interface ProjectWorkRecordMapper extends BaseMapperX<ProjectWorkRecordDO
                         .like(ProjectWorkRecordDO::getProjectName, reqVO.getKeyword())
                         .or()
                         .like(ProjectWorkRecordDO::getWorkContent, reqVO.getKeyword())
-                        .or()
-                        .like(ProjectWorkRecordDO::getServiceItemName, reqVO.getKeyword())
                 )
                 .orderByDesc(ProjectWorkRecordDO::getRecordDate)
                 .orderByDesc(ProjectWorkRecordDO::getId));

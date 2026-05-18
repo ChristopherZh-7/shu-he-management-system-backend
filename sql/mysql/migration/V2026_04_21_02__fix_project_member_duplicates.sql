@@ -22,27 +22,34 @@
 -- 如果你的数据不符合这个规则，请先运行上面的诊断 SQL 确认
 
 -- 删除：role_type=3, 由系统添加(creator='1'), 且该用户所负责的部门不是顶级大部门
+-- MySQL 1093 规避：子查询里如要引用 DELETE 目标表 project_member，必须再包一层物化的派生表
 DELETE pm FROM project_member pm
 WHERE pm.role_type = 3
   AND pm.deleted = 0
   AND pm.creator = '1'
   AND pm.user_id IN (
-    -- 子部门负责人：在 system_dept 中有记录，但其所属部门不是该 dept_type 下ID最小的
-    SELECT sd.leader_user_id
-    FROM system_dept sd
-    WHERE sd.dept_type IN (1, 2, 3)
-      AND sd.deleted = 0
-      AND sd.leader_user_id IS NOT NULL
-      AND sd.id NOT IN (
-        -- 每个 dept_type 的顶级大部门（ID最小的那个）
-        SELECT MIN(id) FROM system_dept
-        WHERE dept_type IN (1, 2, 3) AND deleted = 0
-        GROUP BY dept_type
-      )
+    SELECT user_id FROM (
+      -- 子部门负责人：在 system_dept 中有记录，但其所属部门不是该 dept_type 下ID最小的
+      SELECT sd.leader_user_id AS user_id
+      FROM system_dept sd
+      WHERE sd.dept_type IN (1, 2, 3)
+        AND sd.deleted = 0
+        AND sd.leader_user_id IS NOT NULL
+        AND sd.id NOT IN (
+          -- 每个 dept_type 的顶级大部门（ID最小的那个）
+          SELECT min_id FROM (
+            SELECT MIN(id) AS min_id FROM system_dept
+            WHERE dept_type IN (1, 2, 3) AND deleted = 0
+            GROUP BY dept_type
+          ) AS dept_min
+        )
+    ) AS sub_dept_leaders
   )
   AND pm.user_id NOT IN (
     -- 保护：不删除同时是项目经理(roleType=1)的人（可能身兼多职）
-    SELECT user_id FROM project_member
-    WHERE role_type = 1 AND deleted = 0
+    SELECT user_id FROM (
+      SELECT user_id FROM project_member
+      WHERE role_type = 1 AND deleted = 0
+    ) AS pm_managers
   );
 

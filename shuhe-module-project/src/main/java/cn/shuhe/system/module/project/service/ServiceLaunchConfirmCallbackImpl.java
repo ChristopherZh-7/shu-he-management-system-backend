@@ -35,6 +35,10 @@ public class ServiceLaunchConfirmCallbackImpl implements ServiceLaunchConfirmCal
     private ServiceItemMapper serviceItemMapper;
 
     @Resource
+    @org.springframework.context.annotation.Lazy
+    private ServiceItemService serviceItemService;
+
+    @Resource
     private DingtalkNotifyApi dingtalkNotifyApi;
 
     @Resource
@@ -72,11 +76,10 @@ public class ServiceLaunchConfirmCallbackImpl implements ServiceLaunchConfirmCal
         info.setPlanStartTime(launch.getPlanStartTime());
         info.setPlanEndTime(launch.getPlanEndTime());
         
-        // 获取服务项名称和客户名称
+        // 获取服务类型和客户名称
         if (launch.getServiceItemId() != null) {
             ServiceItemDO serviceItem = serviceItemMapper.selectById(launch.getServiceItemId());
             if (serviceItem != null) {
-                info.setServiceItemName(serviceItem.getName());
                 info.setCustomerName(serviceItem.getCustomerName());
                 info.setServiceType(serviceItem.getServiceType());
                 // 获取服务类型的中文名称（从字典，需要根据部门类型选择正确的字典）

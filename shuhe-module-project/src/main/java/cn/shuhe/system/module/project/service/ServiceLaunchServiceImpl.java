@@ -300,8 +300,9 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
         // 调试日志：打印服务项数据
         log.info("【服务发起-服务项列表】合同ID={}, 项目ID={}, 服务项总数={}", contractId, project.getId(), serviceItems.size());
         for (ServiceItemDO item : serviceItems) {
-            log.info("  服务项: id={}, name={}, deptType={}, serviceMode={}, serviceMemberType={}, status={}", 
-                    item.getId(), item.getName(), item.getDeptType(), item.getServiceMode(), item.getServiceMemberType(), item.getStatus());
+            log.info("  服务项: id={}, serviceType={}, deptType={}, serviceMode={}, serviceMemberType={}, status={}",
+                    item.getId(), item.getServiceType(), item.getDeptType(),
+                    item.getServiceMode(), item.getServiceMemberType(), item.getStatus());
         }
 
         return serviceItems.stream()
@@ -333,8 +334,9 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
                     Map<String, Object> map = new HashMap<>();
                     map.put("id", item.getId());
                     map.put("projectId", item.getProjectId());
-                    map.put("name", item.getName());
                     map.put("serviceType", item.getServiceType());
+                    map.put("serviceTypeName",
+                            serviceItemService.resolveServiceTypeLabel(item.getDeptType(), item.getServiceType()));
                     map.put("deptType", item.getDeptType());
                     map.put("deptId", item.getDeptId());
                     map.put("status", item.getStatus());
@@ -771,7 +773,6 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
         if (launch.getServiceItemId() != null) {
             ServiceItemDO serviceItem = serviceItemMapper.selectById(launch.getServiceItemId());
             if (serviceItem != null) {
-                respVO.setServiceItemName(serviceItem.getName());
                 respVO.setServiceType(serviceItem.getServiceType());
                 respVO.setDeptType(serviceItem.getDeptType());
                 respVO.setCustomerName(serviceItem.getCustomerName());

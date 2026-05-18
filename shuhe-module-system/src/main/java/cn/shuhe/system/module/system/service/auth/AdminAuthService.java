@@ -106,4 +106,27 @@ public interface AdminAuthService {
      */
     AuthLoginRespVO switchToAdmin(Long sourceUserId, String accessToken, @Valid AuthSwitchAdminReqVO reqVO);
 
+    /**
+     * 开发环境一键登录·切换到任意目标用户
+     *
+     * 仅当 shuhe.security.dev-login-as-enabled=true 时启用（local/dev profile 配置开启，prod 默认关闭）。
+     * 与 {@link #switchToAdmin} 的区别：无需密码、可切到任意 userId。
+     *
+     * @param sourceUserId 当前登录用户 id
+     * @param accessToken  当前访问令牌（将失效）
+     * @param reqVO        目标用户 id
+     * @return 新 token + 目标用户信息
+     */
+    AuthLoginRespVO devLoginAs(Long sourceUserId, String accessToken, @Valid AuthDevLoginAsReqVO reqVO);
+
+    /**
+     * 开发环境一键登录·获取「常用账号清单」
+     *
+     * 后端从 {@code shuhe.security.dev-login-as-preset-users} 读配置，
+     * enrich userId + nickname 后返回。未启用功能时返回空列表（前端据此决定是否展示按钮）。
+     *
+     * @return 常用账号清单，未启用 / 配置为空时返回空 List
+     */
+    java.util.List<AuthDevLoginAsPresetUserRespVO> getDevLoginAsPresetUsers();
+
 }

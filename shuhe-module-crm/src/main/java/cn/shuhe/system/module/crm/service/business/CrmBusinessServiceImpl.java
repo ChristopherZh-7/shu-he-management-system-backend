@@ -468,6 +468,10 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
             projectReqVO.setManagerIds(Collections.singletonList(business.getOwnerUserId()));
             projectReqVO.setManagerNames(Collections.singletonList(ownerName));
         }
+        // 业界路径 2：把商机的涉及部门派生到项目（落 project.involved_dept_ids 字段）
+        if (CollUtil.isNotEmpty(business.getInvolvedDeptIds())) {
+            projectReqVO.setInvolvedDeptIds(new java.util.ArrayList<>(business.getInvolvedDeptIds()));
+        }
 
         Long projectId = projectService.createProject(projectReqVO);
 
@@ -500,8 +504,49 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
             }
         }
 
-        log.info("[createProjectInternally] 商机 {} 创建项目 {} 成功，项目经理：{}，合同关联: {}",
-                business.getName(), projectId, ownerName, contractId);
+        // ====== 业界路径 2 · 从商机 involvedDeptIds 派生项目可见性 ======
+        // 1) 写入 project_dept_visibility：部门下所有人能看该项目
+        // 2) 把每个涉及部门的 leader_user_id 也加为项目成员（roleType=2 普通成员）
+        if (CollUtil.isNotEmpty(business.getInvolvedDeptIds())) {
+            java.util.Set<Long> involvedDeptIds = new java.util.LinkedHashSet<>(business.getInvolvedDeptIds());
+            try {
+                projectService.replaceProjectDeptVisibility(projectId, new java.util.ArrayList<>(involvedDeptIds));
+                log.info("[createProjectInternally] 项目 {} 同步可见部门 = {}", projectId, involvedDeptIds);
+            } catch (Exception e) {
+                log.warn("[createProjectInternally] 同步项目可见部门失败 projectId={}: {}",
+                        projectId, e.getMessage(), e);
+            }
+            // 把每个涉及部门的负责人加为项目成员（普通成员 roleType=2）
+            for (Long deptId : involvedDeptIds) {
+                if (deptId == null) {
+                    continue;
+                }
+                try {
+                    var dept = deptApi.getDept(deptId);
+                    if (dept == null || dept.getLeaderUserId() == null) {
+                        continue;
+                    }
+                    Long deptLeaderId = dept.getLeaderUserId();
+                    // 避免与商机负责人重复
+                    if (deptLeaderId.equals(business.getOwnerUserId())) {
+                        continue;
+                    }
+                    AdminUserRespDTO deptLeader = adminUserApi.getUser(deptLeaderId);
+                    String deptLeaderName = deptLeader != null ? deptLeader.getNickname() : "";
+                    // roleType=3 审核人员（部门负责人有 canManage 权限，能编辑项目；
+                    // 普通员工 roleType=2 只能看自己部门 tab 不能编辑）
+                    projectService.addProjectMember(projectId, deptLeaderId, deptLeaderName, 3);
+                    log.info("[createProjectInternally] 已把涉及部门 {} 负责人 {} ({}) 加入项目 {} 成员 (roleType=3 审核人员)",
+                            deptId, deptLeaderId, deptLeaderName, projectId);
+                } catch (Exception e) {
+                    log.warn("[createProjectInternally] 添加涉及部门 {} 负责人为项目成员失败: {}",
+                            deptId, e.getMessage(), e);
+                }
+            }
+        }
+
+        log.info("[createProjectInternally] 商机 {} 创建项目 {} 成功，项目经理：{}，合同关联: {}，涉及部门: {}",
+                business.getName(), projectId, ownerName, contractId, business.getInvolvedDeptIds());
 
         // 群通知（如有群）
         if (business.getDingtalkChatId() != null) {

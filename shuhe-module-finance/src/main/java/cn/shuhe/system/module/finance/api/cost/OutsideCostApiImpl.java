@@ -96,14 +96,14 @@ public class OutsideCostApiImpl implements OutsideCostApi {
             String content = String.format(
                     "### 外出费用待指派结算人\n\n" +
                     "**合同编号**：%s\n\n" +
-                    "**服务项**：%s\n\n" +
+                    "**服务类型**：%s\n\n" +
                     "**发起部门**：%s\n\n" +
                     "**发起人**：%s\n\n" +
                     "**外出地点**：%s\n\n" +
                     "**外出事由**：%s\n\n" +
                     "外出已完成，请指派结算人（找谁要钱）。",
                     record.getContractNo(),
-                    record.getServiceItemName(),
+                    outsideCostRecordService.resolveServiceTypeLabel(record.getDeptType(), record.getServiceType()),
                     record.getRequestDeptName(),
                     record.getRequestUserName(),
                     destination,
@@ -153,14 +153,14 @@ public class OutsideCostApiImpl implements OutsideCostApi {
             String content = String.format(
                     "### 外出费用待填写金额\n\n" +
                     "**合同编号**：%s\n\n" +
-                    "**服务项**：%s\n\n" +
+                    "**服务类型**：%s\n\n" +
                     "**目标部门**：%s\n\n" +
                     "**指派人**：%s\n\n" +
                     "**外出地点**：%s\n\n" +
                     "**外出事由**：%s\n\n" +
                     "您被指派为此次外出的费用结算人，请填写费用金额。",
                     record.getContractNo(),
-                    record.getServiceItemName(),
+                    outsideCostRecordService.resolveServiceTypeLabel(record.getDeptType(), record.getServiceType()),
                     record.getTargetDeptName(),
                     record.getAssignUserName(),
                     destination,

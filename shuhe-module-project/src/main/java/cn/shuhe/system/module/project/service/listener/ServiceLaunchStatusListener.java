@@ -214,7 +214,8 @@ public class ServiceLaunchStatusListener extends BpmProcessInstanceStatusEventLi
         if (launch.getServiceItemId() != null) {
             ServiceItemDO serviceItem = serviceItemService.getServiceItem(launch.getServiceItemId());
             if (serviceItem != null) {
-                taskDescription = serviceItem.getName() != null ? serviceItem.getName() : "服务执行";
+                taskDescription = serviceItemService.resolveServiceTypeLabel(
+                        serviceItem.getDeptType(), serviceItem.getServiceType());
             }
         }
 
@@ -355,7 +356,7 @@ public class ServiceLaunchStatusListener extends BpmProcessInstanceStatusEventLi
             // 获取服务类型的中文名称（需要根据部门类型选择正确的字典）
             String serviceTypeName = getServiceTypeLabel(serviceType, deptType);
             if (StrUtil.isEmpty(serviceTypeName)) {
-                serviceTypeName = getStringFromVariables(processVariables, "serviceItemName", "未知服务项");
+                serviceTypeName = getStringFromVariables(processVariables, "serviceTypeName", "未知服务类型");
             }
             
             String planStartTime = formatDateTime(launch.getPlanStartTime());
@@ -531,8 +532,8 @@ public class ServiceLaunchStatusListener extends BpmProcessInstanceStatusEventLi
     private void sendDingtalkNotifyToExecutors(ServiceLaunchDO launch, List<Long> executorUserIds,
                                                 Map<String, Object> processVariables) {
         try {
-            // 获取相关信息
-            String serviceItemName = getStringFromVariables(processVariables, "serviceItemName", "未知服务项");
+            // 获取相关信息（服务项名称已废弃，统一展示服务类型中文 label）
+            String serviceTypeName = getStringFromVariables(processVariables, "serviceTypeName", "未知服务类型");
             String customerName = getStringFromVariables(processVariables, "customerName", "未知客户");
             String executeDeptName = getStringFromVariables(processVariables, "executeDeptName", "未知部门");
             String planStartTime = formatDateTime(launch.getPlanStartTime());
@@ -555,7 +556,7 @@ public class ServiceLaunchStatusListener extends BpmProcessInstanceStatusEventLi
             StringBuilder contentBuilder = new StringBuilder();
             contentBuilder.append("**").append(title).append("**\n\n");
             contentBuilder.append("您已被安排执行以下服务任务：\n\n");
-            contentBuilder.append("- 服务项：").append(serviceItemName).append("\n");
+            contentBuilder.append("- 服务类型：").append(serviceTypeName).append("\n");
             contentBuilder.append("- 客户：").append(customerName).append("\n");
             contentBuilder.append("- 执行部门：").append(executeDeptName).append("\n");
             contentBuilder.append("- 计划时间：").append(planStartTime).append(" ~ ").append(planEndTime).append("\n");

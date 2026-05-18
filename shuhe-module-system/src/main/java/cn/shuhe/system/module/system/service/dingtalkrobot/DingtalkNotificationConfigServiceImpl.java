@@ -364,7 +364,7 @@ public class DingtalkNotificationConfigServiceImpl implements DingtalkNotificati
         list.add(createEventType("service_launch_create", "project", "服务启动创建",
                 Arrays.asList("projectName", "serviceName", "managerName", "createTime")));
         list.add(createEventType("round_deadline_remind", "project", "执行计划截止提醒",
-                Arrays.asList("serviceItemName", "roundName", "deadline", "remainingDays", "customerName", "serviceType")));
+                Arrays.asList("serviceTypeName", "roundName", "deadline", "remainingDays", "customerName", "serviceType")));
 
         // 系统模块事件
         list.add(createEventType("user_login", "system", "用户登录",

@@ -56,8 +56,14 @@ public class CrmBusinessRespVO {
     @ExcelProperty("负责人部门")
     private String ownerUserDeptName;
 
+    @Schema(description = "负责人所在部门ID", example = "117")
+    private Long ownerUserDeptId;
+
     @Schema(description = "部门金额分配列表")
     private List<DeptAllocationVO> deptAllocations;
+
+    @Schema(description = "涉及部门 id 数组（多选·决定派生项目的部门可见性）", example = "[101, 102]")
+    private List<Long> involvedDeptIds;
 
     @Data
     @Schema(description = "部门金额分配（含负责人）")

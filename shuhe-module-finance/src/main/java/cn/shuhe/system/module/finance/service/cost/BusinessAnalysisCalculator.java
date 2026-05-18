@@ -373,7 +373,7 @@ public class BusinessAnalysisCalculator {
         for (Map<String, Object> item : items) {
             BigDecimal amount = getBigDecimal(item.get("allocatedAmount"));
             if (amount.compareTo(BigDecimal.ZERO) > 0) {
-                log.debug("[二线收入] 用户 {} 服务项 {} 收入: {}", userId, item.get("serviceItemName"), amount);
+                log.debug("[二线收入] 用户 {} 服务类型 {} 收入: {}", userId, item.get("serviceType"), amount);
             }
             totalIncome = totalIncome.add(amount);
         }
@@ -392,11 +392,11 @@ public class BusinessAnalysisCalculator {
         BigDecimal allocatedAmount = getBigDecimal(round.get("allocatedAmount"));
         Integer maxCount = getIntValue(round.get("maxCount"));
         String executorIds = (String) round.get("executorIds");
-        String serviceItemName = (String) round.get("serviceItemName");
+        String serviceType = (String) round.get("serviceType");
         Long roundId = getLongValue(round.get("roundId"));
 
-        log.debug("[轮次收入计算] 服务项={}, 轮次ID={}, 分配金额={}, 最大轮次={}, 执行人IDs={}",
-                serviceItemName, roundId, allocatedAmount, maxCount, executorIds);
+        log.debug("[轮次收入计算] 服务类型={}, 轮次ID={}, 分配金额={}, 最大轮次={}, 执行人IDs={}",
+                serviceType, roundId, allocatedAmount, maxCount, executorIds);
 
         if (allocatedAmount == null || allocatedAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
@@ -410,8 +410,8 @@ public class BusinessAnalysisCalculator {
             perRoundIncome = perRoundIncome.divide(new BigDecimal(executorCount), 2, RoundingMode.HALF_UP);
         }
 
-        log.debug("[轮次收入计算] 服务项={}, 用户={} 收入: {} / {} / {} = {}",
-                serviceItemName, userId, allocatedAmount, totalRounds, executorCount, perRoundIncome);
+        log.debug("[轮次收入计算] 服务类型={}, 用户={} 收入: {} / {} / {} = {}",
+                serviceType, userId, allocatedAmount, totalRounds, executorCount, perRoundIncome);
 
         return perRoundIncome;
     }
@@ -579,7 +579,8 @@ public class BusinessAnalysisCalculator {
             }
             result.add(ProjectParticipation.builder()
                     .projectId(entry.getKey())
-                    .projectName((String) firstRound.get("serviceItemName"))
+                    // 服务项名称字段已废弃；这里用服务类型 value 作为项目展示名（前端可自行字典翻译）
+                    .projectName((String) firstRound.get("serviceType"))
                     .customerName((String) firstRound.get("customerName"))
                     .participationType("executor")
                     .participationTypeName("执行")

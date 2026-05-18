@@ -71,6 +71,18 @@ public class ServiceItemServiceImpl implements ServiceItemService {
     @Resource
     private cn.shuhe.system.module.system.api.dept.DeptApi deptApi;
 
+    @Resource
+    private cn.shuhe.system.module.system.api.dict.DictDataApi dictDataApi;
+
+    /**
+     * 部门类型 → 服务类型字典 type 映射（与前端 DEPT_TYPE_SERVICE_MAP 保持一致）。
+     */
+    private static final java.util.Map<Integer, String> DEPT_TYPE_SERVICE_DICT_MAP =
+            java.util.Map.of(
+                    1, "project_service_type_security",
+                    2, "project_service_type_operation",
+                    3, "project_service_type_data");
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createServiceItem(ServiceItemSaveReqVO createReqVO) {
@@ -115,10 +127,6 @@ public class ServiceItemServiceImpl implements ServiceItemService {
             }
         }
         
-        // 6. 如果未提供名称，自动生成
-        if (StrUtil.isBlank(serviceItem.getName())) {
-            serviceItem.setName(generateServiceItemName(createReqVO, code));
-        }
         // 处理标签
         if (createReqVO.getTags() != null && !createReqVO.getTags().isEmpty()) {
             serviceItem.setTags(JSONUtil.toJsonStr(createReqVO.getTags()));
@@ -322,26 +330,34 @@ public class ServiceItemServiceImpl implements ServiceItemService {
     }
 
     /**
-     * 自动生成服务项名称
-     * 格式：{客户名称}-{服务类型}-{编号后4位} 或 服务项-{编号后4位}
+     * 把服务类型字典 value（英文）反查成 label（中文）。
+     * 字典查询失败时静默返回原值，避免命名链路因外部依赖崩溃。
      */
-    private String generateServiceItemName(ServiceItemSaveReqVO reqVO, String code) {
-        StringBuilder name = new StringBuilder();
-        // 添加客户名称
-        if (StrUtil.isNotBlank(reqVO.getCustomerName())) {
-            name.append(reqVO.getCustomerName()).append("-");
+    @Override
+    public String resolveServiceTypeLabel(Integer deptType, String value) {
+        if (StrUtil.isBlank(value)) {
+            return null;
         }
-        // 添加服务类型
-        if (StrUtil.isNotBlank(reqVO.getServiceType())) {
-            name.append(reqVO.getServiceType()).append("-");
+        String dictType = deptType == null ? null : DEPT_TYPE_SERVICE_DICT_MAP.get(deptType);
+        if (StrUtil.isBlank(dictType)) {
+            return value;
         }
-        // 如果没有任何信息，使用默认前缀
-        if (name.isEmpty()) {
-            name.append("服务项-");
+        try {
+            java.util.List<cn.shuhe.system.framework.common.biz.system.dict.dto.DictDataRespDTO> list =
+                    dictDataApi.getDictDataList(dictType);
+            if (list == null) {
+                return value;
+            }
+            return list.stream()
+                    .filter(d -> value.equals(d.getValue()))
+                    .map(cn.shuhe.system.framework.common.biz.system.dict.dto.DictDataRespDTO::getLabel)
+                    .filter(StrUtil::isNotBlank)
+                    .findFirst()
+                    .orElse(value);
+        } catch (Exception ex) {
+            log.warn("【服务项】字典查询失败 dictType={} value={}: {}", dictType, value, ex.getMessage());
+            return value;
         }
-        // 添加编号后4位作为唯一标识
-        name.append(code.substring(code.length() - 4));
-        return name.toString();
     }
 
     @Override
@@ -375,9 +391,9 @@ public class ServiceItemServiceImpl implements ServiceItemService {
             int rowNum = i + 2; // Excel行号从2开始（第1行是表头）
 
             try {
-                // 校验必填字段
-                if (StrUtil.isBlank(excelVO.getName())) {
-                    failureRecords.put(rowNum, "服务项名称不能为空");
+                // 服务类型必填（用于前端展示与统计；服务项名称字段已废弃）
+                if (StrUtil.isBlank(excelVO.getServiceType())) {
+                    failureRecords.put(rowNum, "服务类型不能为空");
                     continue;
                 }
 
@@ -386,7 +402,6 @@ public class ServiceItemServiceImpl implements ServiceItemService {
                 saveReqVO.setProjectId(projectId);
                 saveReqVO.setDeptType(deptType);
                 saveReqVO.setDeptId(deptId);
-                saveReqVO.setName(excelVO.getName());
                 saveReqVO.setServiceType(excelVO.getServiceType());
                 saveReqVO.setCustomerName(excelVO.getCustomerName());
                 saveReqVO.setRemark(excelVO.getRemark());

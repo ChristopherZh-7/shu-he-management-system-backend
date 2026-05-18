@@ -47,6 +47,9 @@ public class ProjectRespVO {
     @Schema(description = "项目负责人姓名列表", example = "[\"张三\", \"李四\"]")
     private List<String> managerNames;
 
+    @Schema(description = "涉及部门 id 数组（从商机派生·决定项目对哪些部门可见）", example = "[101, 102]")
+    private List<Long> involvedDeptIds;
+
     // ========== 状态 ==========
 
     @Schema(description = "项目状态：0草稿 1进行中 2已完成", example = "1")

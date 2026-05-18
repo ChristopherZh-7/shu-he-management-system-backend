@@ -60,6 +60,9 @@ public class ProjectWorkRecordController {
     private ServiceItemMapper serviceItemMapper;
 
     @Resource
+    private cn.shuhe.system.module.project.service.ServiceItemService serviceItemService;
+
+    @Resource
     private AdminUserApi adminUserApi;
 
     @Resource
@@ -277,8 +280,9 @@ public class ProjectWorkRecordController {
         List<Map<String, Object>> result = serviceItems.stream().map(item -> {
             Map<String, Object> map = new HashMap<>();
             map.put("id", item.getId());
-            map.put("name", item.getName());
             map.put("serviceType", item.getServiceType());
+            map.put("serviceTypeName",
+                    serviceItemService.resolveServiceTypeLabel(item.getDeptType(), item.getServiceType()));
             return map;
         }).collect(Collectors.toList());
         

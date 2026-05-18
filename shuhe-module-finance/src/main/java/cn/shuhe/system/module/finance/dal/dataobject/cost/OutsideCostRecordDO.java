@@ -56,11 +56,6 @@ public class OutsideCostRecordDO extends BaseDO {
     private Long serviceItemId;
 
     /**
-     * 服务项名称（快照）
-     */
-    private String serviceItemName;
-
-    /**
      * 服务类型（字典值，快照）
      */
     private String serviceType;
