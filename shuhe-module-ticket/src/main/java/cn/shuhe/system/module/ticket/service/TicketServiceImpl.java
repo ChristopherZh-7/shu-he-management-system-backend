@@ -143,16 +143,7 @@ public class TicketServiceImpl implements TicketService {
             throw exception(TICKET_CREATOR_DEPT_MISSING);
         }
 
-        // 4. 校验指定的处理人
-        AdminUserRespDTO assignee = null;
-        if (createReqVO.getAssigneeId() != null) {
-            assignee = adminUserApi.getUser(createReqVO.getAssigneeId());
-            if (assignee == null) {
-                throw exception(TICKET_ASSIGNEE_NOT_EXISTS);
-            }
-        }
-
-        // 5. 装配 DO
+        // 4. 装配 DO。创建时不允许直接指定处理人，必须先按 deptId 派到部门，由部门负责人接单。
         TicketDO ticket = TicketDO.builder()
                 .title(createReqVO.getTitle())
                 .content(createReqVO.getContent())
@@ -173,16 +164,11 @@ public class TicketServiceImpl implements TicketService {
                 .notifyChannels("inner,dingtalk")
                 .notifyStatus(0)
                 .build();
-        if (assignee != null) {
-            ticket.setAssigneeId(assignee.getId());
-            ticket.setAssigneeName(assignee.getNickname());
-            ticket.setAssigneeDeptId(assignee.getDeptId());
-        }
 
-        // 6. 生成工单号（带重试，靠 uk_ticket_no 唯一索引兜底）
+        // 5. 生成工单号（带重试，靠 uk_ticket_no 唯一索引兜底）
         ticket.setTicketNo(generateTicketNo());
 
-        // 7. 入库 + 写 log
+        // 6. 入库 + 写 log
         ticketMapper.insert(ticket);
         writeLog(ticket.getId(), TicketActionEnum.CREATE, null, ticket.getStatus(),
                 null, ticket.getAssigneeId(), "创建工单");

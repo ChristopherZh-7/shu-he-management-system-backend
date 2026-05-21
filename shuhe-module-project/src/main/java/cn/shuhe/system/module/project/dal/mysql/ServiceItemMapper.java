@@ -188,10 +188,10 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
     }
 
     /**
-     * 根据 项目 + 部门类型 + 服务类型 反查服务项。
+     * 根据 项目 + 部门类型 + 服务类型 反查已开始的服务项。
      *
      * <p>用于工单 service_launch 接单时由 listener 反查具体服务项 id；按 id desc 取最新。
-     * 同 (projectId, deptType, serviceType) 下若有多个匹配则取最近创建的（id 最大）。
+     * 同 (projectId, deptType, serviceType) 下若有多个已开始的匹配则取最近创建的（id 最大）。
      */
     default ServiceItemDO selectByProjectIdDeptTypeAndServiceType(Long projectId,
                                                                    Integer deptType,
@@ -203,6 +203,7 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
                 .eq(ServiceItemDO::getProjectId, projectId)
                 .eqIfPresent(ServiceItemDO::getDeptType, deptType)
                 .eq(ServiceItemDO::getServiceType, serviceType)
+                .eq(ServiceItemDO::getStatus, 1)
                 .eq(ServiceItemDO::getVisible, 1)
                 .orderByDesc(ServiceItemDO::getId)
                 .last("LIMIT 1"));

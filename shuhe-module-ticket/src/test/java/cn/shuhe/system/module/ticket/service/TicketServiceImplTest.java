@@ -93,20 +93,17 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
     // ========== createTicket ==========
 
     @Test
-    void createTicket_success_withAssignee() {
-        long me = 100L, assigneeId = 200L;
+    void createTicket_success_withoutAssignee() {
+        long me = 100L;
         AdminUserRespDTO creator = makeUser(me, "Alice", 9L);
-        AdminUserRespDTO assignee = makeUser(assigneeId, "Bob", 8L);
         try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
             sec.when(SecurityFrameworkUtils::getLoginUserNickname).thenReturn("Alice");
             when(adminUserApi.getUser(eq(me))).thenReturn(creator);
-            when(adminUserApi.getUser(eq(assigneeId))).thenReturn(assignee);
             when(ticketMapper.selectLatestByDay(any(), any())).thenReturn(null);
             when(ticketMapper.selectByTicketNo(any())).thenReturn(null);
 
             TicketSaveReqVO req = baseCreateReq();
-            req.setAssigneeId(assigneeId);
             ticketService.createTicket(req);
 
             ArgumentCaptor<TicketDO> captor = ArgumentCaptor.forClass(TicketDO.class);
@@ -115,8 +112,8 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
             assertEquals("故障", saved.getTitle());
             assertEquals(me, saved.getCreatorId());
             assertEquals("Alice", saved.getCreatorName());
-            assertEquals(assigneeId, saved.getAssigneeId());
-            assertEquals("Bob", saved.getAssigneeName());
+            assertNull(saved.getAssigneeId());
+            assertNull(saved.getAssigneeName());
             assertEquals(TicketStatusEnum.PENDING.getStatus(), saved.getStatus());
             assertNotNull(saved.getTicketNo());
             assertTrue(saved.getTicketNo().startsWith("TK"));
@@ -167,22 +164,6 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
             req.setDeptId(null);
 
             assertServiceException(() -> ticketService.createTicket(req), TICKET_CREATOR_DEPT_MISSING);
-        }
-    }
-
-    @Test
-    void createTicket_assigneeNotExists_throws() {
-        long me = 100L;
-        AdminUserRespDTO creator = makeUser(me, "Alice", 9L);
-        try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
-            sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
-            when(adminUserApi.getUser(eq(me))).thenReturn(creator);
-            when(adminUserApi.getUser(eq(999L))).thenReturn(null);
-
-            TicketSaveReqVO req = baseCreateReq();
-            req.setAssigneeId(999L);
-
-            assertServiceException(() -> ticketService.createTicket(req), TICKET_ASSIGNEE_NOT_EXISTS);
         }
     }
 

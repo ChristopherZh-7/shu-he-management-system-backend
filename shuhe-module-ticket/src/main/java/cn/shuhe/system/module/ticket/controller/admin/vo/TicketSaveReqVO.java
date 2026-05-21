@@ -36,9 +36,6 @@ public class TicketSaveReqVO {
     @Schema(description = "关联业务 ID（business_type 非 general 时必填）")
     private Long businessId;
 
-    @Schema(description = "直接指定处理人 ID；不填进入待分派状态", example = "200")
-    private Long assigneeId;
-
     @Schema(description = "工单归属部门 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "101")
     @NotNull(message = "工单归属部门不能为空")
     private Long deptId;

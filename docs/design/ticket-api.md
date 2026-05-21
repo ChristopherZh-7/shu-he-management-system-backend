@@ -91,7 +91,6 @@
 | `priority` | int | ✗ | 0-3，默认 1 | 0低/1中/2高/3紧急 |
 | `businessType` | string | ✗ | 默认 `general` | 业务类型 |
 | `businessId` | long | ✗ | — | 关联业务 ID（business_type 非 general 时必填） |
-| `assigneeId` | long | ✗ | 必须存在且未离职 | 直接指定处理人；不填则进入待分派 |
 | `deptId` | long | ✓ | 必须是当前用户所在部门或下属部门 | 工单归属部门 |
 | `dueTime` | datetime | ✗ | ISO8601，> now() | 截止时间（SLA）|
 | `projectId` | long | ✗ | 必须存在 | 关联项目 |
@@ -394,7 +393,6 @@ export interface TicketSaveReqVO {
   priority?: 0 | 1 | 2 | 3;
   businessType?: string;
   businessId?: number;
-  assigneeId?: number;
   deptId: number;
   dueTime?: string;
   projectId?: number;

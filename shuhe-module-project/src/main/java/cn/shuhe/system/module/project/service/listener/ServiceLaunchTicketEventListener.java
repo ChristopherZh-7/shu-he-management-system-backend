@@ -116,7 +116,7 @@ public class ServiceLaunchTicketEventListener {
                 .selectByProjectIdDeptTypeAndServiceType(projectId, deptType, serviceType);
         if (serviceItem == null) {
             throw new IllegalArgumentException(String.format(
-                    "项目 %d 下找不到 部门类型=%s 且 服务类型=%s 的服务项，请先到项目管理里添加",
+                    "项目 %d 下找不到 部门类型=%s 且 服务类型=%s 的已开始服务项，请先到项目管理里添加并开始该服务项",
                     projectId, deptType, serviceType));
         }
 
