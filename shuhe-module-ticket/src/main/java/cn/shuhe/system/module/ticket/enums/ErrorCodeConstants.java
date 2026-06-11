@@ -31,7 +31,8 @@ public interface ErrorCodeConstants {
     ErrorCode TICKET_ASSIGNEE_REQUIRED   = new ErrorCode(1_032_003_001, "请先分派处理人");
     ErrorCode TICKET_ASSIGNEE_SAME       = new ErrorCode(1_032_003_002, "目标处理人与当前处理人相同");
     ErrorCode TICKET_ASSIGNEE_NOT_EXISTS = new ErrorCode(1_032_003_003, "目标处理人不存在或已离职");
-    ErrorCode TICKET_REOPEN_FORBIDDEN    = new ErrorCode(1_032_003_004, "工单已关闭超过 30 天，不允许重新打开");
+    ErrorCode TICKET_REOPEN_EXPIRED      = new ErrorCode(1_032_003_004, "工单完成/关闭已超过 {0} 天，不允许重开，请新建工单并关联原工单号");
+    ErrorCode TICKET_REOPEN_LIMIT        = new ErrorCode(1_032_003_005, "工单重开次数已达上限（{0} 次），请新建工单");
 
     // ========== 评论 1_032_004_xxx ==========
     ErrorCode TICKET_COMMENT_NOT_EXISTS    = new ErrorCode(1_032_004_000, "评论不存在");

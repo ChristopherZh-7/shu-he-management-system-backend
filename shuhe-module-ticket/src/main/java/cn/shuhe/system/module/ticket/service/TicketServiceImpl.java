@@ -7,6 +7,8 @@ import cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils;
 import cn.shuhe.system.module.system.api.dept.DeptApi;
 import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
+import cn.shuhe.system.module.system.api.dingtalk.DingtalkNotifyApi;
+import cn.shuhe.system.module.system.api.dingtalk.dto.DingtalkNotifySendReqDTO;
 import cn.shuhe.system.module.system.api.permission.PermissionApi;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
@@ -14,6 +16,10 @@ import cn.shuhe.system.module.ticket.controller.admin.vo.TicketAcceptReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketAssignReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketFinishReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketPageReqVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReopenReqVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReturnReqVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReviewPassReqVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReviewRejectReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketSaveReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketTransferReqVO;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketCategoryDO;
@@ -30,6 +36,7 @@ import cn.shuhe.system.module.ticket.enums.TicketSourceEnum;
 import cn.shuhe.system.module.ticket.enums.TicketStatusEnum;
 import cn.shuhe.system.module.ticket.framework.event.TicketAcceptedEvent;
 import cn.shuhe.system.module.ticket.framework.statemachine.TicketStateMachine;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -67,6 +74,8 @@ import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_NOT_
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_NOT_OWN;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_NO_GENERATE_FAIL;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_NO_PERMISSION;
+import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_REOPEN_EXPIRED;
+import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_REOPEN_LIMIT;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_STATUS_INVALID;
 
 /**
@@ -83,6 +92,11 @@ public class TicketServiceImpl implements TicketService {
     private static final String ROLE_SUPER_ADMIN = "super_admin";
     private static final DateTimeFormatter TICKET_NO_DAY_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final int TICKET_NO_GENERATE_RETRIES = 5;
+
+    /** 重开窗口：完成/关闭后 N 天内允许 reopen。 */
+    private static final int REOPEN_WINDOW_DAYS = 7;
+    /** 重开次数上限（防滥用）。 */
+    private static final int REOPEN_MAX_COUNT = 3;
 
     @Resource
     private TicketMapper ticketMapper;
@@ -107,6 +121,9 @@ public class TicketServiceImpl implements TicketService {
 
     @Resource
     private ApplicationEventPublisher eventPublisher;
+
+    @Resource
+    private DingtalkNotifyApi dingtalkNotifyApi;
 
     // ========== CRUD ==========
 
@@ -173,6 +190,11 @@ public class TicketServiceImpl implements TicketService {
         writeLog(ticket.getId(), TicketActionEnum.CREATE, null, ticket.getStatus(),
                 null, ticket.getAssigneeId(), "创建工单");
 
+        // 7. 钉钉通知派单部门负责人接单
+        notifyDingtalk(ticket, Collections.singletonList(resolveDeptLeaderId(ticket.getDeptId())),
+                "新工单待接单",
+                String.format("- 提单人：%s%n%n您是派单部门负责人，请尽快接单派工", ticket.getCreatorName()));
+
         return ticket.getId();
     }
 
@@ -181,12 +203,13 @@ public class TicketServiceImpl implements TicketService {
     public void updateTicket(TicketSaveReqVO updateReqVO) {
         TicketDO existing = mustExist(updateReqVO.getId());
         Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
-        // 仅提单人本人 / 超管可改，且必须 status=0
+        // 仅提单人本人 / 超管可改，且必须 status=0 待处理 或 status=6 已退回（退回后修改再重提）
         if (!isSuperAdmin(currentUserId)
                 && !Objects.equals(existing.getCreatorId(), currentUserId)) {
             throw exception(TICKET_NOT_OWN);
         }
-        if (!TicketStatusEnum.PENDING.getStatus().equals(existing.getStatus())) {
+        if (!TicketStatusEnum.PENDING.getStatus().equals(existing.getStatus())
+                && !TicketStatusEnum.RETURNED.getStatus().equals(existing.getStatus())) {
             throw exception(TICKET_STATUS_INVALID,
                     TicketStatusEnum.nameOf(existing.getStatus()), "修改基本信息");
         }
@@ -357,6 +380,16 @@ public class TicketServiceImpl implements TicketService {
                         ? "接单并指派 " + executorIds.size() + " 名执行人"
                         : reqVO.getRemark());
 
+        // 7.5 钉钉通知执行人 + 提单人
+        String executorNames = executorIds.stream()
+                .map(uid -> executorMap.get(uid).getNickname())
+                .collect(Collectors.joining("、"));
+        List<Long> acceptNotifyTargets = new ArrayList<>(executorIds);
+        acceptNotifyTargets.add(ticket.getCreatorId());
+        notifyDingtalk(ticket, acceptNotifyTargets, "工单已接单派工",
+                String.format("- 接单人：%s%n- 执行人：%s%n%n请执行人尽快开始处理",
+                        acceptor.getNickname(), executorNames));
+
         // 8. 发事件供业务驱动器消费（同步发布；异常会回滚事务）
         TicketAcceptedEvent event = TicketAcceptedEvent.builder()
                 .ticketId(ticket.getId())
@@ -415,16 +448,79 @@ public class TicketServiceImpl implements TicketService {
                 && !isSuperAdmin(currentUserId)) {
             throw exception(TICKET_NOT_ASSIGNEE);
         }
+        // 1 → 2 进入待验收；finishTime 推迟到验收通过时回写
         Integer toStatus = TicketStateMachine.checkTransition(ticket.getStatus(), TicketActionEnum.FINISH);
 
         TicketDO update = new TicketDO();
         update.setId(ticket.getId());
         update.setStatus(toStatus);
-        update.setFinishTime(LocalDateTime.now());
         ticketMapper.updateById(update);
 
         writeLog(ticket.getId(), TicketActionEnum.FINISH, ticket.getStatus(), toStatus,
                 ticket.getAssigneeId(), ticket.getAssigneeId(), reqVO.getResult());
+
+        notifyDingtalk(ticket, Collections.singletonList(ticket.getCreatorId()),
+                "工单待验收",
+                String.format("- 处理结果：%s%n%n执行已完成，请尽快验收（通过 / 驳回）",
+                        truncateForNotify(reqVO.getResult())));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reviewPassTicket(TicketReviewPassReqVO reqVO) {
+        TicketDO ticket = mustExist(reqVO.getId());
+        Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
+        ensureCreatorOrAdmin(ticket, currentUserId);
+        Integer toStatus = TicketStateMachine.checkTransition(ticket.getStatus(), TicketActionEnum.REVIEW_PASS);
+
+        AdminUserRespDTO reviewer = adminUserApi.getUser(currentUserId);
+        TicketDO update = new TicketDO();
+        update.setId(ticket.getId());
+        update.setStatus(toStatus);
+        update.setReviewerId(currentUserId);
+        update.setReviewerName(reviewer == null ? null : reviewer.getNickname());
+        update.setReviewTime(LocalDateTime.now());
+        update.setReviewComment(reqVO.getComment());
+        update.setFinishTime(LocalDateTime.now());
+        ticketMapper.updateById(update);
+
+        writeLog(ticket.getId(), TicketActionEnum.REVIEW_PASS, ticket.getStatus(), toStatus,
+                ticket.getAssigneeId(), ticket.getAssigneeId(),
+                reqVO.getComment() == null ? "验收通过" : reqVO.getComment());
+
+        notifyDingtalk(ticket, Collections.singletonList(ticket.getAssigneeId()),
+                "工单验收通过",
+                String.format("- 验收人：%s%n- 验收意见：%s",
+                        reviewer == null ? "-" : reviewer.getNickname(),
+                        reqVO.getComment() == null ? "无" : truncateForNotify(reqVO.getComment())));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reviewRejectTicket(TicketReviewRejectReqVO reqVO) {
+        TicketDO ticket = mustExist(reqVO.getId());
+        Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
+        ensureCreatorOrAdmin(ticket, currentUserId);
+        // 2 → 1 退回原执行人重做；dueTime 不重置（驳回重做仍占用原 SLA）
+        Integer toStatus = TicketStateMachine.checkTransition(ticket.getStatus(), TicketActionEnum.REVIEW_REJECT);
+
+        AdminUserRespDTO reviewer = adminUserApi.getUser(currentUserId);
+        TicketDO update = new TicketDO();
+        update.setId(ticket.getId());
+        update.setStatus(toStatus);
+        update.setReviewerId(currentUserId);
+        update.setReviewerName(reviewer == null ? null : reviewer.getNickname());
+        update.setReviewTime(LocalDateTime.now());
+        update.setReviewComment(reqVO.getReason());
+        ticketMapper.updateById(update);
+
+        writeLog(ticket.getId(), TicketActionEnum.REVIEW_REJECT, ticket.getStatus(), toStatus,
+                ticket.getAssigneeId(), ticket.getAssigneeId(), reqVO.getReason());
+
+        notifyDingtalk(ticket, Collections.singletonList(ticket.getAssigneeId()),
+                "工单验收驳回",
+                String.format("- 驳回原因：%s%n%n工单已退回，请重新处理后再次提交",
+                        truncateForNotify(reqVO.getReason())));
     }
 
     @Override
@@ -446,6 +542,88 @@ public class TicketServiceImpl implements TicketService {
 
         writeLog(ticket.getId(), TicketActionEnum.CLOSE, ticket.getStatus(), toStatus,
                 ticket.getAssigneeId(), ticket.getAssigneeId(), "关闭工单");
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reopenTicket(TicketReopenReqVO reqVO) {
+        TicketDO ticket = mustExist(reqVO.getId());
+        Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
+        ensureCreatorOrAdmin(ticket, currentUserId);
+        Integer toStatus = TicketStateMachine.checkTransition(ticket.getStatus(), TicketActionEnum.REOPEN);
+
+        // 窗口期：finishTime/closeTime 起 REOPEN_WINDOW_DAYS 天内
+        if (!isWithinReopenWindow(ticket)) {
+            throw exception(TICKET_REOPEN_EXPIRED, REOPEN_WINDOW_DAYS);
+        }
+        // 次数上限
+        int reopenCount = ticket.getReopenCount() == null ? 0 : ticket.getReopenCount();
+        if (reopenCount >= REOPEN_MAX_COUNT) {
+            throw exception(TICKET_REOPEN_LIMIT, REOPEN_MAX_COUNT);
+        }
+
+        // 保留原 assignee/executors；清空完成/关闭/验收痕迹（updateById 不更新 null，须用 UpdateWrapper）
+        ticketMapper.update(null, new LambdaUpdateWrapper<TicketDO>()
+                .eq(TicketDO::getId, ticket.getId())
+                .set(TicketDO::getStatus, toStatus)
+                .set(TicketDO::getFinishTime, null)
+                .set(TicketDO::getCloseTime, null)
+                .set(TicketDO::getReviewerId, null)
+                .set(TicketDO::getReviewerName, null)
+                .set(TicketDO::getReviewTime, null)
+                .set(TicketDO::getReviewComment, null)
+                .set(TicketDO::getReopenCount, reopenCount + 1));
+
+        writeLog(ticket.getId(), TicketActionEnum.REOPEN, ticket.getStatus(), toStatus,
+                ticket.getAssigneeId(), ticket.getAssigneeId(),
+                "第 " + (reopenCount + 1) + " 次重开：" + reqVO.getReason());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void returnTicket(TicketReturnReqVO reqVO) {
+        TicketDO ticket = mustExist(reqVO.getId());
+        Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
+        // 与 accept 同权限：工单归属部门负责人（或超管）
+        ensureDeptLeaderOrAdmin(ticket.getDeptId(), currentUserId);
+        Integer toStatus = TicketStateMachine.checkTransition(ticket.getStatus(), TicketActionEnum.RETURN);
+
+        TicketDO update = new TicketDO();
+        update.setId(ticket.getId());
+        update.setStatus(toStatus);
+        update.setReturnReason(reqVO.getReason());
+        ticketMapper.updateById(update);
+
+        writeLog(ticket.getId(), TicketActionEnum.RETURN, ticket.getStatus(), toStatus,
+                ticket.getAssigneeId(), ticket.getAssigneeId(), reqVO.getReason());
+
+        notifyDingtalk(ticket, Collections.singletonList(ticket.getCreatorId()),
+                "工单被退回",
+                String.format("- 退回原因：%s%n%n您可修改工单（含派单部门）后重新提交，或取消工单",
+                        truncateForNotify(reqVO.getReason())));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void resubmitTicket(Long id) {
+        TicketDO ticket = mustExist(id);
+        Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
+        ensureCreatorOrAdmin(ticket, currentUserId);
+        Integer toStatus = TicketStateMachine.checkTransition(ticket.getStatus(), TicketActionEnum.RESUBMIT);
+
+        ticketMapper.update(null, new LambdaUpdateWrapper<TicketDO>()
+                .eq(TicketDO::getId, ticket.getId())
+                .set(TicketDO::getStatus, toStatus)
+                .set(TicketDO::getReturnReason, null));
+
+        writeLog(ticket.getId(), TicketActionEnum.RESUBMIT, ticket.getStatus(), toStatus,
+                ticket.getAssigneeId(), ticket.getAssigneeId(), "修改后重新提交");
+
+        // 重新提交后派单部门可能已被修改，重读最新数据再通知负责人
+        TicketDO latest = ticketMapper.selectById(ticket.getId());
+        notifyDingtalk(latest, Collections.singletonList(resolveDeptLeaderId(latest.getDeptId())),
+                "工单重新提交待接单",
+                String.format("- 提单人：%s%n%n退回工单已修改并重新提交，请尽快接单派工", latest.getCreatorName()));
     }
 
     @Override
@@ -532,8 +710,10 @@ public class TicketServiceImpl implements TicketService {
         if (isCreator || isAssignee || isAdmin || isDeptLeader) {
             actions.add(TicketActionEnum.COMMENT.getAction());
         }
-        // 基础 update：status=0 且是提单人或管理员
-        if (TicketStatusEnum.PENDING.getStatus().equals(status) && (isCreator || isAdmin)) {
+        // 基础 update：status=0 / 6（退回后修改再重提）且是提单人或管理员
+        if ((TicketStatusEnum.PENDING.getStatus().equals(status)
+                || TicketStatusEnum.RETURNED.getStatus().equals(status))
+                && (isCreator || isAdmin)) {
             actions.add("update");
         }
         // 分派：status=0 且是管理员
@@ -544,19 +724,38 @@ public class TicketServiceImpl implements TicketService {
         if (canDo(status, TicketActionEnum.ACCEPT) && (isDeptLeader || isAdmin)) {
             actions.add(TicketActionEnum.ACCEPT.getAction());
         }
+        // 拒单退回：status=0 且是部门负责人（或管理员）
+        if (canDo(status, TicketActionEnum.RETURN) && (isDeptLeader || isAdmin)) {
+            actions.add("return");
+        }
         // 接单：status=0 且是 assignee
         if (canDo(status, TicketActionEnum.START) && isAssignee) {
             actions.add(TicketActionEnum.START.getAction());
         }
-        // 完成：status=1 且是 assignee 或管理员
+        // 完成（提交验收）：status=1 且是 assignee 或管理员
         if (canDo(status, TicketActionEnum.FINISH) && (isAssignee || isAdmin)) {
             actions.add(TicketActionEnum.FINISH.getAction());
+        }
+        // 验收：status=2 且是提单人或管理员（actions 用 camelCase 与前端约定一致）
+        if (canDo(status, TicketActionEnum.REVIEW_PASS) && (isCreator || isAdmin)) {
+            actions.add("reviewPass");
+            actions.add("reviewReject");
         }
         // 关闭：status=3 且是提单人或管理员
         if (canDo(status, TicketActionEnum.CLOSE) && (isCreator || isAdmin)) {
             actions.add(TicketActionEnum.CLOSE.getAction());
         }
-        // 取消：status=0 且是提单人或管理员
+        // 重开：status=3/4 且是提单人或管理员，且窗口期内、未超次数
+        if (canDo(status, TicketActionEnum.REOPEN) && (isCreator || isAdmin)
+                && isWithinReopenWindow(ticket)
+                && (ticket.getReopenCount() == null || ticket.getReopenCount() < REOPEN_MAX_COUNT)) {
+            actions.add(TicketActionEnum.REOPEN.getAction());
+        }
+        // 重新提交：status=6 且是提单人或管理员
+        if (canDo(status, TicketActionEnum.RESUBMIT) && (isCreator || isAdmin)) {
+            actions.add("resubmit");
+        }
+        // 取消：status=0/6 且是提单人或管理员
         if (canDo(status, TicketActionEnum.CANCEL) && (isCreator || isAdmin)) {
             actions.add(TicketActionEnum.CANCEL.getAction());
         }
@@ -576,7 +775,9 @@ public class TicketServiceImpl implements TicketService {
         TicketDO ticket = mustExist(ticketId);
         if (Objects.equals(ticket.getCreatorId(), currentUserId)
                 || Objects.equals(ticket.getAssigneeId(), currentUserId)
-                || isSuperAdmin(currentUserId)) {
+                || isSuperAdmin(currentUserId)
+                // 工单归属部门负责人需进详情接单 / 拒单
+                || isDeptLeader(ticket.getDeptId(), currentUserId)) {
             return ticket;
         }
         throw exception(TICKET_NO_PERMISSION);
@@ -597,6 +798,32 @@ public class TicketServiceImpl implements TicketService {
 
     private boolean isSuperAdmin(Long userId) {
         return userId != null && permissionApi.hasAnyRoles(userId, ROLE_SUPER_ADMIN);
+    }
+
+    /**
+     * 鉴权：当前用户必须是工单提单人，或 super_admin（验收 / 重开 / 重新提交入口用）。
+     */
+    private void ensureCreatorOrAdmin(TicketDO ticket, Long currentUserId) {
+        if (isSuperAdmin(currentUserId)) {
+            return;
+        }
+        if (!Objects.equals(ticket.getCreatorId(), currentUserId)) {
+            throw exception(TICKET_NO_PERMISSION);
+        }
+    }
+
+    /**
+     * 重开窗口判定：以 closeTime（已关闭）或 finishTime（已完成）为基准，{@code REOPEN_WINDOW_DAYS}
+     * 天内允许；基准时间缺失时放行（数据异常不阻断业务）。
+     */
+    private boolean isWithinReopenWindow(TicketDO ticket) {
+        LocalDateTime base = TicketStatusEnum.CLOSED.getStatus().equals(ticket.getStatus())
+                ? ticket.getCloseTime()
+                : ticket.getFinishTime();
+        if (base == null) {
+            return true;
+        }
+        return base.plusDays(REOPEN_WINDOW_DAYS).isAfter(LocalDateTime.now());
     }
 
     /**
@@ -685,6 +912,61 @@ public class TicketServiceImpl implements TicketService {
         } catch (NumberFormatException e) {
             return 1;
         }
+    }
+
+    /** 钉钉通道开关：{@code notify_channels} 为空或包含 dingtalk 才发。 */
+    private boolean dingtalkEnabled(TicketDO ticket) {
+        String channels = ticket.getNotifyChannels();
+        return channels == null || channels.contains("dingtalk");
+    }
+
+    /**
+     * 发钉钉工作通知。同步发送、异常仅告警不抛出（与 BpmMessageServiceImpl 风格一致），
+     * 不影响主事务。
+     */
+    private void notifyDingtalk(TicketDO ticket, List<Long> userIds, String title, String detail) {
+        if (!dingtalkEnabled(ticket)) {
+            return;
+        }
+        List<Long> targets = userIds == null
+                ? Collections.emptyList()
+                : userIds.stream().filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        if (targets.isEmpty()) {
+            return;
+        }
+        try {
+            String content = String.format("**%s**%n%n- 工单号：%s%n- 标题：%s%n%s",
+                    title, ticket.getTicketNo(), ticket.getTitle(), detail == null ? "" : detail);
+            dingtalkNotifyApi.sendWorkNotice(new DingtalkNotifySendReqDTO()
+                    .setUserIds(targets)
+                    .setTitle(title)
+                    .setContent(content));
+        } catch (Exception ex) {
+            log.warn("【工单】钉钉通知发送失败 ticketId={} title={}: {}",
+                    ticket.getId(), title, ex.getMessage());
+        }
+    }
+
+    /** 取部门负责人 userId（容错，查不到返回 null）。 */
+    private Long resolveDeptLeaderId(Long deptId) {
+        if (deptId == null) {
+            return null;
+        }
+        try {
+            DeptRespDTO dept = deptApi.getDept(deptId);
+            return dept == null ? null : dept.getLeaderUserId();
+        } catch (Exception ex) {
+            log.warn("【工单】查询部门负责人失败 deptId={}: {}", deptId, ex.getMessage());
+            return null;
+        }
+    }
+
+    /** 通知内容截断（处理结果等长文本防爆通知卡片）。 */
+    private String truncateForNotify(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text.length() <= 200 ? text : text.substring(0, 200) + "…";
     }
 
     private void writeLog(Long ticketId, TicketActionEnum action,

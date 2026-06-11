@@ -144,6 +144,36 @@ public class TicketDO extends BaseDO {
     private LocalDateTime closeTime;
 
     /**
+     * 验收人 ID（review_pass / review_reject 动作时回写）。
+     */
+    private Long reviewerId;
+
+    /**
+     * 验收人姓名快照。
+     */
+    private String reviewerName;
+
+    /**
+     * 验收时间。
+     */
+    private LocalDateTime reviewTime;
+
+    /**
+     * 验收意见（通过的评价或驳回原因）。
+     */
+    private String reviewComment;
+
+    /**
+     * 重开次数（reopen 动作累加，超上限禁止重开）。
+     */
+    private Integer reopenCount;
+
+    /**
+     * 拒单退回原因（return 动作时回写；resubmit 时清空）。
+     */
+    private String returnReason;
+
+    /**
      * 通知通道，逗号分隔：{@code inner,dingtalk,sms,email}。
      */
     private String notifyChannels;

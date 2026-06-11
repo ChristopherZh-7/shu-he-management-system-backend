@@ -44,7 +44,7 @@ public class TicketRespVO {
     @Schema(description = "BPM 流程实例 ID")
     private String processInstanceId;
 
-    @Schema(description = "状态码 0~5")
+    @Schema(description = "状态码 0~6")
     private Integer status;
 
     @Schema(description = "状态中文（展开）")
@@ -89,6 +89,24 @@ public class TicketRespVO {
     @Schema(description = "关闭时间")
     private LocalDateTime closeTime;
 
+    @Schema(description = "验收人 ID")
+    private Long reviewerId;
+
+    @Schema(description = "验收人姓名快照")
+    private String reviewerName;
+
+    @Schema(description = "验收时间")
+    private LocalDateTime reviewTime;
+
+    @Schema(description = "验收意见（通过评价 / 驳回原因）")
+    private String reviewComment;
+
+    @Schema(description = "重开次数")
+    private Integer reopenCount;
+
+    @Schema(description = "拒单退回原因")
+    private String returnReason;
+
     @Schema(description = "通知通道")
     private String notifyChannels;
 
@@ -115,6 +133,9 @@ public class TicketRespVO {
 
     @Schema(description = "当前用户可执行的 action 列表（仅详情查询返回）")
     private List<String> actions;
+
+    @Schema(description = "是否外出工单（从 extJson.isOutside 提取，列表/详情都返回）")
+    private Boolean outside;
 
     @Schema(description = "创建时间")
     private LocalDateTime createTime;

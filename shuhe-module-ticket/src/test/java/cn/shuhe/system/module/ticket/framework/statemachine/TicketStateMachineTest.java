@@ -16,7 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>覆盖：
  * <ul>
- *     <li>合法 transition：assign / start / finish / close / cancel / transfer</li>
+ *     <li>合法 transition：assign / start / finish / review / close / cancel / transfer /
+ *     reopen / return / resubmit</li>
  *     <li>非法 transition 抛 {@link ServiceException}（{@code TICKET_STATUS_INVALID}）</li>
  *     <li>{@link TicketStateMachine#evaluate} 双轨返回</li>
  *     <li>terminal 状态 + null 入参的边界</li>
@@ -48,9 +49,29 @@ class TicketStateMachineTest {
     }
 
     @Test
-    void nextStatus_finishAtInProgress_movesToCompleted() {
+    void nextStatus_finishAtInProgress_movesToPendingReview() {
         Integer to = TicketStateMachine.nextStatus(TicketStatusEnum.IN_PROGRESS.getStatus(), TicketActionEnum.FINISH);
+        assertEquals(TicketStatusEnum.PENDING_REVIEW.getStatus(), to);
+    }
+
+    @Test
+    void nextStatus_reviewPassAtPendingReview_movesToCompleted() {
+        Integer to = TicketStateMachine.nextStatus(
+                TicketStatusEnum.PENDING_REVIEW.getStatus(), TicketActionEnum.REVIEW_PASS);
         assertEquals(TicketStatusEnum.COMPLETED.getStatus(), to);
+    }
+
+    @Test
+    void nextStatus_reviewRejectAtPendingReview_movesBackToInProgress() {
+        Integer to = TicketStateMachine.nextStatus(
+                TicketStatusEnum.PENDING_REVIEW.getStatus(), TicketActionEnum.REVIEW_REJECT);
+        assertEquals(TicketStatusEnum.IN_PROGRESS.getStatus(), to);
+    }
+
+    @Test
+    void nextStatus_reviewPassAtInProgress_returnsNull() {
+        assertNull(TicketStateMachine.nextStatus(
+                TicketStatusEnum.IN_PROGRESS.getStatus(), TicketActionEnum.REVIEW_PASS));
     }
 
     @Test
@@ -60,9 +81,53 @@ class TicketStateMachineTest {
     }
 
     @Test
+    void nextStatus_reopenAtCompletedOrClosed_movesToInProgress() {
+        assertEquals(TicketStatusEnum.IN_PROGRESS.getStatus(), TicketStateMachine.nextStatus(
+                TicketStatusEnum.COMPLETED.getStatus(), TicketActionEnum.REOPEN));
+        assertEquals(TicketStatusEnum.IN_PROGRESS.getStatus(), TicketStateMachine.nextStatus(
+                TicketStatusEnum.CLOSED.getStatus(), TicketActionEnum.REOPEN));
+    }
+
+    @Test
+    void nextStatus_reopenAtReturned_returnsNull() {
+        assertNull(TicketStateMachine.nextStatus(
+                TicketStatusEnum.RETURNED.getStatus(), TicketActionEnum.REOPEN));
+    }
+
+    @Test
+    void nextStatus_returnAtPending_movesToReturned() {
+        Integer to = TicketStateMachine.nextStatus(TicketStatusEnum.PENDING.getStatus(), TicketActionEnum.RETURN);
+        assertEquals(TicketStatusEnum.RETURNED.getStatus(), to);
+    }
+
+    @Test
+    void nextStatus_returnAtInProgress_returnsNull() {
+        assertNull(TicketStateMachine.nextStatus(
+                TicketStatusEnum.IN_PROGRESS.getStatus(), TicketActionEnum.RETURN));
+    }
+
+    @Test
+    void nextStatus_resubmitAtReturned_movesToPending() {
+        Integer to = TicketStateMachine.nextStatus(TicketStatusEnum.RETURNED.getStatus(), TicketActionEnum.RESUBMIT);
+        assertEquals(TicketStatusEnum.PENDING.getStatus(), to);
+    }
+
+    @Test
     void nextStatus_cancelAtPending_movesToCancelled() {
         Integer to = TicketStateMachine.nextStatus(TicketStatusEnum.PENDING.getStatus(), TicketActionEnum.CANCEL);
         assertEquals(TicketStatusEnum.CANCELLED.getStatus(), to);
+    }
+
+    @Test
+    void nextStatus_cancelAtReturned_movesToCancelled() {
+        Integer to = TicketStateMachine.nextStatus(TicketStatusEnum.RETURNED.getStatus(), TicketActionEnum.CANCEL);
+        assertEquals(TicketStatusEnum.CANCELLED.getStatus(), to);
+    }
+
+    @Test
+    void nextStatus_transferAtReturned_returnsNull() {
+        assertNull(TicketStateMachine.nextStatus(
+                TicketStatusEnum.RETURNED.getStatus(), TicketActionEnum.TRANSFER));
     }
 
     @Test
@@ -103,7 +168,7 @@ class TicketStateMachineTest {
     void checkTransition_legal_returnsTargetStatus() {
         Integer to = TicketStateMachine.checkTransition(
                 TicketStatusEnum.IN_PROGRESS.getStatus(), TicketActionEnum.FINISH);
-        assertEquals(TicketStatusEnum.COMPLETED.getStatus(), to);
+        assertEquals(TicketStatusEnum.PENDING_REVIEW.getStatus(), to);
     }
 
     @Test

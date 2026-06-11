@@ -5,6 +5,10 @@ import cn.shuhe.system.module.ticket.controller.admin.vo.TicketAcceptReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketAssignReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketFinishReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketPageReqVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReopenReqVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReturnReqVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReviewPassReqVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReviewRejectReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketSaveReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketTransferReqVO;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketDO;
@@ -54,13 +58,49 @@ public interface TicketService {
     /** 接单开始；status: 0 → 1。 */
     void startTicket(Long id);
 
-    /** 完成工单；status: 1 → 3。 */
+    /** 完成工单（提交验收）；status: 1 → 2。 */
     void finishTicket(@Valid TicketFinishReqVO reqVO);
+
+    /**
+     * 验收通过；status: 2 → 3，回写 reviewer / reviewTime / finishTime。
+     *
+     * <p>权限要求：提单人本人（或 super_admin）。
+     */
+    void reviewPassTicket(@Valid TicketReviewPassReqVO reqVO);
+
+    /**
+     * 验收驳回；status: 2 → 1，退回原执行人重做，dueTime 不重置。
+     *
+     * <p>权限要求：提单人本人（或 super_admin）。
+     */
+    void reviewRejectTicket(@Valid TicketReviewRejectReqVO reqVO);
 
     /** 关闭工单；status: 3 → 4。 */
     void closeTicket(Long id);
 
-    /** 取消工单（一期仅允许 status=0）；status: 0 → 5。 */
+    /**
+     * 重开工单；status: 3/4 → 1，保留原执行人，清空 finish/close/review 时间。
+     *
+     * <p>限制：提单人本人（或 super_admin）；finishTime/closeTime 起 {@code REOPEN_WINDOW_DAYS}
+     * 天内；累计不超过 {@code REOPEN_MAX_COUNT} 次。
+     */
+    void reopenTicket(@Valid TicketReopenReqVO reqVO);
+
+    /**
+     * 拒单退回；status: 0 → 6，回写 returnReason。
+     *
+     * <p>权限要求：工单 {@code dept_id} 部门负责人（或 super_admin）。
+     */
+    void returnTicket(@Valid TicketReturnReqVO reqVO);
+
+    /**
+     * 重新提交；status: 6 → 0，清空 returnReason。
+     *
+     * <p>权限要求：提单人本人（或 super_admin）。
+     */
+    void resubmitTicket(Long id);
+
+    /** 取消工单；status: 0 → 5 或 6 → 5。 */
     void cancelTicket(Long id);
 
     /** 转交工单；状态不变，仅改 assignee_id。 */

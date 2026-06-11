@@ -16,11 +16,12 @@ import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_STAT
  * 工单状态机（线程安全 · 纯静态工具）。
  *
  * <p>对应设计文档 {@code docs/design/ticket-design.md} §1。所有状态变更动作（assign / start /
- * finish / close / cancel / transfer）的入口都必须先调 {@link #checkTransition(Integer, TicketActionEnum)}
- * 校验，否则直接抛 {@link ServiceException} {@code TICKET_STATUS_INVALID}。
+ * finish / review / close / cancel / transfer / reopen / return / resubmit）的入口都必须先调
+ * {@link #checkTransition(Integer, TicketActionEnum)} 校验，否则直接抛
+ * {@link ServiceException} {@code TICKET_STATUS_INVALID}。
  *
- * <p>一期实现 8 个 action；{@code submit_review / review_pass / review_reject} 二期补，但
- * 转换矩阵里已为它们留好位置。
+ * <p>二期验收闭环已激活：finish 进入 2 待验收，由提单人 review_pass / review_reject 验收；
+ * 0 待处理可被部门负责人 return 退回，提单人 resubmit 重新提交。
  */
 public final class TicketStateMachine {
 
@@ -39,27 +40,34 @@ public final class TicketStateMachine {
         // start：0 → 1（处理人接单）
         put(TicketActionEnum.START, TicketStatusEnum.PENDING, TicketStatusEnum.IN_PROGRESS);
 
-        // submit_review：1 → 2（二期）
+        // submit_review：1 → 2（与 finish 等价，保留兼容）
         put(TicketActionEnum.SUBMIT_REVIEW, TicketStatusEnum.IN_PROGRESS, TicketStatusEnum.PENDING_REVIEW);
 
-        // review_pass：2 → 3（二期）
+        // review_pass：2 → 3（提单人验收通过）
         put(TicketActionEnum.REVIEW_PASS, TicketStatusEnum.PENDING_REVIEW, TicketStatusEnum.COMPLETED);
 
-        // review_reject：2 → 1（二期）
+        // review_reject：2 → 1（提单人驳回，退回原执行人重做）
         put(TicketActionEnum.REVIEW_REJECT, TicketStatusEnum.PENDING_REVIEW, TicketStatusEnum.IN_PROGRESS);
 
-        // finish：1 → 3（无审核分支）
-        put(TicketActionEnum.FINISH, TicketStatusEnum.IN_PROGRESS, TicketStatusEnum.COMPLETED);
+        // finish：1 → 2（执行人提交结果后进入待验收，由提单人 review_pass/review_reject 闭环）
+        put(TicketActionEnum.FINISH, TicketStatusEnum.IN_PROGRESS, TicketStatusEnum.PENDING_REVIEW);
 
         // close：3 → 4
         put(TicketActionEnum.CLOSE, TicketStatusEnum.COMPLETED, TicketStatusEnum.CLOSED);
 
-        // reopen：3 / 4 → 1（管理员重新打开）
+        // reopen：3 / 4 → 1（提单人窗口期内重新打开；窗口/次数校验在 Service 层）
         put(TicketActionEnum.REOPEN, TicketStatusEnum.COMPLETED, TicketStatusEnum.IN_PROGRESS);
         put(TicketActionEnum.REOPEN, TicketStatusEnum.CLOSED, TicketStatusEnum.IN_PROGRESS);
 
-        // cancel：一期仅允许 0 → 5（待处理直接取消）；二期补「处理中申请取消」
+        // return：0 → 6（部门负责人拒单退回提单人）
+        put(TicketActionEnum.RETURN, TicketStatusEnum.PENDING, TicketStatusEnum.RETURNED);
+
+        // resubmit：6 → 0（提单人修改后重新提交）
+        put(TicketActionEnum.RESUBMIT, TicketStatusEnum.RETURNED, TicketStatusEnum.PENDING);
+
+        // cancel：0 → 5（待处理直接取消）；6 → 5（已退回放弃）
         put(TicketActionEnum.CANCEL, TicketStatusEnum.PENDING, TicketStatusEnum.CANCELLED);
+        put(TicketActionEnum.CANCEL, TicketStatusEnum.RETURNED, TicketStatusEnum.CANCELLED);
 
         // transfer：0/1/2 任意非终态状态都允许，状态不变（只改 assignee_id）
         put(TicketActionEnum.TRANSFER, TicketStatusEnum.PENDING, TicketStatusEnum.PENDING);

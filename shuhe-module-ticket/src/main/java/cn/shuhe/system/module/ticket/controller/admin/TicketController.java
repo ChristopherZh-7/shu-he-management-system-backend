@@ -11,6 +11,10 @@ import cn.shuhe.system.module.ticket.controller.admin.vo.TicketAcceptReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketAssignReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketFinishReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketPageReqVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReopenReqVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReturnReqVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReviewPassReqVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReviewRejectReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketRespVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketSaveReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketTransferReqVO;
@@ -36,6 +40,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
 
@@ -146,10 +152,51 @@ public class TicketController {
     }
 
     @PutMapping("/finish")
-    @Operation(summary = "完成工单（处理人本人）")
+    @Operation(summary = "完成工单（处理人提交验收，状态 1→2）")
     @PreAuthorize("@ss.hasPermission('ticket:ticket:finish')")
     public CommonResult<Boolean> finishTicket(@Valid @RequestBody TicketFinishReqVO reqVO) {
         ticketService.finishTicket(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/review-pass")
+    @Operation(summary = "验收通过（提单人，状态 2→3）")
+    @PreAuthorize("@ss.hasPermission('ticket:ticket:close')")
+    public CommonResult<Boolean> reviewPassTicket(@Valid @RequestBody TicketReviewPassReqVO reqVO) {
+        ticketService.reviewPassTicket(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/review-reject")
+    @Operation(summary = "验收驳回（提单人，状态 2→1 退回执行人重做）")
+    @PreAuthorize("@ss.hasPermission('ticket:ticket:close')")
+    public CommonResult<Boolean> reviewRejectTicket(@Valid @RequestBody TicketReviewRejectReqVO reqVO) {
+        ticketService.reviewRejectTicket(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/reopen")
+    @Operation(summary = "重开工单（提单人，状态 3/4→1；7 天窗口、最多 3 次）")
+    @PreAuthorize("@ss.hasPermission('ticket:ticket:update')")
+    public CommonResult<Boolean> reopenTicket(@Valid @RequestBody TicketReopenReqVO reqVO) {
+        ticketService.reopenTicket(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/return")
+    @Operation(summary = "拒单退回（部门负责人，状态 0→6）")
+    @PreAuthorize("@ss.hasPermission('ticket:ticket:accept')")
+    public CommonResult<Boolean> returnTicket(@Valid @RequestBody TicketReturnReqVO reqVO) {
+        ticketService.returnTicket(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/resubmit")
+    @Operation(summary = "重新提交（提单人，状态 6→0）")
+    @Parameter(name = "id", description = "工单 ID", required = true)
+    @PreAuthorize("@ss.hasPermission('ticket:ticket:update')")
+    public CommonResult<Boolean> resubmitTicket(@RequestParam("id") Long id) {
+        ticketService.resubmitTicket(id);
         return success(true);
     }
 
@@ -186,10 +233,13 @@ public class TicketController {
         if (result == null || result.getList() == null) {
             return result;
         }
+        Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
         for (int i = 0; i < page.getList().size(); i++) {
             TicketDO src = page.getList().get(i);
             TicketRespVO target = result.getList().get(i);
             enrichDisplayNames(target, src, false);
+            // 列表行快捷操作（接单 / 验收）依赖 actions
+            target.setActions(ticketService.calculateAvailableActions(src, currentUserId));
         }
         return result;
     }
@@ -201,13 +251,21 @@ public class TicketController {
     }
 
     /**
-     * 补展示字段：{@code statusName / categoryName / deptName / assigneeDeptName}。
+     * 补展示字段：{@code statusName / categoryName / deptName / assigneeDeptName / outside}。
      */
     private void enrichDisplayNames(TicketRespVO vo, TicketDO ticket, boolean fillExt) {
         if (vo == null || ticket == null) {
             return;
         }
         vo.setStatusName(TicketStatusEnum.nameOf(ticket.getStatus()));
+        // 外出标记在 extJson 置空前提取，列表（fillExt=false）也能拿到
+        Map<String, Object> ext = ticket.getExtJson();
+        if (ext != null) {
+            Object isOutside = ext.get("isOutside");
+            vo.setOutside(isOutside instanceof Boolean
+                    ? (Boolean) isOutside
+                    : isOutside != null && Boolean.parseBoolean(isOutside.toString()));
+        }
         if (ticket.getCategoryId() != null) {
             TicketCategoryDO category = categoryService.getCategory(ticket.getCategoryId());
             if (category != null) {
