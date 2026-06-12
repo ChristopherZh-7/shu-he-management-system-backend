@@ -42,4 +42,17 @@ public interface TicketExecutorMapper extends BaseMapperX<TicketExecutorDO> {
                 .eq(TicketExecutorDO::getTicketId, ticketId));
     }
 
+    /**
+     * 查某用户作为执行人的全部工单 ID（去重；「与我相关 / 待我办理」列表用）。
+     */
+    default List<Long> selectTicketIdsByUserId(Long userId) {
+        return selectList(new LambdaQueryWrapperX<TicketExecutorDO>()
+                .eq(TicketExecutorDO::getUserId, userId))
+                .stream()
+                .map(TicketExecutorDO::getTicketId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .collect(java.util.stream.Collectors.toList());
+    }
+
 }

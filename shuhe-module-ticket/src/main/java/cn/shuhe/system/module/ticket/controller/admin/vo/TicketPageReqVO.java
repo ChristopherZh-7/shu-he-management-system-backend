@@ -45,6 +45,10 @@ public class TicketPageReqVO extends PageParam {
     @Schema(description = "归属部门 ID")
     private Long deptId;
 
+    @Schema(description = "我的工单视角（仅 my-page 生效）：assigned=待我办理（处理中/执行人/待我接单）；"
+            + "created=我提交的；空=全部与我相关", example = "assigned")
+    private String myScope;
+
     @Schema(description = "创建时间区间 [start, end]")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     @JsonFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)

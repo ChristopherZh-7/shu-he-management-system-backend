@@ -422,33 +422,7 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
             summary.setDeptName(deptName);
 
             summary.setWorkMode(resolveUserWorkMode(userId));
-
-            // 判断是否为管理人员（部门负责人）
-            AdminUserRespDTO memberUser = adminUserApi.getUser(userId);
-            boolean isManager = false;
-            if (memberUser != null && memberUser.getDeptId() != null) {
-                DeptRespDTO memberDept = deptApi.getDept(memberUser.getDeptId());
-                if (memberDept != null && memberDept.getLeaderUserId() != null
-                        && memberDept.getLeaderUserId().equals(userId)) {
-                    isManager = true;
-                }
-                // 也检查上级部门负责人
-                if (!isManager && memberDept != null && memberDept.getParentId() != null) {
-                    DeptRespDTO parentDept = deptApi.getDept(memberDept.getParentId());
-                    if (parentDept != null && parentDept.getLeaderUserId() != null
-                            && parentDept.getLeaderUserId().equals(userId)) {
-                        isManager = true;
-                    }
-                }
-            }
-            // 也检查 project_site_member 里的管理人员类型
-            if (!isManager) {
-                List<ProjectSiteMemberDO> activeMembers = projectSiteMemberMapper.selectActiveByUserIds(
-                        Collections.singletonList(userId));
-                isManager = activeMembers.stream().anyMatch(m ->
-                        m.getMemberType() != null && m.getMemberType() == ProjectSiteMemberDO.MEMBER_TYPE_MANAGEMENT);
-            }
-            summary.setIsManager(isManager);
+            summary.setIsManager(isUserManager(userId));
 
             // 查询日常管理记录
             DailyManagementRecordDO dailyRecord = dailyManagementRecordMapper.selectByCreatorAndYearAndWeek(
@@ -521,6 +495,8 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
 
         Map<String, Object> result = new HashMap<>();
         result.put("workMode", workMode);
+        // 主管标识：前端「我的工作记录」据此展示主管模式（管理总结 + 项目反馈汇报）
+        result.put("isManager", isUserManager(userId));
 
         if (workMode == 1) {
             // 查询在岗的驻场分配信息
@@ -563,6 +539,32 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
         }
 
         return result;
+    }
+
+    /**
+     * 判断用户是否为管理人员：
+     * 本部门负责人 / 上级部门负责人 / project_site_member 管理类型成员
+     */
+    private boolean isUserManager(Long userId) {
+        AdminUserRespDTO user = adminUserApi.getUser(userId);
+        if (user != null && user.getDeptId() != null) {
+            DeptRespDTO dept = deptApi.getDept(user.getDeptId());
+            if (dept != null && dept.getLeaderUserId() != null
+                    && dept.getLeaderUserId().equals(userId)) {
+                return true;
+            }
+            if (dept != null && dept.getParentId() != null) {
+                DeptRespDTO parentDept = deptApi.getDept(dept.getParentId());
+                if (parentDept != null && parentDept.getLeaderUserId() != null
+                        && parentDept.getLeaderUserId().equals(userId)) {
+                    return true;
+                }
+            }
+        }
+        List<ProjectSiteMemberDO> activeMembers = projectSiteMemberMapper.selectActiveByUserIds(
+                Collections.singletonList(userId));
+        return activeMembers.stream().anyMatch(m ->
+                m.getMemberType() != null && m.getMemberType() == ProjectSiteMemberDO.MEMBER_TYPE_MANAGEMENT);
     }
 
     /**

@@ -54,4 +54,5 @@ public interface ErrorCodeConstants {
     ErrorCode TICKET_EXECUTOR_EMPTY      = new ErrorCode(1_032_007_001, "执行人列表不能为空");
     ErrorCode TICKET_EXECUTOR_NOT_EXISTS = new ErrorCode(1_032_007_002, "执行人不存在或已离职：{0}");
     ErrorCode TICKET_DRIVER_FAILED       = new ErrorCode(1_032_007_003, "业务驱动器处理失败：{0}");
+    ErrorCode TICKET_EXECUTOR_OUT_OF_SCOPE = new ErrorCode(1_032_007_004, "执行人 {0} 不在您管辖的部门范围内，只能指派自己或下属部门成员");
 }

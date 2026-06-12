@@ -68,6 +68,7 @@ import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_CREA
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_DRIVER_FAILED;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_EXECUTOR_EMPTY;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_EXECUTOR_NOT_EXISTS;
+import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_EXECUTOR_OUT_OF_SCOPE;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_NOT_ASSIGNEE;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_NOT_DEPT_LEADER;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_NOT_EXISTS;
@@ -257,9 +258,68 @@ public class TicketServiceImpl implements TicketService {
             return new PageResult<>(Collections.emptyList(), 0L);
         }
         LambdaQueryWrapperX<TicketDO> wrapper = buildPageWrapper(pageReqVO);
-        wrapper.and(w -> w.eq(TicketDO::getCreatorId, userId)
-                .or().eq(TicketDO::getAssigneeId, userId));
+        if ("created".equals(pageReqVO.getMyScope())) {
+            wrapper.eq(TicketDO::getCreatorId, userId);
+            return ticketMapper.selectPage(pageReqVO, wrapper);
+        }
+
+        // 「与我相关」的另外两个维度：
+        // 1. 我是执行人（接单派工后只写 shuhe_ticket_executor，不在 assignee_id 上）
+        List<Long> executorTicketIds = executorMapper.selectTicketIdsByUserId(userId);
+        // 2. 待我接单（我负责的部门及其子孙部门的 status=0 工单；assignee 此时为 null）
+        Set<Long> ledDeptIds = resolveLedDeptIds(userId);
+
+        boolean assignedOnly = "assigned".equals(pageReqVO.getMyScope());
+        wrapper.and(w -> {
+            if (assignedOnly) {
+                w.eq(TicketDO::getAssigneeId, userId);
+            } else {
+                w.eq(TicketDO::getCreatorId, userId)
+                        .or().eq(TicketDO::getAssigneeId, userId);
+            }
+            if (!executorTicketIds.isEmpty()) {
+                w.or().in(TicketDO::getId, executorTicketIds);
+            }
+            if (!ledDeptIds.isEmpty()) {
+                w.or(w2 -> w2.in(TicketDO::getDeptId, ledDeptIds)
+                        .eq(TicketDO::getStatus, TicketStatusEnum.PENDING.getStatus()));
+            }
+        });
         return ticketMapper.selectPage(pageReqVO, wrapper);
+    }
+
+    /**
+     * 我负责的部门集合：直接负责的部门 + 其全部子孙部门。
+     *
+     * <p>子孙部门未单独配置负责人时按递归语义归我管；即便配置了他人，父级负责人
+     * 在「待我接单」里看见下级待接单工单也合理（能否操作仍由 {@link #isDeptLeader}
+     * 精确鉴权）。查询失败容错返回空集，不阻断列表主流程。
+     */
+    private Set<Long> resolveLedDeptIds(Long userId) {
+        Set<Long> result = new LinkedHashSet<>();
+        try {
+            List<DeptRespDTO> ledDepts = deptApi.getDeptListByLeaderUserId(userId);
+            if (ledDepts == null || ledDepts.isEmpty()) {
+                return result;
+            }
+            for (DeptRespDTO dept : ledDepts) {
+                if (dept == null || dept.getId() == null) {
+                    continue;
+                }
+                result.add(dept.getId());
+                List<DeptRespDTO> children = deptApi.getChildDeptList(dept.getId());
+                if (children != null) {
+                    for (DeptRespDTO child : children) {
+                        if (child != null && child.getId() != null) {
+                            result.add(child.getId());
+                        }
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("【工单】查询用户负责部门失败 userId={}: {}", userId, ex.getMessage());
+        }
+        return result;
     }
 
     private LambdaQueryWrapperX<TicketDO> buildPageWrapper(TicketPageReqVO pageReqVO) {
@@ -341,6 +401,21 @@ public class TicketServiceImpl implements TicketService {
                 .collect(Collectors.toList());
         if (!missing.isEmpty()) {
             throw exception(TICKET_EXECUTOR_NOT_EXISTS, missing);
+        }
+
+        // 4.5 范围校验：执行人只能是接单人自己或其负责部门（含子部门）的成员；超管豁免。
+        //     前端下拉已按同口径过滤，这里兜底防直接调接口越权指派。
+        if (!isSuperAdmin(currentUserId)) {
+            Set<Long> ledDeptIds = resolveLedDeptIds(currentUserId);
+            for (Long executorId : executorIds) {
+                AdminUserRespDTO executor = executorMap.get(executorId);
+                boolean isSelf = Objects.equals(executor.getId(), currentUserId);
+                boolean inScope = executor.getDeptId() != null
+                        && ledDeptIds.contains(executor.getDeptId());
+                if (!isSelf && !inScope) {
+                    throw exception(TICKET_EXECUTOR_OUT_OF_SCOPE, executor.getNickname());
+                }
+            }
         }
 
         // 5. 回写 assignee_id（主管自己作为处理人入口；多执行人在 executor 表）
@@ -841,14 +916,18 @@ public class TicketServiceImpl implements TicketService {
 
     /**
      * 当前用户是否为 {@code deptId} 部门的负责人。仅用于鉴权 + actions 计算，不抛异常。
+     *
+     * <p>本级未配置负责人时<b>递归向上</b>取最近一级负责人，与前端派单部门选择器
+     * （resolveDeptLeaderName）及借调模块（findLeaderUserIdRecursively）语义对齐；
+     * 否则会出现「表单显示负责人是 A，A 打开工单却报无权操作」的割裂。
      */
     private boolean isDeptLeader(Long deptId, Long currentUserId) {
         if (deptId == null || currentUserId == null) {
             return false;
         }
         try {
-            DeptRespDTO dept = deptApi.getDept(deptId);
-            return dept != null && Objects.equals(dept.getLeaderUserId(), currentUserId);
+            Long leaderUserId = deptApi.findLeaderUserIdRecursively(deptId);
+            return Objects.equals(leaderUserId, currentUserId);
         } catch (Exception ex) {
             // actions 计算阶段对外部依赖失败容错；不要因为部门查询抖动让整个详情页崩溃
             log.warn("【工单】查询部门负责人失败 deptId={} userId={}: {}",
@@ -947,14 +1026,18 @@ public class TicketServiceImpl implements TicketService {
         }
     }
 
-    /** 取部门负责人 userId（容错，查不到返回 null）。 */
+    /**
+     * 取部门负责人 userId（容错，查不到返回 null）。
+     *
+     * <p>与 {@link #isDeptLeader} 同语义：本级未配置时递归向上，保证钉钉「待接单」
+     * 通知发给实际有接单权限的人（派单部门未配置负责人时通知曾经发不出去）。
+     */
     private Long resolveDeptLeaderId(Long deptId) {
         if (deptId == null) {
             return null;
         }
         try {
-            DeptRespDTO dept = deptApi.getDept(deptId);
-            return dept == null ? null : dept.getLeaderUserId();
+            return deptApi.findLeaderUserIdRecursively(deptId);
         } catch (Exception ex) {
             log.warn("【工单】查询部门负责人失败 deptId={}: {}", deptId, ex.getMessage());
             return null;
