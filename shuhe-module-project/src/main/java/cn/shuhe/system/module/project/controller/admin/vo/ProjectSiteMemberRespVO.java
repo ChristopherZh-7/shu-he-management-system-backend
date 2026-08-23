@@ -22,6 +22,9 @@ public class ProjectSiteMemberRespVO {
     @Schema(description = "项目ID")
     private Long projectId;
 
+    @Schema(description = "部门类型：1-安全服务 2-安全运营 3-数据安全")
+    private Integer deptType;
+
     @Schema(description = "用户ID")
     private Long userId;
 

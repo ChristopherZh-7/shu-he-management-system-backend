@@ -14,7 +14,7 @@ public enum TicketBusinessTypeEnum {
 
     GENERAL("general", "通用工单"),
     OUTSIDE_REQUEST("outside_request", "外协请求"),
-    SERVICE_LAUNCH("service_launch", "服务派遣");
+    SERVICE_LAUNCH("service_launch", "服务工单");
 
     private final String type;
     private final String name;

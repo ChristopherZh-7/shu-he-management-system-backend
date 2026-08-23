@@ -89,12 +89,12 @@ public interface ProjectRoundMapper extends BaseMapperX<ProjectRoundDO> {
     /**
      * 统计有效轮次数量（待执行0 + 执行中1 + 已完成2，不包括已取消3）
      *
-     * @param projectId 服务项ID（历史原因用 projectId 命名）
+     * @param serviceItemId 服务项ID
      * @return 有效轮次数量
      */
-    default Long selectValidRoundCount(Long projectId) {
+    default Long selectValidRoundCount(Long serviceItemId) {
         return selectCount(new LambdaQueryWrapperX<ProjectRoundDO>()
-                .eq(ProjectRoundDO::getProjectId, projectId)
+                .eq(ProjectRoundDO::getServiceItemId, serviceItemId)
                 .in(ProjectRoundDO::getStatus, 0, 1, 2)); // 待执行、执行中、已完成
     }
 

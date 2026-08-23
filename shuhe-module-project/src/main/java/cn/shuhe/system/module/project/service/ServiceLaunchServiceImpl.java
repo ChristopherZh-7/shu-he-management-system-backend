@@ -72,7 +72,8 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
 
     /**
      * 测试阶段开关：BPM 是否启用。默认 true（生产/正式走 BPM）；
-     * application-local.yaml 中可置 false 跳过审批，创建后直接 status=2 完成。
+     * application-local.yaml 中可置 false 跳过 BPM 实例创建，但业务状态仍保持待处理，
+     * 由调用方显式执行 {@link #handleApproved(Long, List)} 完成审批后置逻辑。
      */
     @Value("${shuhe.bpm.service-launch.enabled:true}")
     private boolean bpmServiceLaunchEnabled;
@@ -164,16 +165,16 @@ public class ServiceLaunchServiceImpl implements ServiceLaunchService {
 
         serviceLaunchMapper.insert(launch);
 
-        // 8. 测试阶段：bpmServiceLaunchEnabled=false 时，跳过 BPM 直接标记为已通过
-        //    这是一个仅用于本地/测试环境的兜底开关，prod 环境应该让其保持 true 走标准流程。
+        // 8. 测试阶段：bpmServiceLaunchEnabled=false 时，只跳过 BPM 实例创建。
+        //    业务状态必须保持为待处理，后续统一由 handleApproved 写执行人、创建轮次并置为已通过。
+        //    若在这里提前改状态，setExecutors 会因“非待处理”拒绝，导致工单接单事务回滚。
         if (!bpmServiceLaunchEnabled) {
             ServiceLaunchDO bypass = new ServiceLaunchDO();
             bypass.setId(launch.getId());
-            bypass.setStatus(2); // 2 = 已通过
             bypass.setProcessInstanceId("DEV-BYPASS-" + UUID.randomUUID());
             serviceLaunchMapper.updateById(bypass);
-            log.warn("【测试开关】shuhe.bpm.service-launch.enabled=false，已跳过 BPM 审批，"
-                    + "launchId={} 直接 status=2 已通过", launch.getId());
+            log.warn("【测试开关】shuhe.bpm.service-launch.enabled=false，已跳过 BPM 实例创建，"
+                    + "launchId={} 保持待处理，等待业务入口执行审批后置逻辑", launch.getId());
         }
 
         return launch.getId();

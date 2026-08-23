@@ -16,10 +16,10 @@ import java.util.Arrays;
 @AllArgsConstructor
 public enum TicketStatusEnum implements ArrayValuable<Integer> {
 
-    PENDING(0, "待处理"),
-    IN_PROGRESS(1, "处理中"),
+    PENDING(0, "待接单"),
+    IN_PROGRESS(1, "执行中"),
     PENDING_REVIEW(2, "待验收"),
-    COMPLETED(3, "已完成"),
+    COMPLETED(3, "已验收"),
     CLOSED(4, "已关闭"),
     CANCELLED(5, "已取消"),
     RETURNED(6, "已退回");

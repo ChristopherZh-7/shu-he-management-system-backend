@@ -193,6 +193,6 @@ class TicketStateMachineTest {
                 TicketStatusEnum.PENDING.getStatus(), TicketActionEnum.FINISH);
         assertTrue(!r.isAllowed());
         assertNull(r.getToStatus());
-        assertTrue(r.getReason() != null && r.getReason().contains("待处理"));
+        assertTrue(r.getReason() != null && r.getReason().contains("待接单"));
     }
 }

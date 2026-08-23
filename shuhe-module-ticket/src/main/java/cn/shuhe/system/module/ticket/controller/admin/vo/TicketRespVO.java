@@ -71,6 +71,9 @@ public class TicketRespVO {
     @Schema(description = "处理人部门名（展开）")
     private String assigneeDeptName;
 
+    @Schema(description = "实际执行人姓名列表（详情查询返回）")
+    private List<String> executorNames;
+
     @Schema(description = "归属部门 ID")
     private Long deptId;
 
@@ -115,6 +118,30 @@ public class TicketRespVO {
 
     @Schema(description = "关联项目 ID")
     private Long projectId;
+
+    @Schema(description = "关联的精确服务项 ID")
+    private Long serviceItemId;
+
+    @Schema(description = "项目名称（服务上下文快照）")
+    private String projectName;
+
+    @Schema(description = "服务项编号（服务上下文快照）")
+    private String serviceItemCode;
+
+    @Schema(description = "服务类型中文名（服务上下文快照）")
+    private String serviceTypeName;
+
+    @Schema(description = "服务模式：1 驻场 / 2 二线")
+    private Integer serviceMode;
+
+    @Schema(description = "服务来源：signed_contract / approved_early_investment")
+    private String serviceSourceType;
+
+    @Schema(description = "客户名称（服务上下文快照）")
+    private String customerName;
+
+    @Schema(description = "合同编号（提前投入可为空）")
+    private String contractNo;
 
     @Schema(description = "关联客户 ID")
     private Long customerId;

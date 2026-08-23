@@ -4,13 +4,21 @@ import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.framework.datapermission.core.util.DataPermissionUtils;
+import cn.shuhe.system.module.project.controller.admin.vo.ProjectDepartmentSummaryRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectPageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectDeptServiceDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectMemberDO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundDO;
+import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
+import cn.shuhe.system.module.project.dal.mysql.ProjectDeptServiceMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import cn.shuhe.system.module.project.service.ProjectService;
+import cn.shuhe.system.module.project.service.access.ProjectAccessService;
+import cn.shuhe.system.module.project.service.progress.ProjectProgressCalculator;
 import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
@@ -48,10 +56,19 @@ public class ProjectController {
     private ServiceItemMapper serviceItemMapper;
 
     @Resource
+    private ProjectDeptServiceMapper projectDeptServiceMapper;
+
+    @Resource
+    private ProjectRoundMapper projectRoundMapper;
+
+    @Resource
     private AdminUserApi adminUserApi;
 
     @Resource
     private cn.shuhe.system.module.system.api.dept.DeptApi deptApi;
+
+    @Resource
+    private ProjectAccessService projectAccessService;
 
     @PostMapping("/create")
     @Operation(summary = "创建项目")
@@ -64,6 +81,7 @@ public class ProjectController {
     @Operation(summary = "更新项目")
     @PreAuthorize("@ss.hasPermission('project:project:update')")
     public CommonResult<Boolean> updateProject(@Valid @RequestBody ProjectSaveReqVO updateReqVO) {
+        projectAccessService.validateManageProject(updateReqVO.getId(), getLoginUserId());
         projectService.updateProject(updateReqVO);
         return success(true);
     }
@@ -73,6 +91,7 @@ public class ProjectController {
     @Parameter(name = "id", description = "项目编号", required = true)
     @PreAuthorize("@ss.hasPermission('project:project:delete')")
     public CommonResult<Boolean> deleteProject(@RequestParam("id") Long id) {
+        projectAccessService.validateManageProject(id, getLoginUserId());
         projectService.deleteProject(id);
         return success(true);
     }
@@ -82,12 +101,12 @@ public class ProjectController {
     @Parameter(name = "id", description = "项目编号", required = true)
     @PreAuthorize("@ss.hasPermission('project:project:query')")
     public CommonResult<ProjectRespVO> getProject(@RequestParam("id") Long id) {
+        Long userId = getLoginUserId();
+        projectAccessService.validateViewProject(id, userId);
         ProjectDO project = projectService.getProject(id);
         ProjectRespVO respVO = BeanUtils.toBean(project, ProjectRespVO.class);
         if (respVO != null) {
-            // 获取服务项数量
-            Long count = serviceItemMapper.selectCountByProjectId(id);
-            respVO.setServiceItemCount(count.intValue());
+            fillProjectAccessSummary(respVO, project, userId);
         }
         return success(respVO);
     }
@@ -96,15 +115,107 @@ public class ProjectController {
     @Operation(summary = "获得项目分页")
     @PreAuthorize("@ss.hasPermission('project:project:query')")
     public CommonResult<PageResult<ProjectRespVO>> getProjectPage(@Valid ProjectPageReqVO pageReqVO) {
-        PageResult<ProjectDO> pageResult = projectService.getProjectPage(pageReqVO, getLoginUserId());
+        Long userId = getLoginUserId();
+        PageResult<ProjectDO> pageResult = projectService.getProjectPage(pageReqVO, userId);
         PageResult<ProjectRespVO> result = BeanUtils.toBean(pageResult, ProjectRespVO.class);
         // 获取每个项目的服务项数量
         for (int i = 0; i < pageResult.getList().size(); i++) {
             ProjectDO project = pageResult.getList().get(i);
-            Long count = serviceItemMapper.selectCountByProjectId(project.getId());
-            result.getList().get(i).setServiceItemCount(count.intValue());
+            fillProjectAccessSummary(result.getList().get(i), project, userId);
         }
         return success(result);
+    }
+
+    private void fillProjectAccessSummary(ProjectRespVO respVO, ProjectDO project, Long userId) {
+        List<Long> readableDeptIds = projectAccessService.getReadableDeptIds(project.getId(), userId);
+        List<ProjectDeptServiceDO> deptServices = DataPermissionUtils.executeIgnore(
+                () -> projectDeptServiceMapper.selectListByProjectId(project.getId()));
+        List<ServiceItemDO> serviceItems = DataPermissionUtils.executeIgnore(
+                () -> serviceItemMapper.selectListByProjectId(project.getId()));
+        List<ProjectRoundDO> rounds = DataPermissionUtils.executeIgnore(
+                () -> projectRoundMapper.selectListByProjectId(project.getId()));
+        Map<Long, List<ProjectRoundDO>> roundsByServiceItemId = rounds.stream()
+                .filter(round -> round.getServiceItemId() != null)
+                .collect(Collectors.groupingBy(ProjectRoundDO::getServiceItemId));
+
+        List<ProjectDepartmentSummaryRespVO> summaries = deptServices.stream()
+                .filter(deptService -> readableDeptIds == null
+                        || readableDeptIds.contains(deptService.getDeptId()))
+                .map(deptService -> buildDepartmentSummary(
+                        deptService, serviceItems, roundsByServiceItemId, userId))
+                .toList();
+        respVO.setDepartmentSummaries(summaries);
+        respVO.setServiceItemCount(summaries.stream()
+                .mapToInt(summary -> summary.getServiceItemCount() != null ? summary.getServiceItemCount() : 0)
+                .sum());
+        int totalWeight = summaries.stream()
+                .mapToInt(summary -> summary.getProgressWeight() == null ? 0 : summary.getProgressWeight())
+                .sum();
+        respVO.setProgress(totalWeight == 0 ? 0 : (int) Math.round(summaries.stream()
+                .mapToDouble(summary -> (double) (summary.getProgress() == null ? 0 : summary.getProgress())
+                        * (summary.getProgressWeight() == null ? 0 : summary.getProgressWeight()))
+                .sum() / totalWeight));
+        respVO.setPlannedExecutionCount(summaries.stream()
+                .mapToInt(summary -> summary.getPlannedExecutionCount() == null
+                        ? 0 : summary.getPlannedExecutionCount()).sum());
+        respVO.setAcceptedExecutionCount(summaries.stream()
+                .mapToInt(summary -> summary.getAcceptedExecutionCount() == null
+                        ? 0 : summary.getAcceptedExecutionCount()).sum());
+        respVO.setHasOnDemandService(summaries.stream()
+                .anyMatch(summary -> Boolean.TRUE.equals(summary.getHasOnDemandService())));
+        respVO.setCanManage(projectAccessService.canManageProject(project.getId(), userId));
+    }
+
+    private ProjectDepartmentSummaryRespVO buildDepartmentSummary(ProjectDeptServiceDO deptService,
+            List<ServiceItemDO> projectItems,
+            Map<Long, List<ProjectRoundDO>> roundsByServiceItemId,
+            Long userId) {
+        List<ServiceItemDO> items = projectItems.stream()
+                .filter(item -> belongsToDeptService(item, deptService))
+                .toList();
+        int completed = (int) items.stream().filter(item -> Integer.valueOf(3).equals(item.getStatus())).count();
+        ProjectProgressCalculator.Summary fulfillment = ProjectProgressCalculator.calculate(
+                items, roundsByServiceItemId);
+
+        ProjectDepartmentSummaryRespVO summary = new ProjectDepartmentSummaryRespVO();
+        summary.setDeptServiceId(deptService.getId());
+        summary.setDeptId(deptService.getDeptId());
+        summary.setDeptName(deptService.getDeptName());
+        summary.setDeptType(deptService.getDeptType());
+        summary.setStatus(deptService.getStatus());
+        summary.setServiceItemCount(items.size());
+        summary.setCompletedServiceItemCount(completed);
+        summary.setOnsiteServiceItemCount((int) items.stream().filter(this::isOnsiteItem).count());
+        summary.setRemoteServiceItemCount((int) items.stream()
+                .filter(item -> Integer.valueOf(ServiceItemDO.SERVICE_MODE_REMOTE).equals(item.getServiceMode()))
+                .count());
+        summary.setManagementServiceItemCount((int) items.stream()
+                .filter(item -> Integer.valueOf(ServiceItemDO.SERVICE_MEMBER_TYPE_MANAGEMENT)
+                        .equals(item.getServiceMemberType()))
+                .count());
+        summary.setProgress(items.isEmpty()
+                ? (deptService.getProgress() != null ? deptService.getProgress() : 0)
+                : fulfillment.progress());
+        summary.setProgressWeight(fulfillment.progressWeight());
+        summary.setPlannedExecutionCount(fulfillment.plannedExecutionCount());
+        summary.setAcceptedExecutionCount(fulfillment.acceptedExecutionCount());
+        summary.setHasOnDemandService(fulfillment.hasOnDemandService());
+        summary.setCanManage(projectAccessService.canManageDept(
+                deptService.getProjectId(), userId, deptService.getDeptId()));
+        return summary;
+    }
+
+    private boolean belongsToDeptService(ServiceItemDO item, ProjectDeptServiceDO deptService) {
+        if (item.getDeptServiceId() != null) {
+            return item.getDeptServiceId().equals(deptService.getId());
+        }
+        // 兼容尚未执行数据迁移的历史服务项。
+        return item.getDeptType() != null && item.getDeptType().equals(deptService.getDeptType());
+    }
+
+    private boolean isOnsiteItem(ServiceItemDO item) {
+        return Integer.valueOf(ServiceItemDO.SERVICE_MODE_ONSITE).equals(item.getServiceMode())
+                || Integer.valueOf(ServiceItemDO.SERVICE_MEMBER_TYPE_ONSITE).equals(item.getServiceMemberType());
     }
 
     @GetMapping("/list")
@@ -112,8 +223,13 @@ public class ProjectController {
     @Parameter(name = "deptType", description = "部门类型", required = true)
     @PreAuthorize("@ss.hasPermission('project:project:query')")
     public CommonResult<List<ProjectRespVO>> getProjectList(@RequestParam("deptType") Integer deptType) {
-        List<ProjectDO> list = projectService.getProjectListByDeptType(deptType, getLoginUserId());
-        return success(BeanUtils.toBean(list, ProjectRespVO.class));
+        Long userId = getLoginUserId();
+        List<ProjectDO> list = projectService.getProjectListByDeptType(deptType, userId);
+        List<ProjectRespVO> result = BeanUtils.toBean(list, ProjectRespVO.class);
+        for (int i = 0; i < list.size(); i++) {
+            fillProjectAccessSummary(result.get(i), list.get(i), userId);
+        }
+        return success(result);
     }
 
     @PutMapping("/update-status")
@@ -121,6 +237,7 @@ public class ProjectController {
     @PreAuthorize("@ss.hasPermission('project:project:update')")
     public CommonResult<Boolean> updateProjectStatus(@RequestParam("id") Long id,
             @RequestParam("status") Integer status) {
+        projectAccessService.validateManageProject(id, getLoginUserId());
         projectService.updateProjectStatus(id, status);
         return success(true);
     }
@@ -132,6 +249,7 @@ public class ProjectController {
     @PreAuthorize("@ss.hasPermission('project:project:update')")
     public CommonResult<Boolean> exitProject(@RequestParam("id") Long id,
             @RequestParam(value = "exitRemark", required = false) String exitRemark) {
+        projectAccessService.validateManageProject(id, getLoginUserId());
         projectService.exitProject(id, exitRemark);
         return success(true);
     }
@@ -142,12 +260,16 @@ public class ProjectController {
     @PreAuthorize("@ss.hasPermission('project:project:query')")
     public CommonResult<Map<String, Object>> getMyRoleInProject(@RequestParam("projectId") Long projectId) {
         Long userId = getLoginUserId();
+        projectAccessService.validateViewProject(projectId, userId);
         Integer roleType = projectService.getUserRoleInProject(projectId, userId);
         AdminUserRespDTO user = adminUserApi.getUser(userId);
 
         Map<String, Object> result = new HashMap<>();
         result.put("roleType", roleType);
+        result.put("canManage", projectAccessService.canManageProject(projectId, userId));
         result.put("deptId", user != null ? user.getDeptId() : null);
+        result.put("readableDeptIds", projectAccessService.getReadableDeptIds(projectId, userId));
+        result.put("manageableDeptIds", projectAccessService.getManageableDeptIds(projectId, userId));
 
         if (user != null && user.getDeptId() != null) {
             cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO dept = deptApi.getDept(user.getDeptId());
@@ -167,6 +289,7 @@ public class ProjectController {
     @Parameter(name = "projectId", description = "项目编号", required = true)
     @PreAuthorize("@ss.hasPermission('project:project:query')")
     public CommonResult<List<Map<String, Object>>> getProjectMemberList(@RequestParam("projectId") Long projectId) {
+        projectAccessService.validateViewProject(projectId, getLoginUserId());
         List<ProjectMemberDO> members = projectService.getProjectMembers(projectId);
         if (members.isEmpty()) {
             return success(Collections.emptyList());
@@ -221,6 +344,8 @@ public class ProjectController {
                                                    @RequestParam("userId") Long userId,
                                                    @RequestParam(value = "roleType", defaultValue = "2") Integer roleType,
                                                    @RequestParam(value = "remark", required = false) String remark) {
+        projectAccessService.validateManageProject(projectId, getLoginUserId());
+        validateManualMemberRole(roleType);
         AdminUserRespDTO user = adminUserApi.getUser(userId);
         String nickname = user != null ? user.getNickname() : "";
         projectService.addProjectMember(projectId, userId, nickname, roleType);
@@ -238,13 +363,21 @@ public class ProjectController {
 
     @PutMapping("/update-member-role")
     @Operation(summary = "修改项目成员的角色（roleType）",
-            description = "1=项目经理 / 2=执行人员 / 3=审核人员（部门负责人通常应为 3 有 canManage 权限）")
+            description = "1=项目经理 / 2=执行人员；部门负责人权限由组织架构自动计算")
     @PreAuthorize("@ss.hasPermission('project:project:update')")
     public CommonResult<Boolean> updateProjectMemberRole(
             @RequestParam("id") Long id,
             @RequestParam("roleType") Integer roleType) {
+        validateManualMemberRole(roleType);
         projectService.updateProjectMemberRole(id, roleType);
         return success(true);
+    }
+
+    private void validateManualMemberRole(Integer roleType) {
+        if (roleType == null || !List.of(1, 2).contains(roleType)) {
+            throw cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception(
+                    cn.shuhe.system.framework.common.exception.enums.GlobalErrorCodeConstants.BAD_REQUEST);
+        }
     }
 
     // ========== 项目部门可见性管理（业界路径 2·部门下所有人都能看到项目） ==========
@@ -255,6 +388,7 @@ public class ProjectController {
     @Parameter(name = "projectId", description = "项目编号", required = true)
     @PreAuthorize("@ss.hasPermission('project:project:query')")
     public CommonResult<List<Long>> getProjectDeptVisibility(@RequestParam("projectId") Long projectId) {
+        projectAccessService.validateViewProject(projectId, getLoginUserId());
         return success(projectService.getProjectDeptVisibilityIds(projectId));
     }
 
@@ -264,7 +398,8 @@ public class ProjectController {
     @PreAuthorize("@ss.hasPermission('project:project:update')")
     public CommonResult<Boolean> replaceProjectDeptVisibility(
             @RequestParam("projectId") Long projectId,
-            @RequestParam(value = "deptIds", required = false) List<Long> deptIds) {
+            @RequestParam("deptIds") List<Long> deptIds) {
+        projectAccessService.validateManageProject(projectId, getLoginUserId());
         projectService.replaceProjectDeptVisibility(projectId, deptIds);
         return success(true);
     }

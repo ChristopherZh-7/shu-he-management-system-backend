@@ -189,6 +189,11 @@ public class TicketDO extends BaseDO {
     private Long projectId;
 
     /**
+     * 对应的精确服务项 ID。新建服务工单必填；历史工单可为空。
+     */
+    private Long serviceItemId;
+
+    /**
      * 关联客户 ID（可选）。
      */
     private Long customerId;

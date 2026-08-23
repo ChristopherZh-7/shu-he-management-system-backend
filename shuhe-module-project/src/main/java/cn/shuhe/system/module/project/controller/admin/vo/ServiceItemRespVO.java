@@ -16,6 +16,9 @@ public class ServiceItemRespVO {
     @Schema(description = "所属项目ID", example = "1")
     private Long projectId;
 
+    @Schema(description = "所属部门服务单ID", example = "1")
+    private Long deptServiceId;
+
     @Schema(description = "服务项编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "SVC-1-20260518-8556")
     private String code;
 

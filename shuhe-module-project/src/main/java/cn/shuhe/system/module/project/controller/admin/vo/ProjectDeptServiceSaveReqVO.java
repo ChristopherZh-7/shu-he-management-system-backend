@@ -23,6 +23,7 @@ public class ProjectDeptServiceSaveReqVO {
     private Integer deptType;
 
     @Schema(description = "所属部门ID", example = "100")
+    @NotNull(message = "所属部门不能为空")
     private Long deptId;
 
     @Schema(description = "部门名称", example = "安全服务部")

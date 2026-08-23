@@ -483,40 +483,13 @@ public class CrmBusinessServiceImpl implements CrmBusinessService {
                 log.warn("[createProjectInternally] 添加商机负责人为项目成员失败: userId={}", business.getOwnerUserId(), e);
             }
 
-            // 自动将项目经理的整条管理链上的主管加入项目成员（roleType=3 审核人员）
-            try {
-                AdminUserRespDTO ownerUser = adminUserApi.getUser(business.getOwnerUserId());
-                if (ownerUser != null && ownerUser.getDeptId() != null) {
-                    Set<Long> leaderUserIds = deptApi.getAncestorChainLeaderUserIds(ownerUser.getDeptId());
-                    // 排除项目经理自己（如果他同时是某层的负责人）
-                    leaderUserIds.remove(business.getOwnerUserId());
-                    for (Long leaderUserId : leaderUserIds) {
-                        AdminUserRespDTO leader = adminUserApi.getUser(leaderUserId);
-                        String leaderName = leader != null ? leader.getNickname() : "";
-                        projectService.addProjectMember(projectId, leaderUserId, leaderName, 3);
-                        log.info("[createProjectInternally] 已将主管 {} ({}) 加入项目 {} 成员",
-                                leaderUserId, leaderName, projectId);
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("[createProjectInternally] 添加管理链主管为项目成员失败: ownerUserId={}",
-                        business.getOwnerUserId(), e);
-            }
         }
 
-        // ====== 业界路径 2 · 从商机 involvedDeptIds 派生项目可见性 ======
-        // 1) 写入 project_dept_visibility：部门下所有人能看该项目
-        // 2) 把每个涉及部门的 leader_user_id 也加为项目成员（roleType=2 普通成员）
+        // 项目与 project_dept_visibility 已由 ProjectService.createProject 在同一事务内写入。
+        // 此处只补充涉及部门的直接负责人（roleType=3）；上级负责人的只读权限实时按组织树计算，不持久化为成员。
         if (CollUtil.isNotEmpty(business.getInvolvedDeptIds())) {
             java.util.Set<Long> involvedDeptIds = new java.util.LinkedHashSet<>(business.getInvolvedDeptIds());
-            try {
-                projectService.replaceProjectDeptVisibility(projectId, new java.util.ArrayList<>(involvedDeptIds));
-                log.info("[createProjectInternally] 项目 {} 同步可见部门 = {}", projectId, involvedDeptIds);
-            } catch (Exception e) {
-                log.warn("[createProjectInternally] 同步项目可见部门失败 projectId={}: {}",
-                        projectId, e.getMessage(), e);
-            }
-            // 把每个涉及部门的负责人加为项目成员（普通成员 roleType=2）
+            // 把每个涉及部门的负责人加为项目成员。
             for (Long deptId : involvedDeptIds) {
                 if (deptId == null) {
                     continue;

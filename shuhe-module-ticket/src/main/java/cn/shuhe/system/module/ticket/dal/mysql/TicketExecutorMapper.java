@@ -3,6 +3,7 @@ package cn.shuhe.system.module.ticket.dal.mysql;
 import cn.shuhe.system.framework.mybatis.core.mapper.BaseMapperX;
 import cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketExecutorDO;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.Collection;
@@ -40,6 +41,25 @@ public interface TicketExecutorMapper extends BaseMapperX<TicketExecutorDO> {
     default Long selectCountByTicketId(Long ticketId) {
         return selectCount(new LambdaQueryWrapperX<TicketExecutorDO>()
                 .eq(TicketExecutorDO::getTicketId, ticketId));
+    }
+
+    default boolean existsByTicketIdAndUserId(Long ticketId, Long userId) {
+        if (ticketId == null || userId == null) {
+            return false;
+        }
+        return selectCount(new LambdaQueryWrapperX<TicketExecutorDO>()
+                .eq(TicketExecutorDO::getTicketId, ticketId)
+                .eq(TicketExecutorDO::getUserId, userId)) > 0;
+    }
+
+    /**
+     * 同步一张工单的全部执行人状态。工单级「提交交付」视为整个执行组已完成；
+     * 驳回或重开后则整组恢复为执行中。
+     */
+    default void updateStatusByTicketId(Long ticketId, Integer status) {
+        update(null, new LambdaUpdateWrapper<TicketExecutorDO>()
+                .eq(TicketExecutorDO::getTicketId, ticketId)
+                .set(TicketExecutorDO::getStatus, status));
     }
 
     /**

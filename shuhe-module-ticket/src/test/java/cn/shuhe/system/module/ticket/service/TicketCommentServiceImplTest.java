@@ -9,6 +9,7 @@ import cn.shuhe.system.module.ticket.controller.admin.vo.TicketCommentSaveReqVO;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketCommentDO;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketDO;
 import cn.shuhe.system.module.ticket.dal.mysql.TicketCommentMapper;
+import cn.shuhe.system.module.ticket.dal.mysql.TicketExecutorMapper;
 import cn.shuhe.system.module.ticket.dal.mysql.TicketMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -51,6 +52,8 @@ class TicketCommentServiceImplTest extends BaseMockitoUnitTest {
     private TicketCommentMapper commentMapper;
     @Mock
     private TicketMapper ticketMapper;
+    @Mock
+    private TicketExecutorMapper ticketExecutorMapper;
     @Mock
     private AdminUserApi adminUserApi;
     @Mock

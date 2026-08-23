@@ -9,6 +9,9 @@ import cn.shuhe.system.module.project.controller.admin.vo.ProjectReportRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectReportSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectReportDO;
 import cn.shuhe.system.module.project.service.ProjectReportService;
+import cn.shuhe.system.module.project.service.access.ProjectAccessService;
+import cn.shuhe.system.module.system.api.user.AdminUserApi;
+import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -20,6 +23,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
+import static cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 
 @Tag(name = "管理后台 - 项目周报/汇报")
 @RestController
@@ -31,10 +35,17 @@ public class ProjectReportController {
     @Resource
     private ProjectReportService projectReportService;
 
+    @Resource
+    private ProjectAccessService projectAccessService;
+
+    @Resource
+    private AdminUserApi adminUserApi;
+
     @PostMapping("/create")
     @Operation(summary = "创建项目周报")
     @PreAuthorize("@ss.hasAnyPermissions('project:project-report:create', 'project:team-overview:query')")
     public CommonResult<Long> createReport(@Valid @RequestBody ProjectReportSaveReqVO createReqVO) {
+        validateCreateReport(createReqVO.getProjectId());
         return success(projectReportService.createReport(createReqVO));
     }
 
@@ -42,6 +53,9 @@ public class ProjectReportController {
     @Operation(summary = "更新项目周报")
     @PreAuthorize("@ss.hasAnyPermissions('project:project-report:update', 'project:team-overview:query')")
     public CommonResult<Boolean> updateReport(@Valid @RequestBody ProjectReportSaveReqVO updateReqVO) {
+        ProjectReportDO existing = projectReportService.getReport(updateReqVO.getId());
+        validateReadReport(existing);
+        updateReqVO.setProjectId(existing.getProjectId());
         projectReportService.updateReport(updateReqVO);
         return success(true);
     }
@@ -51,6 +65,7 @@ public class ProjectReportController {
     @Parameter(name = "id", description = "记录ID", required = true)
     @PreAuthorize("@ss.hasAnyPermissions('project:project-report:delete', 'project:team-overview:query')")
     public CommonResult<Boolean> deleteReport(@RequestParam("id") Long id) {
+        validateReadReport(projectReportService.getReport(id));
         projectReportService.deleteReport(id);
         return success(true);
     }
@@ -61,6 +76,7 @@ public class ProjectReportController {
     @PreAuthorize("@ss.hasAnyPermissions('project:project-report:query', 'project:team-overview:query')")
     public CommonResult<ProjectReportRespVO> getReport(@RequestParam("id") Long id) {
         ProjectReportDO report = projectReportService.getReport(id);
+        validateReadReport(report);
         return success(convertToRespVO(report));
     }
 
@@ -71,7 +87,11 @@ public class ProjectReportController {
             @RequestParam("projectId") Long projectId,
             @RequestParam("year") Integer year,
             @RequestParam("weekNumber") Integer weekNumber) {
+        projectAccessService.validateViewProject(projectId, getLoginUserId());
         ProjectReportDO report = projectReportService.getReportByProjectAndWeek(projectId, year, weekNumber);
+        if (report != null) {
+            validateReadReport(report);
+        }
         return success(convertToRespVO(report));
     }
 
@@ -79,10 +99,39 @@ public class ProjectReportController {
     @Operation(summary = "分页查询项目周报")
     @PreAuthorize("@ss.hasAnyPermissions('project:project-report:query', 'project:team-overview:query')")
     public CommonResult<PageResult<ProjectReportRespVO>> getReportPage(@Valid ProjectReportPageReqVO pageReqVO) {
+        if (pageReqVO.getProjectId() != null) {
+            projectAccessService.validateViewProject(pageReqVO.getProjectId(), getLoginUserId());
+        }
         PageResult<ProjectReportDO> pageResult = projectReportService.getReportPage(pageReqVO);
+        var readableReports = pageResult.getList().stream().filter(this::canReadReport).toList();
         return success(new PageResult<>(
-                pageResult.getList().stream().map(this::convertToRespVO).toList(),
-                pageResult.getTotal()));
+                readableReports.stream().map(this::convertToRespVO).toList(),
+                (long) readableReports.size()));
+    }
+
+    private void validateCreateReport(Long projectId) {
+        Long userId = getLoginUserId();
+        projectAccessService.validateViewProject(projectId, userId);
+        AdminUserRespDTO user = adminUserApi.getUser(userId);
+        if (user == null || !projectAccessService.canReadDept(projectId, userId, user.getDeptId())) {
+            throwForbidden();
+        }
+    }
+
+    private boolean canReadReport(ProjectReportDO report) {
+        return report != null && projectAccessService.canReadDept(
+                report.getProjectId(), getLoginUserId(), report.getDeptId());
+    }
+
+    private void validateReadReport(ProjectReportDO report) {
+        if (!canReadReport(report)) {
+            throwForbidden();
+        }
+    }
+
+    private void throwForbidden() {
+        throw cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception(
+                cn.shuhe.system.framework.common.exception.enums.GlobalErrorCodeConstants.FORBIDDEN);
     }
 
     private ProjectReportRespVO convertToRespVO(ProjectReportDO report) {

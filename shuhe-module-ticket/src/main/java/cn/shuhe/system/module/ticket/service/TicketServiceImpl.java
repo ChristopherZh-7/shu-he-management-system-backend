@@ -35,7 +35,10 @@ import cn.shuhe.system.module.ticket.enums.TicketBusinessTypeEnum;
 import cn.shuhe.system.module.ticket.enums.TicketSourceEnum;
 import cn.shuhe.system.module.ticket.enums.TicketStatusEnum;
 import cn.shuhe.system.module.ticket.framework.event.TicketAcceptedEvent;
+import cn.shuhe.system.module.ticket.framework.event.TicketLifecycleEvent;
 import cn.shuhe.system.module.ticket.framework.statemachine.TicketStateMachine;
+import cn.shuhe.system.module.ticket.service.context.TicketServiceContext;
+import cn.shuhe.system.module.ticket.service.context.TicketServiceContextResolver;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +54,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -61,7 +65,6 @@ import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUt
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_ASSIGNEE_NOT_EXISTS;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_ASSIGNEE_REQUIRED;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_ASSIGNEE_SAME;
-import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_BUSINESS_TYPE_INVALID;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_CATEGORY_DISABLED;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_CATEGORY_NOT_EXISTS;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_CREATOR_DEPT_MISSING;
@@ -78,6 +81,7 @@ import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_NO_P
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_REOPEN_EXPIRED;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_REOPEN_LIMIT;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_STATUS_INVALID;
+import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_SERVICE_ITEM_REQUIRED;
 
 /**
  * 工单 Service 实现。
@@ -126,21 +130,15 @@ public class TicketServiceImpl implements TicketService {
     @Resource
     private DingtalkNotifyApi dingtalkNotifyApi;
 
+    @Resource
+    private TicketServiceContextResolver serviceContextResolver;
+
     // ========== CRUD ==========
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createTicket(TicketSaveReqVO createReqVO) {
-        // 1. 业务工单一期禁写
-        String businessType = createReqVO.getBusinessType();
-        if (businessType == null) {
-            businessType = TicketBusinessTypeEnum.GENERAL.getType();
-        }
-        if (!TicketBusinessTypeEnum.isWriteAllowed(businessType)) {
-            throw exception(TICKET_BUSINESS_TYPE_INVALID);
-        }
-
-        // 2. 校验分类（如果有指定）
+        // 1. 校验分类（如果有指定）
         if (createReqVO.getCategoryId() != null) {
             TicketCategoryDO category = categoryMapper.selectById(createReqVO.getCategoryId());
             if (category == null) {
@@ -151,47 +149,45 @@ public class TicketServiceImpl implements TicketService {
             }
         }
 
-        // 3. 校验提单人
+        // 2. 校验提单人
         Long creatorUserId = SecurityFrameworkUtils.getLoginUserId();
         AdminUserRespDTO creator = creatorUserId == null ? null : adminUserApi.getUser(creatorUserId);
         if (creator == null) {
             throw exception(TICKET_CREATOR_DEPT_MISSING);
         }
-        if (creator.getDeptId() == null && createReqVO.getDeptId() == null) {
-            throw exception(TICKET_CREATOR_DEPT_MISSING);
-        }
+        TicketServiceContext context = resolveServiceContext(createReqVO.getServiceItemId(), creatorUserId);
 
-        // 4. 装配 DO。创建时不允许直接指定处理人，必须先按 deptId 派到部门，由部门负责人接单。
+        // 3. 只信任服务项 ID；项目、客户、服务类型和接单部门全由后端推导。
         TicketDO ticket = TicketDO.builder()
                 .title(createReqVO.getTitle())
                 .content(createReqVO.getContent())
                 .categoryId(createReqVO.getCategoryId())
                 .priority(createReqVO.getPriority() == null ? 1 : createReqVO.getPriority())
                 .source(TicketSourceEnum.MANUAL.getSource())
-                .businessType(businessType)
-                .businessId(createReqVO.getBusinessId())
+                .businessType(TicketBusinessTypeEnum.SERVICE_LAUNCH.getType())
                 .status(TicketStatusEnum.PENDING.getStatus())
                 .creatorId(creatorUserId)
                 .creatorName(creator.getNickname())
-                .deptId(createReqVO.getDeptId())
+                .deptId(context.getResponsibleDeptId())
                 .dueTime(createReqVO.getDueTime())
-                .projectId(createReqVO.getProjectId())
-                .customerId(createReqVO.getCustomerId())
-                .extJson(createReqVO.getExtJson())
+                .projectId(context.getProjectId())
+                .serviceItemId(context.getServiceItemId())
+                .customerId(context.getCustomerId())
+                .extJson(buildServiceSnapshot(createReqVO.getExtJson(), context))
                 .remark(createReqVO.getRemark())
                 .notifyChannels("inner,dingtalk")
                 .notifyStatus(0)
                 .build();
 
-        // 5. 生成工单号（带重试，靠 uk_ticket_no 唯一索引兜底）
+        // 4. 生成工单号（带重试，靠 uk_ticket_no 唯一索引兜底）
         ticket.setTicketNo(generateTicketNo());
 
-        // 6. 入库 + 写 log
+        // 5. 入库 + 写 log
         ticketMapper.insert(ticket);
         writeLog(ticket.getId(), TicketActionEnum.CREATE, null, ticket.getStatus(),
                 null, ticket.getAssigneeId(), "创建工单");
 
-        // 7. 钉钉通知派单部门负责人接单
+        // 6. 钉钉通知负责部门接单
         notifyDingtalk(ticket, Collections.singletonList(resolveDeptLeaderId(ticket.getDeptId())),
                 "新工单待接单",
                 String.format("- 提单人：%s%n%n您是派单部门负责人，请尽快接单派工", ticket.getCreatorName()));
@@ -214,6 +210,7 @@ public class TicketServiceImpl implements TicketService {
             throw exception(TICKET_STATUS_INVALID,
                     TicketStatusEnum.nameOf(existing.getStatus()), "修改基本信息");
         }
+        TicketServiceContext context = resolveServiceContext(updateReqVO.getServiceItemId(), currentUserId);
         // 仅允许改可编辑字段；assignee / status 由专用接口处理
         TicketDO update = new TicketDO();
         update.setId(existing.getId());
@@ -221,11 +218,14 @@ public class TicketServiceImpl implements TicketService {
         update.setContent(updateReqVO.getContent());
         update.setCategoryId(updateReqVO.getCategoryId());
         update.setPriority(updateReqVO.getPriority());
-        update.setDeptId(updateReqVO.getDeptId());
+        update.setDeptId(context.getResponsibleDeptId());
         update.setDueTime(updateReqVO.getDueTime());
-        update.setProjectId(updateReqVO.getProjectId());
-        update.setCustomerId(updateReqVO.getCustomerId());
-        update.setExtJson(updateReqVO.getExtJson());
+        update.setProjectId(context.getProjectId());
+        update.setServiceItemId(context.getServiceItemId());
+        update.setCustomerId(context.getCustomerId());
+        update.setBusinessType(TicketBusinessTypeEnum.SERVICE_LAUNCH.getType());
+        update.setBusinessId(null);
+        update.setExtJson(buildServiceSnapshot(updateReqVO.getExtJson(), context));
         update.setRemark(updateReqVO.getRemark());
         ticketMapper.updateById(update);
     }
@@ -286,6 +286,11 @@ public class TicketServiceImpl implements TicketService {
             }
         });
         return ticketMapper.selectPage(pageReqVO, wrapper);
+    }
+
+    @Override
+    public List<TicketServiceContext> getEligibleServiceItems(Long userId, Long projectId) {
+        return serviceContextResolver.listEligible(userId, projectId);
     }
 
     /**
@@ -472,6 +477,7 @@ public class TicketServiceImpl implements TicketService {
                 .title(ticket.getTitle())
                 .businessType(ticket.getBusinessType())
                 .businessId(ticket.getBusinessId())
+                .serviceItemId(ticket.getServiceItemId())
                 .deptId(ticket.getDeptId())
                 .creatorId(ticket.getCreatorId())
                 .creatorName(ticket.getCreatorName())
@@ -520,19 +526,23 @@ public class TicketServiceImpl implements TicketService {
         TicketDO ticket = mustExist(reqVO.getId());
         Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
         if (!Objects.equals(ticket.getAssigneeId(), currentUserId)
+                && !isTicketExecutor(ticket.getId(), currentUserId)
                 && !isSuperAdmin(currentUserId)) {
             throw exception(TICKET_NOT_ASSIGNEE);
         }
-        // 1 → 2 进入待验收；finishTime 推迟到验收通过时回写
+        // 1 → 2 进入待验收；提交服务结果即代表执行完成
         Integer toStatus = TicketStateMachine.checkTransition(ticket.getStatus(), TicketActionEnum.FINISH);
 
         TicketDO update = new TicketDO();
         update.setId(ticket.getId());
         update.setStatus(toStatus);
+        update.setFinishTime(LocalDateTime.now());
         ticketMapper.updateById(update);
+        executorMapper.updateStatusByTicketId(ticket.getId(), 1);
 
         writeLog(ticket.getId(), TicketActionEnum.FINISH, ticket.getStatus(), toStatus,
                 ticket.getAssigneeId(), ticket.getAssigneeId(), reqVO.getResult());
+        publishLifecycleEvent(ticket, TicketActionEnum.FINISH, reqVO.getResult());
 
         notifyDingtalk(ticket, Collections.singletonList(ticket.getCreatorId()),
                 "工单待验收",
@@ -556,12 +566,13 @@ public class TicketServiceImpl implements TicketService {
         update.setReviewerName(reviewer == null ? null : reviewer.getNickname());
         update.setReviewTime(LocalDateTime.now());
         update.setReviewComment(reqVO.getComment());
-        update.setFinishTime(LocalDateTime.now());
         ticketMapper.updateById(update);
 
         writeLog(ticket.getId(), TicketActionEnum.REVIEW_PASS, ticket.getStatus(), toStatus,
                 ticket.getAssigneeId(), ticket.getAssigneeId(),
                 reqVO.getComment() == null ? "验收通过" : reqVO.getComment());
+        // “提交结果”只代表执行人已交付，必须由提单人验收通过后，业务轮次才正式完成。
+        publishLifecycleEvent(ticket, TicketActionEnum.REVIEW_PASS, reqVO.getComment());
 
         notifyDingtalk(ticket, Collections.singletonList(ticket.getAssigneeId()),
                 "工单验收通过",
@@ -588,9 +599,15 @@ public class TicketServiceImpl implements TicketService {
         update.setReviewTime(LocalDateTime.now());
         update.setReviewComment(reqVO.getReason());
         ticketMapper.updateById(update);
+        // 验收驳回后回到执行中，上一次交付的完成时间不再代表当前状态
+        ticketMapper.update(null, new LambdaUpdateWrapper<TicketDO>()
+                .eq(TicketDO::getId, ticket.getId())
+                .set(TicketDO::getFinishTime, null));
+        executorMapper.updateStatusByTicketId(ticket.getId(), 0);
 
         writeLog(ticket.getId(), TicketActionEnum.REVIEW_REJECT, ticket.getStatus(), toStatus,
                 ticket.getAssigneeId(), ticket.getAssigneeId(), reqVO.getReason());
+        publishLifecycleEvent(ticket, TicketActionEnum.REVIEW_REJECT, reqVO.getReason());
 
         notifyDingtalk(ticket, Collections.singletonList(ticket.getAssigneeId()),
                 "工单验收驳回",
@@ -648,10 +665,12 @@ public class TicketServiceImpl implements TicketService {
                 .set(TicketDO::getReviewTime, null)
                 .set(TicketDO::getReviewComment, null)
                 .set(TicketDO::getReopenCount, reopenCount + 1));
+        executorMapper.updateStatusByTicketId(ticket.getId(), 0);
 
         writeLog(ticket.getId(), TicketActionEnum.REOPEN, ticket.getStatus(), toStatus,
                 ticket.getAssigneeId(), ticket.getAssigneeId(),
                 "第 " + (reopenCount + 1) + " 次重开：" + reqVO.getReason());
+        publishLifecycleEvent(ticket, TicketActionEnum.REOPEN, reqVO.getReason());
     }
 
     @Override
@@ -777,12 +796,13 @@ public class TicketServiceImpl implements TicketService {
         }
         boolean isCreator = Objects.equals(ticket.getCreatorId(), currentUserId);
         boolean isAssignee = currentUserId != null && Objects.equals(ticket.getAssigneeId(), currentUserId);
+        boolean isExecutor = isTicketExecutor(ticket.getId(), currentUserId);
         boolean isAdmin = isSuperAdmin(currentUserId);
         boolean isDeptLeader = isDeptLeader(ticket.getDeptId(), currentUserId);
         Integer status = ticket.getStatus();
         List<String> actions = new ArrayList<>();
         // comment 任意可访问者都能评论
-        if (isCreator || isAssignee || isAdmin || isDeptLeader) {
+        if (isCreator || isAssignee || isExecutor || isAdmin || isDeptLeader) {
             actions.add(TicketActionEnum.COMMENT.getAction());
         }
         // 基础 update：status=0 / 6（退回后修改再重提）且是提单人或管理员
@@ -807,8 +827,8 @@ public class TicketServiceImpl implements TicketService {
         if (canDo(status, TicketActionEnum.START) && isAssignee) {
             actions.add(TicketActionEnum.START.getAction());
         }
-        // 完成（提交验收）：status=1 且是 assignee 或管理员
-        if (canDo(status, TicketActionEnum.FINISH) && (isAssignee || isAdmin)) {
+        // 完成（提交验收）：任一被指派执行人、当前负责人或管理员
+        if (canDo(status, TicketActionEnum.FINISH) && (isAssignee || isExecutor || isAdmin)) {
             actions.add(TicketActionEnum.FINISH.getAction());
         }
         // 验收：status=2 且是提单人或管理员（actions 用 camelCase 与前端约定一致）
@@ -850,6 +870,7 @@ public class TicketServiceImpl implements TicketService {
         TicketDO ticket = mustExist(ticketId);
         if (Objects.equals(ticket.getCreatorId(), currentUserId)
                 || Objects.equals(ticket.getAssigneeId(), currentUserId)
+                || isTicketExecutor(ticket.getId(), currentUserId)
                 || isSuperAdmin(currentUserId)
                 // 工单归属部门负责人需进详情接单 / 拒单
                 || isDeptLeader(ticket.getDeptId(), currentUserId)) {
@@ -869,6 +890,55 @@ public class TicketServiceImpl implements TicketService {
             throw exception(TICKET_NOT_EXISTS);
         }
         return ticket;
+    }
+
+    private TicketServiceContext resolveServiceContext(Long serviceItemId, Long userId) {
+        if (serviceItemId == null) {
+            throw exception(TICKET_SERVICE_ITEM_REQUIRED);
+        }
+        return serviceContextResolver.resolve(serviceItemId, userId);
+    }
+
+    private Map<String, Object> buildServiceSnapshot(Map<String, Object> requestExt,
+                                                     TicketServiceContext context) {
+        Map<String, Object> ext = new LinkedHashMap<>();
+        if (requestExt != null) {
+            // 只保留用户可填的执行参数，权限与路由字段在下方强制覆盖。
+            copyExt(requestExt, ext, "isOutside", "destination", "reason",
+                    "planStartTime", "planEndTime");
+        }
+        ext.put("serviceItemId", context.getServiceItemId());
+        ext.put("serviceItemCode", context.getServiceItemCode());
+        ext.put("serviceType", context.getServiceType());
+        ext.put("serviceTypeName", context.getServiceTypeName());
+        ext.put("serviceMode", context.getServiceMode());
+        ext.put("serviceMemberType", context.getServiceMemberType());
+        ext.put("deptType", context.getDeptType());
+        ext.put("projectId", context.getProjectId());
+        ext.put("projectCode", context.getProjectCode());
+        ext.put("projectName", context.getProjectName());
+        ext.put("executeDeptId", context.getResponsibleDeptId());
+        ext.put("responsibleDeptName", context.getResponsibleDeptName());
+        ext.put("customerId", context.getCustomerId());
+        ext.put("customerName", context.getCustomerName());
+        ext.put("contractId", context.getContractId());
+        ext.put("contractNo", context.getContractNo());
+        ext.put("serviceSourceType", context.getSourceType());
+        ext.values().removeIf(Objects::isNull);
+        return ext;
+    }
+
+    private void copyExt(Map<String, Object> source, Map<String, Object> target, String... keys) {
+        for (String key : keys) {
+            if (source.containsKey(key)) {
+                target.put(key, source.get(key));
+            }
+        }
+    }
+
+    private boolean isTicketExecutor(Long ticketId, Long userId) {
+        return ticketId != null && userId != null
+                && executorMapper.existsByTicketIdAndUserId(ticketId, userId);
     }
 
     private boolean isSuperAdmin(Long userId) {
@@ -1080,5 +1150,17 @@ public class TicketServiceImpl implements TicketService {
         } catch (ServiceException ex) {
             log.warn("写工单日志失败 ticketId={} action={}: {}", ticketId, action, ex.getMessage());
         }
+    }
+
+    /** 同步发布履约状态事件；业务监听器失败时由当前工单事务统一回滚。 */
+    private void publishLifecycleEvent(TicketDO ticket, TicketActionEnum action, String result) {
+        eventPublisher.publishEvent(TicketLifecycleEvent.builder()
+                .ticketId(ticket.getId())
+                .ticketNo(ticket.getTicketNo())
+                .businessType(ticket.getBusinessType())
+                .businessId(ticket.getBusinessId())
+                .action(action.getAction())
+                .result(result)
+                .build());
     }
 }

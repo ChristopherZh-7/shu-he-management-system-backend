@@ -14,6 +14,7 @@ import cn.shuhe.system.module.ticket.controller.admin.vo.TicketTransferReqVO;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketDO;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketExecutorDO;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketLogDO;
+import cn.shuhe.system.module.ticket.service.context.TicketServiceContext;
 import jakarta.validation.Valid;
 
 import java.util.List;
@@ -41,6 +42,9 @@ public interface TicketService {
      * 我的工单：当前用户提的 + 处理的；本方法实现内会跳过 {@code @DataPermission}。
      */
     PageResult<TicketDO> getMyTicketPage(TicketPageReqVO pageReqVO, Long userId);
+
+    /** 当前用户可申请工单的精确服务项。 */
+    List<TicketServiceContext> getEligibleServiceItems(Long userId, Long projectId);
 
     // ========== 状态机 ==========
 

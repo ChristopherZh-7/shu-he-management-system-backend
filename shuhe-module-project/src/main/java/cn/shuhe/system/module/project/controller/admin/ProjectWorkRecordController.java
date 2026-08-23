@@ -19,6 +19,7 @@ import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
 import cn.shuhe.system.module.project.dal.mysql.SecurityOperationContractMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import cn.shuhe.system.module.project.service.ProjectWorkRecordService;
+import cn.shuhe.system.module.project.service.access.ProjectAccessService;
 import cn.shuhe.system.module.system.api.dept.DeptApi;
 import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
@@ -68,10 +69,14 @@ public class ProjectWorkRecordController {
     @Resource
     private DeptApi deptApi;
 
+    @Resource
+    private ProjectAccessService projectAccessService;
+
     @PostMapping("/create")
     @Operation(summary = "创建工作记录")
     @PreAuthorize("@ss.hasAnyPermissions('project:work-record:create', 'project:management-record:create', 'project:my-work-record:create')")
     public CommonResult<Long> createWorkRecord(@Valid @RequestBody ProjectWorkRecordSaveReqVO createReqVO) {
+        validateWorkRecordTarget(createReqVO.getProjectId(), createReqVO.getServiceItemId());
         return success(workRecordService.createWorkRecord(createReqVO));
     }
 
@@ -79,6 +84,10 @@ public class ProjectWorkRecordController {
     @Operation(summary = "更新工作记录")
     @PreAuthorize("@ss.hasAnyPermissions('project:work-record:update', 'project:management-record:update', 'project:my-work-record:update')")
     public CommonResult<Boolean> updateWorkRecord(@Valid @RequestBody ProjectWorkRecordSaveReqVO updateReqVO) {
+        ProjectWorkRecordDO existing = workRecordService.getWorkRecord(updateReqVO.getId());
+        validateReadWorkRecord(existing);
+        updateReqVO.setProjectId(existing.getProjectId());
+        validateWorkRecordTarget(existing.getProjectId(), updateReqVO.getServiceItemId());
         workRecordService.updateWorkRecord(updateReqVO);
         return success(true);
     }
@@ -88,6 +97,7 @@ public class ProjectWorkRecordController {
     @Parameter(name = "id", description = "记录编号", required = true)
     @PreAuthorize("@ss.hasAnyPermissions('project:work-record:delete', 'project:management-record:delete')")
     public CommonResult<Boolean> deleteWorkRecord(@RequestParam("id") Long id) {
+        validateReadWorkRecord(workRecordService.getWorkRecord(id));
         workRecordService.deleteWorkRecord(id);
         return success(true);
     }
@@ -98,6 +108,7 @@ public class ProjectWorkRecordController {
     @PreAuthorize("@ss.hasAnyPermissions('project:work-record:query', 'project:management-record:query', 'project:my-work-record:query')")
     public CommonResult<ProjectWorkRecordRespVO> getWorkRecord(@RequestParam("id") Long id) {
         ProjectWorkRecordDO record = workRecordService.getWorkRecord(id);
+        validateReadWorkRecord(record);
         return success(convertToRespVO(record));
     }
 
@@ -105,14 +116,18 @@ public class ProjectWorkRecordController {
     @Operation(summary = "获取工作记录分页")
     @PreAuthorize("@ss.hasAnyPermissions('project:work-record:query', 'project:management-record:query', 'project:my-work-record:query')")
     public CommonResult<PageResult<ProjectWorkRecordRespVO>> getWorkRecordPage(@Valid ProjectWorkRecordPageReqVO pageReqVO) {
+        if (pageReqVO.getProjectId() != null) {
+            projectAccessService.validateViewProject(pageReqVO.getProjectId(), SecurityFrameworkUtils.getLoginUserId());
+        }
         PageResult<ProjectWorkRecordDO> pageResult = workRecordService.getWorkRecordPage(pageReqVO);
-        
+
         // 转换响应
         List<ProjectWorkRecordRespVO> respList = pageResult.getList().stream()
+                .filter(this::canReadWorkRecord)
                 .map(this::convertToRespVO)
                 .collect(Collectors.toList());
-        
-        return success(new PageResult<>(respList, pageResult.getTotal()));
+
+        return success(new PageResult<>(respList, (long) respList.size()));
     }
 
     @GetMapping("/list-by-project")
@@ -120,8 +135,10 @@ public class ProjectWorkRecordController {
     @Parameter(name = "projectId", description = "项目ID", required = true)
     @PreAuthorize("@ss.hasAnyPermissions('project:work-record:query', 'project:management-record:query', 'project:my-work-record:query')")
     public CommonResult<List<ProjectWorkRecordRespVO>> getWorkRecordListByProject(@RequestParam("projectId") Long projectId) {
+        projectAccessService.validateViewProject(projectId, SecurityFrameworkUtils.getLoginUserId());
         List<ProjectWorkRecordDO> list = workRecordService.getWorkRecordListByProjectId(projectId);
-        return success(list.stream().map(this::convertToRespVO).collect(Collectors.toList()));
+        return success(list.stream().filter(this::canReadWorkRecord)
+                .map(this::convertToRespVO).collect(Collectors.toList()));
     }
 
     @GetMapping("/list-by-service-item")
@@ -129,16 +146,22 @@ public class ProjectWorkRecordController {
     @Parameter(name = "serviceItemId", description = "服务项ID", required = true)
     @PreAuthorize("@ss.hasAnyPermissions('project:work-record:query', 'project:management-record:query', 'project:my-work-record:query')")
     public CommonResult<List<ProjectWorkRecordRespVO>> getWorkRecordListByServiceItem(@RequestParam("serviceItemId") Long serviceItemId) {
+        validateReadableServiceItem(serviceItemId);
         List<ProjectWorkRecordDO> list = workRecordService.getWorkRecordListByServiceItemId(serviceItemId);
-        return success(list.stream().map(this::convertToRespVO).collect(Collectors.toList()));
+        return success(list.stream().filter(this::canReadWorkRecord)
+                .map(this::convertToRespVO).collect(Collectors.toList()));
     }
 
     @GetMapping("/export")
     @Operation(summary = "导出工作记录Excel")
     @PreAuthorize("@ss.hasAnyPermissions('project:work-record:export', 'project:management-record:export')")
     public void exportWorkRecordExcel(@Valid ProjectWorkRecordPageReqVO reqVO, HttpServletResponse response) throws IOException {
+        if (reqVO.getProjectId() != null) {
+            projectAccessService.validateViewProject(reqVO.getProjectId(), SecurityFrameworkUtils.getLoginUserId());
+        }
         List<ProjectWorkRecordDO> list = workRecordService.getWorkRecordListForExport(reqVO);
         List<ProjectWorkRecordRespVO> respList = list.stream()
+                .filter(this::canReadWorkRecord)
                 .map(this::convertToRespVO)
                 .collect(Collectors.toList());
         ExcelUtils.write(response, "工作记录.xls", "工作记录", ProjectWorkRecordRespVO.class, respList);
@@ -161,14 +184,6 @@ public class ProjectWorkRecordController {
             return success(result);
         }
         
-        // 获取用户部门及子部门ID（用于判断数据权限）
-        Set<Long> deptIds = new HashSet<>();
-        deptIds.add(user.getDeptId());
-        List<DeptRespDTO> childDepts = deptApi.getChildDeptList(user.getDeptId());
-        if (CollUtil.isNotEmpty(childDepts)) {
-            deptIds.addAll(childDepts.stream().map(DeptRespDTO::getId).collect(Collectors.toSet()));
-        }
-        
         // 获取用户所属的顶级部门类型（用于过滤项目类型）
         Integer userDeptType = getUserDeptType(user.getDeptId());
         log.info("[getMyProjects] 用户ID={}, 部门ID={}, 部门类型={}", userId, user.getDeptId(), userDeptType);
@@ -183,6 +198,10 @@ public class ProjectWorkRecordController {
             
             // 1. 先通过服务项的 deptType 获取项目ID列表
             List<Long> projectIds = serviceItemMapper.selectProjectIdsByDeptType(queryDeptType);
+            List<Long> visibleProjectIds = projectAccessService.getVisibleProjectIds(userId);
+            if (visibleProjectIds != null) {
+                projectIds = projectIds.stream().filter(visibleProjectIds::contains).toList();
+            }
             log.info("[getMyProjects] 根据服务项deptType={}过滤，找到项目IDs: {}", queryDeptType, projectIds);
             
             if (CollUtil.isNotEmpty(projectIds)) {
@@ -266,13 +285,17 @@ public class ProjectWorkRecordController {
     public CommonResult<List<Map<String, Object>>> getServiceItemsByProject(
             @RequestParam("projectId") Long projectId,
             @RequestParam("projectType") Integer projectType) {
-        
+
+        Long userId = SecurityFrameworkUtils.getLoginUserId();
+        projectAccessService.validateViewProject(projectId, userId);
+        List<Long> readableDeptIds = projectAccessService.getReadableDeptIds(projectId, userId);
+        if (readableDeptIds != null && readableDeptIds.isEmpty()) {
+            return success(List.of());
+        }
         // 统一通过 projectId 查询服务项（服务项表的 project_id 字段关联到 project 表）
-        List<ServiceItemDO> serviceItems = serviceItemMapper.selectList(
-                new cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX<ServiceItemDO>()
-                        .eq(ServiceItemDO::getProjectId, projectId)
-                        .eq(ServiceItemDO::getVisible, 1) // 只显示可见的服务项
-                        .orderByAsc(ServiceItemDO::getId));
+        List<ServiceItemDO> serviceItems = readableDeptIds == null
+                ? serviceItemMapper.selectListByProjectId(projectId)
+                : serviceItemMapper.selectListByProjectIdAndDeptIds(projectId, readableDeptIds);
         
         log.info("[getServiceItemsByProject] projectId={}, projectType={}, 查询到服务项数量={}", 
             projectId, projectType, serviceItems.size());
@@ -287,6 +310,46 @@ public class ProjectWorkRecordController {
         }).collect(Collectors.toList());
         
         return success(result);
+    }
+
+    private void validateWorkRecordTarget(Long projectId, Long serviceItemId) {
+        Long userId = SecurityFrameworkUtils.getLoginUserId();
+        projectAccessService.validateViewProject(projectId, userId);
+        AdminUserRespDTO user = adminUserApi.getUser(userId);
+        if (user == null || !projectAccessService.canReadDept(projectId, userId, user.getDeptId())) {
+            throwForbidden();
+        }
+        if (serviceItemId != null) {
+            ServiceItemDO item = validateReadableServiceItem(serviceItemId);
+            if (!projectId.equals(item.getProjectId())) {
+                throwForbidden();
+            }
+        }
+    }
+
+    private ServiceItemDO validateReadableServiceItem(Long serviceItemId) {
+        ServiceItemDO item = serviceItemMapper.selectById(serviceItemId);
+        if (item == null || !projectAccessService.canReadDept(
+                item.getProjectId(), SecurityFrameworkUtils.getLoginUserId(), item.getDeptId())) {
+            throwForbidden();
+        }
+        return item;
+    }
+
+    private boolean canReadWorkRecord(ProjectWorkRecordDO record) {
+        return record != null && projectAccessService.canReadDept(
+                record.getProjectId(), SecurityFrameworkUtils.getLoginUserId(), record.getDeptId());
+    }
+
+    private void validateReadWorkRecord(ProjectWorkRecordDO record) {
+        if (!canReadWorkRecord(record)) {
+            throwForbidden();
+        }
+    }
+
+    private void throwForbidden() {
+        throw cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception(
+                cn.shuhe.system.framework.common.exception.enums.GlobalErrorCodeConstants.FORBIDDEN);
     }
 
     /**

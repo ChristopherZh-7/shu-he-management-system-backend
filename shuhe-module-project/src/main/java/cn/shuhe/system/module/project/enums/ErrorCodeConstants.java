@@ -17,6 +17,9 @@ public interface ErrorCodeConstants {
     ErrorCode PROJECT_MANAGER_NOT_SET = new ErrorCode(1_030_001_004, "请先设置项目负责人才能开始项目");
     ErrorCode PROJECT_ALREADY_EXITED = new ErrorCode(1_030_001_005, "项目已退场，无法再次操作");
     ErrorCode PROJECT_EXIT_NOT_ALLOWED = new ErrorCode(1_030_001_006, "只有进行中的项目才能退场");
+    ErrorCode PROJECT_VIEW_FORBIDDEN = new ErrorCode(1_030_001_007, "您无权查看该项目");
+    ErrorCode PROJECT_MANAGE_FORBIDDEN = new ErrorCode(1_030_001_008, "只有项目经理或管理员可执行该操作");
+    ErrorCode PROJECT_VISIBLE_DEPT_REQUIRED = new ErrorCode(1_030_001_009, "项目至少需要一个参与部门");
 
     // ========== 服务项模块 1-030-007-000 ==========
     ErrorCode SERVICE_ITEM_NOT_EXISTS = new ErrorCode(1_030_007_000, "服务项不存在");
@@ -97,10 +100,12 @@ public interface ErrorCodeConstants {
     ErrorCode PROJECT_DEPT_SERVICE_NOT_SECURITY_SERVICE = new ErrorCode(1_030_015_004, "该操作仅适用于安全服务类型的部门服务单");
     ErrorCode PROJECT_DEPT_SERVICE_NOT_DATA_SECURITY = new ErrorCode(1_030_015_005, "该操作仅适用于数据安全类型的部门服务单");
     ErrorCode PROJECT_DEPT_SERVICE_BUDGET_EXCEEDED = new ErrorCode(1_030_015_006, "驻场预算 + 二线预算不能超过合同总预算");
+    ErrorCode PROJECT_DEPT_SERVICE_HAS_ITEMS = new ErrorCode(1_030_015_007, "该部门服务包已有服务项，不能从项目中移除");
 
     // ========== 项目驻场点 1-030-016-000 ==========
     ErrorCode PROJECT_SITE_NOT_EXISTS = new ErrorCode(1_030_016_000, "驻场点不存在");
     ErrorCode PROJECT_SITE_NAME_DUPLICATE = new ErrorCode(1_030_016_001, "驻场点名称已存在");
+    ErrorCode PROJECT_SITE_DATE_INVALID = new ErrorCode(1_030_016_002, "驻场结束日期不能早于开始日期");
 
     // ========== 项目驻场人员 1-030-017-000 ==========
     ErrorCode PROJECT_SITE_MEMBER_NOT_EXISTS = new ErrorCode(1_030_017_000, "驻场人员不存在");

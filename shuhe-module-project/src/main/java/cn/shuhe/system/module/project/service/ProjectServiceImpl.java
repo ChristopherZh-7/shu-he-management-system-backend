@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.shuhe.system.framework.common.pojo.PageResult;
 import cn.shuhe.system.framework.common.util.object.BeanUtils;
+import cn.shuhe.system.framework.datapermission.core.util.DataPermissionUtils;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectPageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
@@ -13,9 +14,11 @@ import cn.shuhe.system.module.project.dal.mysql.ProjectDeptServiceMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectDeptVisibilityMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMemberMapper;
+import cn.shuhe.system.module.project.enums.ProjectMemberRoleEnum;
 import cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils;
 import cn.shuhe.system.module.system.api.dingtalk.DingtalkNotifyApi;
-import cn.shuhe.system.module.system.api.permission.PermissionApi;
+import cn.shuhe.system.module.project.service.access.ProjectAccessService;
+import cn.shuhe.system.module.system.api.dept.DeptApi;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import cn.shuhe.system.module.finance.controller.admin.cost.vo.UserCostRespVO;
@@ -69,7 +72,10 @@ public class ProjectServiceImpl implements ProjectService {
     private ServiceItemService serviceItemService;
 
     @Resource
-    private PermissionApi permissionApi;
+    private ProjectAccessService projectAccessService;
+
+    @Resource
+    private DeptApi deptApi;
 
     @Resource
     private DingtalkNotifyApi dingtalkNotifyApi;
@@ -107,6 +113,9 @@ public class ProjectServiceImpl implements ProjectService {
         registerManagersAsMembers(projectId, createReqVO.getManagerIds(),
                 createReqVO.getManagerNames(), creatorUserId);
 
+        // 5. 项目与部门可见关系必须在同一事务内落库，避免项目已创建但部门不可见。
+        replaceProjectDeptVisibility(projectId, createReqVO.getInvolvedDeptIds());
+
         return projectId;
     }
 
@@ -120,10 +129,13 @@ public class ProjectServiceImpl implements ProjectService {
         ProjectDO updateObj = BeanUtils.toBean(updateReqVO, ProjectDO.class);
         projectMapper.updateById(updateObj);
 
-        // 3. 检测新增的负责人，登记为项目成员 + 加入钉钉群
+        // 3. 项目负责人与 roleType=1 成员同步，避免页面已移除但旧成员仍保留全权。
         // addProjectMember 内部已会调用 addUsersToProjectGroupChat
+        List<Long> oldManagerIds = existing.getManagerIds() != null ? existing.getManagerIds() : List.of();
+        List<Long> newManagerIds = updateReqVO.getManagerIds() != null
+                ? updateReqVO.getManagerIds().stream().filter(java.util.Objects::nonNull).distinct().toList()
+                : List.of();
         if (updateReqVO.getManagerIds() != null && !updateReqVO.getManagerIds().isEmpty()) {
-            List<Long> oldManagerIds = existing.getManagerIds() != null ? existing.getManagerIds() : List.of();
             List<Long> newIds = updateReqVO.getManagerIds().stream()
                     .filter(id -> id != null && !oldManagerIds.contains(id))
                     .toList();
@@ -139,6 +151,19 @@ public class ProjectServiceImpl implements ProjectService {
                 }
             }
         }
+        for (Long removedManagerId : oldManagerIds) {
+            if (removedManagerId == null || newManagerIds.contains(removedManagerId)) {
+                continue;
+            }
+            ProjectMemberDO member = projectMemberMapper.selectByProjectIdAndUserId(
+                    updateReqVO.getId(), removedManagerId);
+            if (member != null && ProjectMemberRoleEnum.MANAGER.getValue().equals(member.getRoleType())) {
+                projectMemberMapper.deleteById(member.getId());
+            }
+        }
+
+        // 4. 项目字段与可见关系表保持强一致。
+        replaceProjectDeptVisibility(updateReqVO.getId(), updateReqVO.getInvolvedDeptIds());
     }
 
     /**
@@ -212,12 +237,8 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     public PageResult<ProjectDO> getProjectPage(ProjectPageReqVO pageReqVO, Long userId) {
         log.info("【getProjectPage】开始查询项目列表, userId={}, pageReqVO={}", userId, pageReqVO);
-        
-        // 1. 检查是否是超级管理员
-        boolean isSuperAdmin = permissionApi.hasAnyRoles(userId, "super_admin");
-        log.info("【getProjectPage】用户 {} 是否是超级管理员: {}", userId, isSuperAdmin);
-        
-        if (isSuperAdmin) {
+        List<Long> visibleProjectIds = projectAccessService.getVisibleProjectIds(userId);
+        if (visibleProjectIds == null) {
             // 超级管理员可以看到所有项目，不再按服务项deptType过滤
             // 原因：项目是主体，服务项是附属，不应该因为没有服务项就看不到项目
             log.info("【getProjectPage】超级管理员，查询所有项目（不按服务项deptType过滤）, pageReqVO.status={}", 
@@ -231,71 +252,32 @@ public class ProjectServiceImpl implements ProjectService {
                     result.getTotal(), result.getList() != null ? result.getList().size() : 0);
             return result;
         }
-
-        // 3. 所有非超管用户的可见项目 = (我作为项目成员) ∪ (我所在部门被授可见的项目)
-        //    - 成员维度：project_member.user_id = userId
-        //    - 部门维度：project_dept_visibility.dept_id IN (我的部门 ids)
-        //    任一命中即可见，避免「只挂部门不挂个人」时漏看
-        List<Long> memberProjectIds = projectMemberMapper.selectProjectIdsByUserId(userId);
-        log.info("【getProjectPage】用户 {} 作为成员参与的项目IDs: {}", userId, memberProjectIds);
-
-        List<Long> deptVisibleProjectIds = resolveDeptVisibleProjectIds(userId);
-        log.info("【getProjectPage】用户 {} 所在部门可见的项目IDs: {}", userId, deptVisibleProjectIds);
-
-        java.util.Set<Long> projectIdSet = new java.util.LinkedHashSet<>();
-        projectIdSet.addAll(memberProjectIds);
-        projectIdSet.addAll(deptVisibleProjectIds);
-        if (projectIdSet.isEmpty()) {
-            log.info("【getProjectPage】用户既不是任何项目成员也无部门可见项目，返回空");
+        if (visibleProjectIds.isEmpty()) {
+            log.info("【getProjectPage】用户无可见项目，返回空");
             return PageResult.empty();
         }
-        List<Long> projectIds = new ArrayList<>(projectIdSet);
 
         // 4. 清除 deptType，按 project id 集合精确过滤
         ProjectPageReqVO newReqVO = BeanUtils.toBean(pageReqVO, ProjectPageReqVO.class);
         newReqVO.setDeptType(null);
-        return projectMapper.selectPageByIds(newReqVO, projectIds);
-    }
-
-    /**
-     * 解析用户「所在部门维度可见」的项目 id 集合
-     *
-     * 实现策略（最小可用）：以用户 system_users.dept_id 一个 dept 做匹配；
-     * 未来若需扩展到「祖先链 / 子部门 / 用户管理的部门」，在此方法内统一展开 deptIds 集合即可。
-     */
-    private List<Long> resolveDeptVisibleProjectIds(Long userId) {
-        if (userId == null) {
-            return List.of();
-        }
-        AdminUserRespDTO user = adminUserApi.getUser(userId);
-        if (user == null || user.getDeptId() == null) {
-            return List.of();
-        }
-        return projectDeptVisibilityMapper.selectProjectIdsByDeptIds(
-                java.util.Collections.singleton(user.getDeptId()));
+        return projectMapper.selectPageByIds(newReqVO, visibleProjectIds);
     }
 
     @Override
     public List<ProjectDO> getProjectListByDeptType(Integer deptType, Long userId) {
         // deptType 参数已不再用于过滤：V2026_04_21 把 project.dept_type 改为 nullable、V2026_05_18 merge
         // 设计意图为「三 tab 看到同一份全量项目」。此处只兜底用户可见性，避免脱权拉全量。
-        if (userId != null && permissionApi.hasAnyRoles(userId, "super_admin")) {
+        List<Long> visibleProjectIds = projectAccessService.getVisibleProjectIds(userId);
+        if (visibleProjectIds == null) {
             return projectMapper.selectList(new cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX<ProjectDO>()
                     .orderByDesc(ProjectDO::getId));
         }
-        if (userId == null) {
-            return List.of();
-        }
-        // 与 getProjectPage 一致：(我作为项目成员) ∪ (我所在部门被授可见)
-        java.util.Set<Long> projectIdSet = new java.util.LinkedHashSet<>();
-        projectIdSet.addAll(projectMemberMapper.selectProjectIdsByUserId(userId));
-        projectIdSet.addAll(resolveDeptVisibleProjectIds(userId));
-        if (projectIdSet.isEmpty()) {
+        if (visibleProjectIds.isEmpty()) {
             return List.of();
         }
         return projectMapper.selectList(
                 new cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX<ProjectDO>()
-                        .in(ProjectDO::getId, projectIdSet)
+                        .in(ProjectDO::getId, visibleProjectIds)
                         .orderByDesc(ProjectDO::getId));
     }
 
@@ -398,7 +380,7 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     public DashboardStatisticsRespVO.ProjectStats getProjectStats(Long userId) {
-        List<Long> projectIds = resolveProjectIdsForUser(userId);
+        List<Long> projectIds = projectAccessService.getVisibleProjectIds(userId);
         if (projectIds != null && projectIds.isEmpty()) {
             return DashboardStatisticsRespVO.ProjectStats.builder()
                     .activeCount(0)
@@ -422,7 +404,7 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     public List<DashboardStatisticsRespVO.PieChartData> getProjectDistribution(Long userId, boolean isAdmin) {
-        List<Long> projectIds = resolveProjectIdsForUser(userId);
+        List<Long> projectIds = projectAccessService.getVisibleProjectIds(userId);
         if (projectIds != null && projectIds.isEmpty()) {
             return new ArrayList<>();
         }
@@ -566,16 +548,6 @@ public class ProjectServiceImpl implements ProjectService {
         log.info("[updateProjectContractInfo] 项目 {} 关联合同 {} ({})", projectId, contractId, contractNo);
     }
 
-    /**
-     * 解析当前用户可见的项目ID列表：超管为 null（表示全部），否则为参与的项目ID
-     */
-    private List<Long> resolveProjectIdsForUser(Long userId) {
-        if (permissionApi.hasAnyRoles(userId, "super_admin")) {
-            return null;
-        }
-        return projectMemberMapper.selectProjectIdsByUserId(userId);
-    }
-
     @Override
     public List<ProjectMemberDO> getProjectMembers(Long projectId) {
         return projectMemberMapper.selectListByProjectId(projectId);
@@ -583,6 +555,11 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     public void deleteProjectMember(Long id) {
+        ProjectMemberDO member = projectMemberMapper.selectById(id);
+        if (member == null) {
+            throw exception(PROJECT_MEMBER_NOT_EXISTS);
+        }
+        projectAccessService.validateManageProject(member.getProjectId(), SecurityFrameworkUtils.getLoginUserId());
         projectMemberMapper.deleteById(id);
     }
 
@@ -591,12 +568,7 @@ public class ProjectServiceImpl implements ProjectService {
         if (projectId == null || userId == null) {
             return null;
         }
-        // 超级管理员视为项目经理权限
-        if (permissionApi.hasAnyRoles(userId, "super_admin")) {
-            return 1;
-        }
-        ProjectMemberDO member = projectMemberMapper.selectByProjectIdAndUserId(projectId, userId);
-        return member != null ? member.getRoleType() : null;
+        return projectAccessService.getEffectiveRole(projectId, userId);
     }
 
     @Override
@@ -606,9 +578,9 @@ public class ProjectServiceImpl implements ProjectService {
         }
         ProjectMemberDO existing = projectMemberMapper.selectById(id);
         if (existing == null) {
-            log.warn("[updateProjectMemberRole] 项目成员 {} 不存在·跳过", id);
-            return;
+            throw exception(PROJECT_MEMBER_NOT_EXISTS);
         }
+        projectAccessService.validateManageProject(existing.getProjectId(), SecurityFrameworkUtils.getLoginUserId());
         ProjectMemberDO update = new ProjectMemberDO();
         update.setId(id);
         update.setRoleType(roleType);
@@ -623,31 +595,105 @@ public class ProjectServiceImpl implements ProjectService {
         if (projectId == null) {
             return;
         }
-        // 1. 清掉旧的（全表覆盖式）
-        projectDeptVisibilityMapper.deleteByProjectId(projectId);
-        // 2. 没传或空 → 视为清空，结束
+        // 1. 项目必须至少关联一个参与部门
         if (CollUtil.isEmpty(deptIds)) {
-            log.info("[replaceProjectDeptVisibility] projectId={} 清空可见部门", projectId);
-            return;
+            throw exception(PROJECT_VISIBLE_DEPT_REQUIRED);
         }
-        // 3. 去重后批量插入
+        // 2. 先验证新值，再清理旧值；即使调用方事务配置异常也不会先破坏旧关系。
         java.util.Set<Long> dedup = new java.util.LinkedHashSet<>(deptIds);
+        dedup.remove(null);
+        if (dedup.isEmpty()) {
+            throw exception(PROJECT_VISIBLE_DEPT_REQUIRED);
+        }
+        deptApi.validateDeptList(dedup);
+        ProjectDO project = validateProjectExists(projectId);
+        java.util.Map<Long, cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO> deptMap =
+                deptApi.getDeptMap(dedup);
+        if (deptMap.size() != dedup.size()
+                || deptMap.values().stream().anyMatch(dept -> dept.getDeptType() == null)) {
+            throw exception(PROJECT_VISIBLE_DEPT_REQUIRED);
+        }
+
+        // 3. 部门服务单是项目部门分工的唯一业务主线。
+        //    新选部门自动建包；同类型改到具体子部门时更新原包。
+        List<ProjectDeptServiceDO> existingServices = DataPermissionUtils.executeIgnore(
+                () -> projectDeptServiceMapper.selectListByProjectId(projectId));
+        var projectServiceItems = DataPermissionUtils.executeIgnore(
+                () -> serviceItemMapper.selectListByProjectId(projectId));
+        java.util.Set<Integer> selectedDeptTypes = new java.util.LinkedHashSet<>();
         for (Long deptId : dedup) {
-            if (deptId == null) {
+            cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO dept = deptMap.get(deptId);
+            Integer deptType = dept.getDeptType();
+            if (!selectedDeptTypes.add(deptType)) {
+                // 当前模型一个项目每种业务部门只有一个服务包。
+                throw exception(PROJECT_DEPT_SERVICE_EXISTS);
+            }
+            ProjectDeptServiceDO deptService = existingServices.stream()
+                    .filter(item -> deptType.equals(item.getDeptType()))
+                    .findFirst().orElse(null);
+            if (deptService == null) {
+                deptService = ProjectDeptServiceDO.builder()
+                        .projectId(projectId)
+                        .businessId(project.getBusinessId())
+                        .contractId(project.getContractId())
+                        .contractNo(project.getContractNo())
+                        .customerId(project.getCustomerId())
+                        .customerName(project.getCustomerName())
+                        .deptId(deptId)
+                        .deptName(dept.getName())
+                        .deptType(deptType)
+                        .status(toDeptServiceStatus(project.getStatus()))
+                        .progress(0)
+                        .build();
+                projectDeptServiceMapper.insert(deptService);
+            } else if (!deptId.equals(deptService.getDeptId())
+                    || !java.util.Objects.equals(dept.getName(), deptService.getDeptName())) {
+                ProjectDeptServiceDO update = new ProjectDeptServiceDO();
+                update.setId(deptService.getId());
+                update.setDeptId(deptId);
+                update.setDeptName(dept.getName());
+                projectDeptServiceMapper.updateById(update);
+            }
+        }
+
+        for (ProjectDeptServiceDO existing : existingServices) {
+            if (selectedDeptTypes.contains(existing.getDeptType())) {
                 continue;
             }
-            try {
-                projectDeptVisibilityMapper.insert(
-                        cn.shuhe.system.module.project.dal.dataobject.ProjectDeptVisibilityDO.builder()
-                                .projectId(projectId)
-                                .deptId(deptId)
-                                .build());
-            } catch (Exception e) {
-                log.warn("[replaceProjectDeptVisibility] projectId={} deptId={} 写入失败: {}",
-                        projectId, deptId, e.getMessage());
+            boolean hasItems = projectServiceItems.stream()
+                    .anyMatch(item -> existing.getId().equals(item.getDeptServiceId())
+                            || (item.getDeptServiceId() == null
+                                    && existing.getDeptType().equals(item.getDeptType())));
+            if (hasItems) {
+                throw exception(PROJECT_DEPT_SERVICE_HAS_ITEMS);
             }
+            projectDeptServiceMapper.deleteById(existing.getId());
         }
+
+        // 4. 可见关系是部门服务单的查询投影，同事务全量覆盖。
+        projectDeptVisibilityMapper.deleteByProjectId(projectId);
+        for (Long deptId : dedup) {
+            projectDeptVisibilityMapper.insert(
+                    cn.shuhe.system.module.project.dal.dataobject.ProjectDeptVisibilityDO.builder()
+                            .projectId(projectId)
+                            .deptId(deptId)
+                            .build());
+        }
+        ProjectDO projectDeptUpdate = new ProjectDO();
+        projectDeptUpdate.setId(projectId);
+        projectDeptUpdate.setInvolvedDeptIds(new ArrayList<>(dedup));
+        projectMapper.updateById(projectDeptUpdate);
         log.info("[replaceProjectDeptVisibility] projectId={} 设置可见部门 = {}", projectId, dedup);
+    }
+
+    private int toDeptServiceStatus(Integer projectStatus) {
+        if (Integer.valueOf(2).equals(projectStatus)) {
+            return 4;
+        }
+        if (Integer.valueOf(1).equals(projectStatus)) {
+            return 2;
+        }
+        return 1;
     }
 
     @Override

@@ -14,8 +14,7 @@ public class ServiceLaunchSaveReqVO {
     @Schema(description = "ID，更新时必填")
     private Long id;
 
-    @Schema(description = "关联合同ID", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "合同ID不能为空")
+    @Schema(description = "关联合同ID（已审批的提前投入服务可为空）")
     private Long contractId;
 
     @Schema(description = "关联项目ID")

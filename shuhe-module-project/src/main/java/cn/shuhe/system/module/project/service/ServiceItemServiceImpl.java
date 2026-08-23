@@ -10,6 +10,8 @@ import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemImportRespV
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemPageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceItemSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectDeptServiceDO;
+import cn.shuhe.system.module.project.dal.mysql.ProjectDeptServiceMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import cn.shuhe.system.module.system.service.dept.DeptService;
 import cn.shuhe.system.framework.datapermission.core.util.DataPermissionUtils;
@@ -44,6 +46,9 @@ public class ServiceItemServiceImpl implements ServiceItemService {
 
     @Resource
     private ServiceItemMapper serviceItemMapper;
+
+    @Resource
+    private ProjectDeptServiceMapper projectDeptServiceMapper;
 
     @Resource
     private cn.shuhe.system.module.project.dal.mysql.ProjectMapper projectMapper;
@@ -109,6 +114,8 @@ public class ServiceItemServiceImpl implements ServiceItemService {
         if (serviceItem.getVisible() == null) {
             serviceItem.setVisible(1);
         }
+        normalizeDeliveryType(serviceItem);
+        bindToDeptService(serviceItem);
         
         // 4. 自动从项目获取客户和合同信息
         if (project != null) {
@@ -175,10 +182,13 @@ public class ServiceItemServiceImpl implements ServiceItemService {
     @Transactional(rollbackFor = Exception.class)
     public void updateServiceItem(ServiceItemSaveReqVO updateReqVO) {
         // 1. 校验存在
-        validateServiceItemExists(updateReqVO.getId());
+        ServiceItemDO existing = validateServiceItemExists(updateReqVO.getId());
 
         // 2. 更新
         ServiceItemDO updateObj = BeanUtils.toBean(updateReqVO, ServiceItemDO.class);
+        updateObj.setProjectId(existing.getProjectId());
+        normalizeDeliveryType(updateObj);
+        bindToDeptService(updateObj);
         if (updateReqVO.getTags() != null) {
             updateObj.setTags(JSONUtil.toJsonStr(updateReqVO.getTags()));
         }
@@ -223,6 +233,11 @@ public class ServiceItemServiceImpl implements ServiceItemService {
     @Override
     public List<ServiceItemDO> getServiceItemListByProjectIdAndDeptId(Long projectId, Long deptId) {
         return serviceItemMapper.selectListByProjectIdAndDeptId(projectId, deptId);
+    }
+
+    @Override
+    public List<ServiceItemDO> getServiceItemListByProjectIdAndDeptIds(Long projectId, List<Long> deptIds) {
+        return serviceItemMapper.selectListByProjectIdAndDeptIds(projectId, deptIds);
     }
 
     @Override
@@ -307,6 +322,42 @@ public class ServiceItemServiceImpl implements ServiceItemService {
         }
     }
 
+    private void bindToDeptService(ServiceItemDO serviceItem) {
+        if (serviceItem.getProjectId() == null || serviceItem.getDeptType() == null) {
+            throw exception(PROJECT_DEPT_SERVICE_NOT_EXISTS);
+        }
+        ProjectDeptServiceDO deptService = DataPermissionUtils.executeIgnore(() ->
+                projectDeptServiceMapper.selectByProjectIdAndDeptType(
+                        serviceItem.getProjectId(), serviceItem.getDeptType()));
+        if (deptService == null) {
+            throw exception(PROJECT_DEPT_SERVICE_NOT_EXISTS);
+        }
+        if (serviceItem.getDeptServiceId() != null
+                && !serviceItem.getDeptServiceId().equals(deptService.getId())) {
+            throw exception(PROJECT_DEPT_SERVICE_NOT_EXISTS);
+        }
+        serviceItem.setDeptServiceId(deptService.getId());
+        if (serviceItem.getDeptId() == null) {
+            serviceItem.setDeptId(deptService.getDeptId());
+        }
+    }
+
+    /**
+     * 新增和导入的历史入口可能未传交付类型。统一给出与旧逻辑一致的默认值，
+     * 避免服务项长期处于“尚未配置”且无法区分驻场/二线。
+     */
+    private void normalizeDeliveryType(ServiceItemDO serviceItem) {
+        if (Integer.valueOf(2).equals(serviceItem.getDeptType())) {
+            if (serviceItem.getServiceMemberType() == null) {
+                serviceItem.setServiceMemberType(ServiceItemDO.SERVICE_MEMBER_TYPE_MANAGEMENT);
+            }
+            return;
+        }
+        if (serviceItem.getServiceMode() == null) {
+            serviceItem.setServiceMode(ServiceItemDO.SERVICE_MODE_REMOTE);
+        }
+    }
+
     /**
      * 校验服务项是否存在
      */
@@ -368,8 +419,12 @@ public class ServiceItemServiceImpl implements ServiceItemService {
         for (ServiceItemSaveReqVO item : batchReqVO.getItems()) {
             // 设置公共字段
             item.setProjectId(batchReqVO.getProjectId());
-            item.setDeptType(batchReqVO.getDeptType());
-            item.setDeptId(deptId);
+            if (item.getDeptType() == null) {
+                item.setDeptType(batchReqVO.getDeptType());
+            }
+            if (deptId != null) {
+                item.setDeptId(deptId);
+            }
 
             // 复用单条创建逻辑
             Long id = createServiceItem(item);

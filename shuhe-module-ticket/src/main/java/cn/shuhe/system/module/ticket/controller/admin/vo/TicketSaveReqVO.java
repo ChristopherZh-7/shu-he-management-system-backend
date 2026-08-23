@@ -30,14 +30,13 @@ public class TicketSaveReqVO {
     @Schema(description = "优先级：0低 1中 2高 3紧急", example = "1")
     private Integer priority;
 
-    @Schema(description = "业务类型，默认 general（一期前端创建仅允许 general）", example = "general")
+    @Schema(description = "历史兼容字段；新建时由后端固定为 service_launch")
     private String businessType;
 
     @Schema(description = "关联业务 ID（business_type 非 general 时必填）")
     private Long businessId;
 
-    @Schema(description = "工单归属部门 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "101")
-    @NotNull(message = "工单归属部门不能为空")
+    @Schema(description = "历史兼容字段；新建时根据服务项自动确定")
     private Long deptId;
 
     @Schema(description = "截止时间（SLA）")
@@ -45,6 +44,10 @@ public class TicketSaveReqVO {
 
     @Schema(description = "关联项目 ID")
     private Long projectId;
+
+    @Schema(description = "申请的精确服务项 ID", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "请选择服务项")
+    private Long serviceItemId;
 
     @Schema(description = "关联客户 ID")
     private Long customerId;

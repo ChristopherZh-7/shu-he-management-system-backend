@@ -25,6 +25,7 @@ import cn.shuhe.system.module.ticket.dal.mysql.TicketCommentMapper;
 import cn.shuhe.system.module.ticket.enums.TicketStatusEnum;
 import cn.shuhe.system.module.ticket.service.TicketCategoryService;
 import cn.shuhe.system.module.ticket.service.TicketService;
+import cn.shuhe.system.module.ticket.service.context.TicketServiceContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -41,6 +42,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
@@ -98,6 +100,10 @@ public class TicketController {
         Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
         TicketDO ticket = ticketService.validateTicketAccess(id, currentUserId);
         TicketRespVO vo = convertToRespVO(ticket, true);
+        vo.setExecutorNames(ticketService.getTicketExecutors(id).stream()
+                .map(executor -> executor.getUserName())
+                .filter(java.util.Objects::nonNull)
+                .toList());
         vo.setActions(ticketService.calculateAvailableActions(ticket, currentUserId));
         Long commentCount = commentMapper.selectCountByTicketId(id);
         vo.setCommentCount(commentCount == null ? 0 : commentCount.intValue());
@@ -122,6 +128,16 @@ public class TicketController {
         Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
         PageResult<TicketDO> pageResult = ticketService.getMyTicketPage(pageReqVO, currentUserId);
         return success(convertPage(pageResult));
+    }
+
+    @GetMapping("/eligible-service-items")
+    @Operation(summary = "获取当前用户可申请工单的服务项")
+    @PreAuthorize("@ss.hasPermission('ticket:ticket:create')")
+    @DataPermission(enable = false)
+    public CommonResult<List<TicketServiceContext>> getEligibleServiceItems(
+            @RequestParam(value = "projectId", required = false) Long projectId) {
+        return success(ticketService.getEligibleServiceItems(
+                SecurityFrameworkUtils.getLoginUserId(), projectId));
     }
 
     // ========== 状态机 ==========
@@ -265,6 +281,13 @@ public class TicketController {
             vo.setOutside(isOutside instanceof Boolean
                     ? (Boolean) isOutside
                     : isOutside != null && Boolean.parseBoolean(isOutside.toString()));
+            vo.setProjectName(asString(ext.get("projectName")));
+            vo.setServiceItemCode(asString(ext.get("serviceItemCode")));
+            vo.setServiceTypeName(asString(ext.get("serviceTypeName")));
+            vo.setServiceMode(asInteger(ext.get("serviceMode")));
+            vo.setServiceSourceType(asString(ext.get("serviceSourceType")));
+            vo.setCustomerName(asString(ext.get("customerName")));
+            vo.setContractNo(asString(ext.get("contractNo")));
         }
         if (ticket.getCategoryId() != null) {
             TicketCategoryDO category = categoryService.getCategory(ticket.getCategoryId());
@@ -286,6 +309,24 @@ public class TicketController {
         }
         if (!fillExt) {
             vo.setExtJson(null);
+        }
+    }
+
+    private String asString(Object value) {
+        return value == null ? null : value.toString();
+    }
+
+    private Integer asInteger(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(value.toString());
+        } catch (NumberFormatException ignored) {
+            return null;
         }
     }
 }

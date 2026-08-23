@@ -16,7 +16,9 @@ public interface ErrorCodeConstants {
     ErrorCode TICKET_TITLE_EMPTY          = new ErrorCode(1_032_001_003, "工单标题不能为空");
     ErrorCode TICKET_DEPT_REQUIRED        = new ErrorCode(1_032_001_004, "工单必须指定归属部门");
     ErrorCode TICKET_CREATOR_DEPT_MISSING = new ErrorCode(1_032_001_005, "提单人未配置所属部门，无法创建工单");
-    ErrorCode TICKET_BUSINESS_TYPE_INVALID = new ErrorCode(1_032_001_006, "业务工单不支持该操作（一期仅 general 类型可写）");
+    ErrorCode TICKET_BUSINESS_TYPE_INVALID = new ErrorCode(1_032_001_006, "业务工单不支持该操作");
+    ErrorCode TICKET_SERVICE_ITEM_REQUIRED = new ErrorCode(1_032_001_007, "请选择合同或已审批提前投入项目下的服务项");
+    ErrorCode TICKET_SERVICE_ITEM_NOT_AVAILABLE = new ErrorCode(1_032_001_008, "该服务项不可申请，可能尚未启动、已完成或执行次数已用完");
 
     // ========== 工单分类 1_032_002_xxx ==========
     ErrorCode TICKET_CATEGORY_NOT_EXISTS     = new ErrorCode(1_032_002_000, "工单分类不存在");
@@ -27,12 +29,12 @@ public interface ErrorCodeConstants {
     ErrorCode TICKET_CATEGORY_NAME_DUPLICATE = new ErrorCode(1_032_002_005, "同级分类下名称已存在");
 
     // ========== 状态机 1_032_003_xxx ==========
-    ErrorCode TICKET_STATUS_INVALID      = new ErrorCode(1_032_003_000, "工单当前状态={0}，不允许{1}操作");
+    ErrorCode TICKET_STATUS_INVALID      = new ErrorCode(1_032_003_000, "工单当前状态={}，不允许{}操作");
     ErrorCode TICKET_ASSIGNEE_REQUIRED   = new ErrorCode(1_032_003_001, "请先分派处理人");
     ErrorCode TICKET_ASSIGNEE_SAME       = new ErrorCode(1_032_003_002, "目标处理人与当前处理人相同");
     ErrorCode TICKET_ASSIGNEE_NOT_EXISTS = new ErrorCode(1_032_003_003, "目标处理人不存在或已离职");
-    ErrorCode TICKET_REOPEN_EXPIRED      = new ErrorCode(1_032_003_004, "工单完成/关闭已超过 {0} 天，不允许重开，请新建工单并关联原工单号");
-    ErrorCode TICKET_REOPEN_LIMIT        = new ErrorCode(1_032_003_005, "工单重开次数已达上限（{0} 次），请新建工单");
+    ErrorCode TICKET_REOPEN_EXPIRED      = new ErrorCode(1_032_003_004, "工单完成/关闭已超过 {} 天，不允许重开，请新建工单并关联原工单号");
+    ErrorCode TICKET_REOPEN_LIMIT        = new ErrorCode(1_032_003_005, "工单重开次数已达上限（{} 次），请新建工单");
 
     // ========== 评论 1_032_004_xxx ==========
     ErrorCode TICKET_COMMENT_NOT_EXISTS    = new ErrorCode(1_032_004_000, "评论不存在");
@@ -52,7 +54,7 @@ public interface ErrorCodeConstants {
 
     // ========== 接单 / 执行人 1_032_007_xxx ==========
     ErrorCode TICKET_EXECUTOR_EMPTY      = new ErrorCode(1_032_007_001, "执行人列表不能为空");
-    ErrorCode TICKET_EXECUTOR_NOT_EXISTS = new ErrorCode(1_032_007_002, "执行人不存在或已离职：{0}");
-    ErrorCode TICKET_DRIVER_FAILED       = new ErrorCode(1_032_007_003, "业务驱动器处理失败：{0}");
-    ErrorCode TICKET_EXECUTOR_OUT_OF_SCOPE = new ErrorCode(1_032_007_004, "执行人 {0} 不在您管辖的部门范围内，只能指派自己或下属部门成员");
+    ErrorCode TICKET_EXECUTOR_NOT_EXISTS = new ErrorCode(1_032_007_002, "执行人不存在或已离职：{}");
+    ErrorCode TICKET_DRIVER_FAILED       = new ErrorCode(1_032_007_003, "业务驱动器处理失败：{}");
+    ErrorCode TICKET_EXECUTOR_OUT_OF_SCOPE = new ErrorCode(1_032_007_004, "执行人 {} 不在您管辖的部门范围内，只能指派自己或下属部门成员");
 }

@@ -2,6 +2,7 @@ package cn.shuhe.system.module.project.controller.admin.vo;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 
 import java.util.List;
@@ -50,6 +51,7 @@ public class ProjectSaveReqVO {
 
     @Schema(description = "涉及部门 id 数组（从商机派生或项目编辑时设置，决定项目对哪些部门可见）",
             example = "[101, 102]")
+    @NotEmpty(message = "请至少选择一个涉及部门")
     private List<Long> involvedDeptIds;
 
     // ========== 状态 ==========

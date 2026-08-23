@@ -7,8 +7,10 @@ import cn.shuhe.system.module.project.controller.admin.vo.ProjectSiteMemberRespV
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectSiteMemberSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectSiteDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectSiteMemberDO;
+import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectSiteMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectSiteMemberMapper;
+import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import jakarta.annotation.Resource;
@@ -40,6 +42,9 @@ public class ProjectSiteMemberServiceImpl implements ProjectSiteMemberService {
     private ProjectSiteMapper siteMapper;
 
     @Resource
+    private ServiceItemMapper serviceItemMapper;
+
+    @Resource
     @Lazy
     private ProjectService projectService;
 
@@ -63,13 +68,16 @@ public class ProjectSiteMemberServiceImpl implements ProjectSiteMemberService {
         // 自动填充项目ID和部门类型（冗余字段）
         member.setProjectId(site.getProjectId());
         member.setDeptType(site.getDeptType());
-        // 默认状态：在岗
-        if (member.getStatus() == null) {
-            member.setStatus(ProjectSiteMemberDO.STATUS_ACTIVE);
-        }
         // 默认人员类型：驻场人员
         if (member.getMemberType() == null) {
             member.setMemberType(ProjectSiteMemberDO.MEMBER_TYPE_ONSITE);
+        }
+        // 只有驻场服务项生效且已到入场日期，驻场人员才能算作在岗；否则只能先登记为待入场。
+        if (Integer.valueOf(ProjectSiteMemberDO.MEMBER_TYPE_ONSITE).equals(member.getMemberType())
+                && !isOnsiteReady(site)) {
+            member.setStatus(ProjectSiteMemberDO.STATUS_PENDING);
+        } else if (member.getStatus() == null) {
+            member.setStatus(ProjectSiteMemberDO.STATUS_ACTIVE);
         }
         // 默认非负责人
         if (member.getIsLeader() == null) {
@@ -80,13 +88,13 @@ public class ProjectSiteMemberServiceImpl implements ProjectSiteMemberService {
         log.info("[createMember][创建驻场人员成功，id={}，siteId={}，userId={}，userName={}]",
                 member.getId(), member.getSiteId(), member.getUserId(), member.getUserName());
 
-        // 自动加入项目成员（管理人员→roleType=3审核人员，驻场人员→roleType=2执行人员）
+        // 自动加入项目执行成员。部门负责人权限以组织架构为准，
+        // 不能由“驻场管理人员”这个业务标签自动提权。
         if (member.getProjectId() != null && member.getUserId() != null) {
             DataPermissionUtils.executeIgnore(() -> {
                 Integer existingRole = projectService.getUserRoleInProject(member.getProjectId(), member.getUserId());
                 if (existingRole == null) {
-                    int roleType = (member.getMemberType() != null
-                            && member.getMemberType() == ProjectSiteMemberDO.MEMBER_TYPE_MANAGEMENT) ? 3 : 2;
+                    int roleType = 2;
                     String nickname = member.getUserName();
                     if (nickname == null || nickname.isEmpty()) {
                         AdminUserRespDTO user = adminUserApi.getUser(member.getUserId());
@@ -116,8 +124,19 @@ public class ProjectSiteMemberServiceImpl implements ProjectSiteMemberService {
             throw exception(PROJECT_SITE_MEMBER_NOT_EXISTS);
         }
 
-        // 转换并更新
+        ProjectSiteDO site = siteMapper.selectById(updateReqVO.getSiteId());
+        if (site == null) {
+            throw exception(PROJECT_SITE_NOT_EXISTS);
+        }
+
+        // 转换并更新，同步驻场点决定的项目与部门类型冗余字段。
         ProjectSiteMemberDO member = BeanUtils.toBean(updateReqVO, ProjectSiteMemberDO.class);
+        member.setProjectId(site.getProjectId());
+        member.setDeptType(site.getDeptType());
+        if (Integer.valueOf(ProjectSiteMemberDO.MEMBER_TYPE_ONSITE).equals(member.getMemberType())
+                && !isOnsiteReady(site)) {
+            member.setStatus(ProjectSiteMemberDO.STATUS_PENDING);
+        }
         memberMapper.updateById(member);
 
         log.info("[updateMember][更新驻场人员成功，id={}]", updateReqVO.getId());
@@ -225,6 +244,21 @@ public class ProjectSiteMemberServiceImpl implements ProjectSiteMemberService {
         if (member == null) {
             throw exception(PROJECT_SITE_MEMBER_NOT_EXISTS);
         }
+    }
+
+    private boolean isOnsiteReady(ProjectSiteDO site) {
+        LocalDate today = LocalDate.now();
+        if (!Integer.valueOf(ProjectSiteDO.STATUS_ENABLED).equals(site.getStatus())
+                || site.getStartDate() != null && site.getStartDate().isAfter(today)
+                || site.getEndDate() != null && site.getEndDate().isBefore(today)) {
+            return false;
+        }
+        return serviceItemMapper.selectListByProjectIdAndDeptType(
+                        site.getProjectId(), site.getDeptType()).stream()
+                .anyMatch(item -> !Integer.valueOf(4).equals(item.getStatus())
+                        && (Integer.valueOf(ServiceItemDO.SERVICE_MODE_ONSITE).equals(item.getServiceMode())
+                        || Integer.valueOf(ServiceItemDO.SERVICE_MEMBER_TYPE_ONSITE)
+                                .equals(item.getServiceMemberType())));
     }
 
 }

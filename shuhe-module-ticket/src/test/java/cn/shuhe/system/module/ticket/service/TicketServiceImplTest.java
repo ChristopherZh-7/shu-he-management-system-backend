@@ -9,6 +9,8 @@ import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketAcceptReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketAssignReqVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketFinishReqVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReviewPassReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketSaveReqVO;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketCategoryDO;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketDO;
@@ -22,6 +24,10 @@ import cn.shuhe.system.module.ticket.enums.TicketActionEnum;
 import cn.shuhe.system.module.ticket.enums.TicketBusinessTypeEnum;
 import cn.shuhe.system.module.ticket.enums.TicketStatusEnum;
 import cn.shuhe.system.module.ticket.framework.event.TicketAcceptedEvent;
+import cn.shuhe.system.module.ticket.framework.event.TicketLifecycleEvent;
+import cn.shuhe.system.module.ticket.service.context.TicketServiceContext;
+import cn.shuhe.system.module.ticket.service.context.TicketServiceContextResolver;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -37,7 +43,6 @@ import static cn.shuhe.system.framework.test.core.util.AssertUtils.assertService
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_ASSIGNEE_NOT_EXISTS;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_ASSIGNEE_REQUIRED;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_ASSIGNEE_SAME;
-import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_BUSINESS_TYPE_INVALID;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_CATEGORY_DISABLED;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_CATEGORY_NOT_EXISTS;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_CREATOR_DEPT_MISSING;
@@ -89,6 +94,14 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private ApplicationEventPublisher eventPublisher;
+    @Mock
+    private TicketServiceContextResolver serviceContextResolver;
+
+    @BeforeEach
+    void setUpServiceContext() {
+        lenient().when(serviceContextResolver.resolve(anyLong(), anyLong()))
+                .thenReturn(makeServiceContext());
+    }
 
     // ========== createTicket ==========
 
@@ -122,12 +135,25 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    void createTicket_businessTypeInvalid_throws() {
-        TicketSaveReqVO req = baseCreateReq();
-        req.setBusinessType(TicketBusinessTypeEnum.OUTSIDE_REQUEST.getType());
+    void createTicket_ignoresClientRoutingFields() {
+        long me = 100L;
+        try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
+            sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
+            when(adminUserApi.getUser(eq(me))).thenReturn(makeUser(me, "Alice", 9L));
+            when(ticketMapper.selectLatestByDay(any(), any())).thenReturn(null);
+            when(ticketMapper.selectByTicketNo(any())).thenReturn(null);
 
-        assertServiceException(() -> ticketService.createTicket(req), TICKET_BUSINESS_TYPE_INVALID);
-        verify(ticketMapper, never()).insert(any(TicketDO.class));
+            TicketSaveReqVO req = baseCreateReq();
+            req.setBusinessType(TicketBusinessTypeEnum.OUTSIDE_REQUEST.getType());
+            req.setDeptId(999L);
+            ticketService.createTicket(req);
+
+            ArgumentCaptor<TicketDO> captor = ArgumentCaptor.forClass(TicketDO.class);
+            verify(ticketMapper).insert(captor.capture());
+            assertEquals(TicketBusinessTypeEnum.SERVICE_LAUNCH.getType(), captor.getValue().getBusinessType());
+            assertEquals(9L, captor.getValue().getDeptId());
+            assertEquals(11L, captor.getValue().getServiceItemId());
+        }
     }
 
     @Test
@@ -153,15 +179,13 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    void createTicket_creatorMissingDept_throws() {
+    void createTicket_creatorMissing_throws() {
         long me = 100L;
-        AdminUserRespDTO creator = makeUser(me, "Alice", null);
         try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
-            when(adminUserApi.getUser(eq(me))).thenReturn(creator);
+            when(adminUserApi.getUser(eq(me))).thenReturn(null);
 
             TicketSaveReqVO req = baseCreateReq();
-            req.setDeptId(null);
 
             assertServiceException(() -> ticketService.createTicket(req), TICKET_CREATOR_DEPT_MISSING);
         }
@@ -198,7 +222,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
             TicketSaveReqVO req = baseCreateReq();
             req.setId(1L);
 
-            assertServiceException(() -> ticketService.updateTicket(req), TICKET_STATUS_INVALID, "处理中", "修改基本信息");
+            assertServiceException(() -> ticketService.updateTicket(req), TICKET_STATUS_INVALID, "执行中", "修改基本信息");
             verify(ticketMapper, never()).updateById(any(TicketDO.class));
         }
     }
@@ -320,7 +344,9 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
             sec.when(SecurityFrameworkUtils::getLoginUserNickname).thenReturn("Manager");
             when(ticketMapper.selectById(eq(1L))).thenReturn(ticket);
-            when(deptApi.getDept(eq(deptId))).thenReturn(dept);
+            when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(me);
+            when(deptApi.getDeptListByLeaderUserId(eq(me))).thenReturn(Collections.singletonList(dept));
+            when(deptApi.getChildDeptList(eq(deptId))).thenReturn(Collections.emptyList());
             when(adminUserApi.getUserList(eq(Arrays.asList(201L, 202L))))
                     .thenReturn(Arrays.asList(e1, e2));
             when(adminUserApi.getUser(eq(me))).thenReturn(acceptor);
@@ -355,6 +381,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
             assertEquals(1L, evt.getTicketId());
             assertEquals(2, evt.getExecutorIds().size(), "去重后 2 个执行人");
             assertEquals(me, evt.getAcceptedBy());
+            assertEquals(ticket.getServiceItemId(), evt.getServiceItemId());
         }
     }
 
@@ -368,7 +395,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
             when(ticketMapper.selectById(eq(1L))).thenReturn(ticket);
-            when(deptApi.getDept(eq(deptId))).thenReturn(dept);
+            when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(otherLeader);
             when(permissionApi.hasAnyRoles(eq(me), eq("super_admin"))).thenReturn(false);
 
             TicketAcceptReqVO req = new TicketAcceptReqVO();
@@ -392,7 +419,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
             when(ticketMapper.selectById(eq(1L))).thenReturn(ticket);
-            when(deptApi.getDept(eq(deptId))).thenReturn(dept);
+            when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(me);
             when(adminUserApi.getUserList(eq(Arrays.asList(201L, 999L))))
                     .thenReturn(Collections.singletonList(e1));
 
@@ -400,7 +427,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
             req.setId(1L);
             req.setExecutorIds(Arrays.asList(201L, 999L));
 
-            assertServiceException(() -> ticketService.acceptTicket(req), TICKET_EXECUTOR_NOT_EXISTS);
+            assertServiceException(() -> ticketService.acceptTicket(req), TICKET_EXECUTOR_NOT_EXISTS, "[999]");
             verify(eventPublisher, never()).publishEvent(any());
         }
     }
@@ -415,7 +442,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
             when(ticketMapper.selectById(eq(1L))).thenReturn(ticket);
-            when(deptApi.getDept(eq(deptId))).thenReturn(dept);
+            when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(me);
 
             TicketAcceptReqVO req = new TicketAcceptReqVO();
             req.setId(1L);
@@ -435,13 +462,13 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
             when(ticketMapper.selectById(eq(1L))).thenReturn(ticket);
-            when(deptApi.getDept(eq(deptId))).thenReturn(dept);
+            when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(me);
 
             TicketAcceptReqVO req = new TicketAcceptReqVO();
             req.setId(1L);
             req.setExecutorIds(Collections.singletonList(201L));
 
-            assertServiceException(() -> ticketService.acceptTicket(req), TICKET_STATUS_INVALID);
+            assertServiceException(() -> ticketService.acceptTicket(req), TICKET_STATUS_INVALID, "执行中", "接单");
         }
     }
 
@@ -474,6 +501,52 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
             verify(ticketMapper).updateById(captor.capture());
             assertEquals(TicketStatusEnum.IN_PROGRESS.getStatus(), captor.getValue().getStatus());
             assertNotNull(captor.getValue().getFirstResponseTime());
+        }
+    }
+
+    @Test
+    void finishTicket_executor_success() {
+        long executorId = 201L;
+        TicketDO existing = makeTicket(1L, 100L, 500L, TicketStatusEnum.IN_PROGRESS.getStatus());
+        try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
+            sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(executorId);
+            when(ticketMapper.selectById(eq(1L))).thenReturn(existing);
+            when(executorMapper.existsByTicketIdAndUserId(eq(1L), eq(executorId))).thenReturn(true);
+
+            TicketFinishReqVO req = new TicketFinishReqVO();
+            req.setId(1L);
+            req.setResult("已完成服务交付");
+            ticketService.finishTicket(req);
+
+            ArgumentCaptor<TicketDO> captor = ArgumentCaptor.forClass(TicketDO.class);
+            verify(ticketMapper).updateById(captor.capture());
+            assertEquals(TicketStatusEnum.PENDING_REVIEW.getStatus(), captor.getValue().getStatus());
+            assertNotNull(captor.getValue().getFinishTime());
+        }
+    }
+
+    @Test
+    void reviewPassTicket_publishesLifecycleCompletion() {
+        long creatorId = 100L;
+        TicketDO existing = makeTicket(1L, creatorId, 500L,
+                TicketStatusEnum.PENDING_REVIEW.getStatus());
+        existing.setBusinessType(TicketBusinessTypeEnum.SERVICE_LAUNCH.getType());
+        existing.setBusinessId(88L);
+        try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
+            sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(creatorId);
+            when(ticketMapper.selectById(eq(1L))).thenReturn(existing);
+            when(adminUserApi.getUser(eq(creatorId))).thenReturn(makeUser(creatorId, "Alice", 9L));
+
+            TicketReviewPassReqVO req = new TicketReviewPassReqVO();
+            req.setId(1L);
+            req.setComment("交付符合要求");
+            ticketService.reviewPassTicket(req);
+
+            ArgumentCaptor<TicketLifecycleEvent> eventCaptor =
+                    ArgumentCaptor.forClass(TicketLifecycleEvent.class);
+            verify(eventPublisher).publishEvent(eventCaptor.capture());
+            assertEquals(TicketActionEnum.REVIEW_PASS.getAction(), eventCaptor.getValue().getAction());
+            assertEquals(88L, eventCaptor.getValue().getBusinessId());
         }
     }
 
@@ -530,12 +603,22 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void validateTicketAccess_executor_ok() {
+        long me = 201L;
+        TicketDO existing = makeTicket(1L, 100L, 500L, TicketStatusEnum.IN_PROGRESS.getStatus());
+        when(ticketMapper.selectById(eq(1L))).thenReturn(existing);
+        when(executorMapper.existsByTicketIdAndUserId(eq(1L), eq(me))).thenReturn(true);
+
+        assertEquals(existing, ticketService.validateTicketAccess(1L, me));
+    }
+
+    @Test
     void calculateAvailableActions_creatorAtPending_canUpdateCancelComment() {
         long me = 100L, deptId = 9L;
         TicketDO ticket = makeTicket(1L, me, 200L, TicketStatusEnum.PENDING.getStatus());
         ticket.setDeptId(deptId);
         when(permissionApi.hasAnyRoles(eq(me), eq("super_admin"))).thenReturn(false);
-        when(deptApi.getDept(eq(deptId))).thenReturn(makeDept(deptId, 888L)); // 当前用户不是部门负责人
+        when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(888L); // 当前用户不是部门负责人
 
         List<String> actions = ticketService.calculateAvailableActions(ticket, me);
         assertTrue(actions.contains(TicketActionEnum.COMMENT.getAction()), "可评论");
@@ -552,7 +635,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         TicketDO ticket = makeTicket(1L, 100L, null, TicketStatusEnum.PENDING.getStatus());
         ticket.setDeptId(deptId);
         lenient().when(permissionApi.hasAnyRoles(eq(me), eq("super_admin"))).thenReturn(false);
-        when(deptApi.getDept(eq(deptId))).thenReturn(makeDept(deptId, me));
+        when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(me);
 
         List<String> actions = ticketService.calculateAvailableActions(ticket, me);
         assertTrue(actions.contains(TicketActionEnum.ACCEPT.getAction()), "部门负责人可接单");
@@ -564,13 +647,28 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         TicketDO ticket = makeTicket(1L, 100L, me, TicketStatusEnum.IN_PROGRESS.getStatus());
         ticket.setDeptId(deptId);
         when(permissionApi.hasAnyRoles(eq(me), eq("super_admin"))).thenReturn(false);
-        lenient().when(deptApi.getDept(eq(deptId))).thenReturn(makeDept(deptId, 888L));
+        lenient().when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(888L);
 
         List<String> actions = ticketService.calculateAvailableActions(ticket, me);
         assertTrue(actions.contains(TicketActionEnum.FINISH.getAction()), "处理人可完成");
         assertTrue(actions.contains(TicketActionEnum.TRANSFER.getAction()), "处理人可转交");
         assertTrue(actions.contains(TicketActionEnum.COMMENT.getAction()));
         assertTrue(!actions.contains(TicketActionEnum.START.getAction()), "非待处理不能再次接单");
+    }
+
+    @Test
+    void calculateAvailableActions_executorAtInProgress_canFinishComment() {
+        long me = 201L;
+        TicketDO ticket = makeTicket(1L, 100L, 500L, TicketStatusEnum.IN_PROGRESS.getStatus());
+        ticket.setDeptId(9L);
+        when(executorMapper.existsByTicketIdAndUserId(eq(1L), eq(me))).thenReturn(true);
+        lenient().when(permissionApi.hasAnyRoles(eq(me), eq("super_admin"))).thenReturn(false);
+        lenient().when(deptApi.findLeaderUserIdRecursively(eq(9L))).thenReturn(888L);
+
+        List<String> actions = ticketService.calculateAvailableActions(ticket, me);
+        assertTrue(actions.contains(TicketActionEnum.FINISH.getAction()));
+        assertTrue(actions.contains(TicketActionEnum.COMMENT.getAction()));
+        assertTrue(!actions.contains(TicketActionEnum.TRANSFER.getAction()));
     }
 
     // ========== Helpers ==========
@@ -580,6 +678,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         req.setTitle("故障");
         req.setContent("详情");
         req.setDeptId(1L);
+        req.setServiceItemId(11L);
         req.setPriority(1);
         return req;
     }
@@ -608,5 +707,25 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         d.setLeaderUserId(leaderUserId);
         d.setName("dept-" + id);
         return d;
+    }
+
+    private static TicketServiceContext makeServiceContext() {
+        return TicketServiceContext.builder()
+                .serviceItemId(11L)
+                .serviceItemCode("SVC-11")
+                .serviceType("penetration_test")
+                .serviceTypeName("渗透测试")
+                .serviceMode(2)
+                .deptType(1)
+                .projectId(3L)
+                .projectCode("PRJ-3")
+                .projectName("项目3")
+                .responsibleDeptId(9L)
+                .responsibleDeptName("安全服务部")
+                .customerId(8L)
+                .customerName("客户")
+                .sourceType("approved_early_investment")
+                .remainingCount(-1)
+                .build();
     }
 }

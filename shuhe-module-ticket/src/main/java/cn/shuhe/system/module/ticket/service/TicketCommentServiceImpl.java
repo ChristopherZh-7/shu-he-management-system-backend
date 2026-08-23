@@ -8,6 +8,7 @@ import cn.shuhe.system.module.ticket.controller.admin.vo.TicketCommentSaveReqVO;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketCommentDO;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketDO;
 import cn.shuhe.system.module.ticket.dal.mysql.TicketCommentMapper;
+import cn.shuhe.system.module.ticket.dal.mysql.TicketExecutorMapper;
 import cn.shuhe.system.module.ticket.dal.mysql.TicketMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +41,9 @@ public class TicketCommentServiceImpl implements TicketCommentService {
 
     @Resource
     private TicketMapper ticketMapper;
+
+    @Resource
+    private TicketExecutorMapper executorMapper;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -108,6 +112,7 @@ public class TicketCommentServiceImpl implements TicketCommentService {
         // 由 Controller 层 @PreAuthorize + @DataPermission 兜底（能查到列表说明能看详情）。
         if (Objects.equals(ticket.getCreatorId(), currentUserId)
                 || Objects.equals(ticket.getAssigneeId(), currentUserId)
+                || isExecutor(ticket.getId(), currentUserId)
                 || isSuperAdmin(currentUserId)) {
             return ticket;
         }
@@ -118,7 +123,8 @@ public class TicketCommentServiceImpl implements TicketCommentService {
         if (isSuperAdmin(currentUserId)) {
             return true;
         }
-        return Objects.equals(ticket.getAssigneeId(), currentUserId);
+        return Objects.equals(ticket.getAssigneeId(), currentUserId)
+                || isExecutor(ticket.getId(), currentUserId);
     }
 
     /**
@@ -131,10 +137,18 @@ public class TicketCommentServiceImpl implements TicketCommentService {
         if (Objects.equals(ticket.getAssigneeId(), currentUserId)) {
             return false;
         }
+        if (isExecutor(ticket.getId(), currentUserId)) {
+            return false;
+        }
         return Objects.equals(ticket.getCreatorId(), currentUserId);
     }
 
     private boolean isSuperAdmin(Long userId) {
         return userId != null && permissionApi.hasAnyRoles(userId, ROLE_SUPER_ADMIN);
+    }
+
+    private boolean isExecutor(Long ticketId, Long userId) {
+        return ticketId != null && userId != null
+                && executorMapper.existsByTicketIdAndUserId(ticketId, userId);
     }
 }

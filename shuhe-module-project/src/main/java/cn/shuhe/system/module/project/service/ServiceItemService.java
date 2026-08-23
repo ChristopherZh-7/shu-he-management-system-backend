@@ -85,6 +85,11 @@ public interface ServiceItemService {
     List<ServiceItemDO> getServiceItemListByProjectIdAndDeptId(Long projectId, Long deptId);
 
     /**
+     * 按项目和允许的部门范围查询服务项。
+     */
+    List<ServiceItemDO> getServiceItemListByProjectIdAndDeptIds(Long projectId, List<Long> deptIds);
+
+    /**
      * 获得指定项目和服务模式的服务项列表
      *
      * @param projectId   项目ID

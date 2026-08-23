@@ -42,6 +42,9 @@ public class TicketAcceptedEvent implements Serializable {
     /** 业务表主键（可选）；若为空表示通用工单。 */
     private Long businessId;
 
+    /** 精确服务项 ID；服务工单驱动器必须按此字段处理，不再模糊反查。 */
+    private Long serviceItemId;
+
     /** 工单归属部门 ID（业务侧若需冗余可用）。 */
     private Long deptId;
 

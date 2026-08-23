@@ -5,6 +5,7 @@ import cn.shuhe.system.module.crm.framework.operatelog.core.SysAdminUserParseFun
 import com.mzt.logapi.starter.annotation.DiffLogField;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotEmpty;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -51,6 +52,7 @@ public class CrmBusinessSaveReqVO {
     private List<DeptAllocation> deptAllocations;
 
     @Schema(description = "涉及部门 id 数组（多选）·决定该商机派生的项目对哪些部门可见", example = "[101, 102]")
+    @NotEmpty(message = "请至少选择一个涉及部门")
     private List<Long> involvedDeptIds;
 
     @Schema(description = "预计成交日期")

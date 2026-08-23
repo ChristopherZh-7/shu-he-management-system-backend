@@ -80,6 +80,18 @@ public class ProjectDeptServiceRespVO {
     @Schema(description = "进度百分比 0-100", example = "50")
     private Integer progress;
 
+    @Schema(description = "进度加权分母（有限频次按计划次数，按需服务按 1）")
+    private Integer progressWeight;
+
+    @Schema(description = "合同计划执行次数（不包含按需服务）")
+    private Integer plannedExecutionCount;
+
+    @Schema(description = "已经提单人验收通过的执行次数")
+    private Integer acceptedExecutionCount;
+
+    @Schema(description = "是否包含按需服务")
+    private Boolean hasOnDemandService;
+
     // ========== 时间信息 ==========
 
     @Schema(description = "计划开始时间")
@@ -106,6 +118,21 @@ public class ProjectDeptServiceRespVO {
 
     @Schema(description = "服务项数量", example = "3")
     private Integer serviceItemCount;
+
+    @Schema(description = "已完成服务项数", example = "2")
+    private Integer completedServiceItemCount;
+
+    @Schema(description = "驻场服务项数", example = "1")
+    private Integer onsiteServiceItemCount;
+
+    @Schema(description = "二线服务项数", example = "1")
+    private Integer remoteServiceItemCount;
+
+    @Schema(description = "安全运营管理服务项数", example = "1")
+    private Integer managementServiceItemCount;
+
+    @Schema(description = "当前用户是否可管理该部门服务包")
+    private Boolean canManage;
 
     // ========== 通用字段 ==========
 

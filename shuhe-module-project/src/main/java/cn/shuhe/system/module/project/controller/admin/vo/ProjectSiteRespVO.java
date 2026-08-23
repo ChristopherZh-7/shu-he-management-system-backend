@@ -67,4 +67,31 @@ public class ProjectSiteRespVO {
     @Schema(description = "当前在岗人员数量", example = "2")
     private Integer memberCount;
 
+    @Schema(description = "计划驻场人数", example = "3")
+    private Integer plannedMemberCount;
+
+    @Schema(description = "实际在场的驻场人员数量（不包含管理人员）", example = "2")
+    private Integer activeOnsiteMemberCount;
+
+    @Schema(description = "管理人员数量（单独展示，不计入实际驻场人数）", example = "1")
+    private Integer managementMemberCount;
+
+    @Schema(description = "驻场缺口人数", example = "1")
+    private Integer staffingGap;
+
+    @Schema(description = "是否已有有效驻场服务项")
+    private Boolean hasOnsiteServiceItem;
+
+    @Schema(description = "交付状态：0计划中 1待入场 2驻场中 3已退场")
+    private Integer deliveryStatus;
+
+    @Schema(description = "交付状态名称")
+    private String deliveryStatusName;
+
+    @Schema(description = "日期来源：signed_contract / approved_early_investment / manual")
+    private String dateSource;
+
+    @Schema(description = "日期来源名称")
+    private String dateSourceName;
+
 }

@@ -19,10 +19,12 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
     default PageResult<ServiceItemDO> selectPage(ServiceItemPageReqVO reqVO) {
         return selectPage(reqVO, new LambdaQueryWrapperX<ServiceItemDO>()
                 .eqIfPresent(ServiceItemDO::getProjectId, reqVO.getProjectId())
+                .eqIfPresent(ServiceItemDO::getDeptServiceId, reqVO.getDeptServiceId())
                 .eqIfPresent(ServiceItemDO::getDeptType, reqVO.getDeptType())
                 .eqIfPresent(ServiceItemDO::getServiceMode, reqVO.getServiceMode())
                 .eqIfPresent(ServiceItemDO::getServiceMemberType, reqVO.getServiceMemberType())
                 .eqIfPresent(ServiceItemDO::getDeptId, reqVO.getDeptId())
+                .inIfPresent(ServiceItemDO::getDeptId, reqVO.getAccessibleDeptIds())
                 .eqIfPresent(ServiceItemDO::getServiceType, reqVO.getServiceType())
                 .eqIfPresent(ServiceItemDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ServiceItemDO::getCode, reqVO.getCode())
@@ -96,6 +98,23 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
                 .orderByDesc(ServiceItemDO::getId));
     }
 
+    /**
+     * 工单申请候选：只查正在进行、对用户可见的服务项。
+     * projectIds 为 null 表示不限项目（超级管理员）。
+     */
+    default List<ServiceItemDO> selectEligibleTicketItems(Long projectId, List<Long> projectIds) {
+        if (projectId == null && projectIds != null && projectIds.isEmpty()) {
+            return List.of();
+        }
+        return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eqIfPresent(ServiceItemDO::getProjectId, projectId)
+                .inIfPresent(ServiceItemDO::getProjectId, projectIds)
+                .eq(ServiceItemDO::getStatus, 1)
+                .eq(ServiceItemDO::getVisible, 1)
+                .orderByDesc(ServiceItemDO::getProjectId)
+                .orderByDesc(ServiceItemDO::getId));
+    }
+
     default List<ServiceItemDO> selectListByProjectIdAndDeptId(Long projectId, Long deptId) {
         return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
                 .eq(ServiceItemDO::getProjectId, projectId)
@@ -104,10 +123,42 @@ public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
                 .orderByDesc(ServiceItemDO::getId));
     }
 
+    default List<ServiceItemDO> selectListByProjectIdAndDeptIds(Long projectId, List<Long> deptIds) {
+        if (deptIds == null || deptIds.isEmpty()) {
+            return List.of();
+        }
+        return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getProjectId, projectId)
+                .in(ServiceItemDO::getDeptId, deptIds)
+                .eq(ServiceItemDO::getVisible, 1)
+                .orderByDesc(ServiceItemDO::getId));
+    }
+
+    default List<ServiceItemDO> selectListByProjectIdAndDeptServiceId(Long projectId, Long deptServiceId) {
+        return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getProjectId, projectId)
+                .eq(ServiceItemDO::getDeptServiceId, deptServiceId)
+                .eq(ServiceItemDO::getVisible, 1)
+                .orderByDesc(ServiceItemDO::getId));
+    }
+
     default Long selectCountByProjectId(Long projectId) {
         return selectCount(new LambdaQueryWrapperX<ServiceItemDO>()
                 .eq(ServiceItemDO::getProjectId, projectId)
                 .eq(ServiceItemDO::getVisible, 1));  // 只统计可见的服务项
+    }
+
+    default Long selectCountByProjectIdAndDeptIds(Long projectId, List<Long> deptIds) {
+        if (deptIds == null) {
+            return selectCountByProjectId(projectId);
+        }
+        if (deptIds.isEmpty()) {
+            return 0L;
+        }
+        return selectCount(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getProjectId, projectId)
+                .in(ServiceItemDO::getDeptId, deptIds)
+                .eq(ServiceItemDO::getVisible, 1));
     }
 
     default ServiceItemDO selectByCode(String code) {

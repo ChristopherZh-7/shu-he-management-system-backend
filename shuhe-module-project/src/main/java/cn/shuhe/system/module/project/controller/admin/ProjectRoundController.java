@@ -7,9 +7,13 @@ import cn.shuhe.system.module.project.controller.admin.vo.ProjectRoundRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectRoundSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceLaunchDO;
+import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.mysql.ServiceLaunchMapper;
+import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
+import cn.shuhe.system.module.project.enums.ProjectMemberRoleEnum;
 import cn.shuhe.system.module.project.service.ProjectRoundService;
 import cn.shuhe.system.module.project.service.ReportGenerateService;
+import cn.shuhe.system.module.project.service.access.ProjectAccessService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -29,6 +33,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
+import static cn.shuhe.system.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 
 @Tag(name = "管理后台 - 项目轮次")
 @RestController
@@ -45,10 +50,17 @@ public class ProjectRoundController {
     @Resource
     private ServiceLaunchMapper serviceLaunchMapper;
 
+    @Resource
+    private ServiceItemMapper serviceItemMapper;
+
+    @Resource
+    private ProjectAccessService projectAccessService;
+
     @PostMapping("/create")
     @Operation(summary = "创建项目轮次")
     @PreAuthorize("@ss.hasPermission('project:info:update')")
     public CommonResult<Long> createProjectRound(@Valid @RequestBody ProjectRoundSaveReqVO createReqVO) {
+        validateWritableTarget(createReqVO.getProjectId(), createReqVO.getServiceItemId());
         return success(projectRoundService.createProjectRound(createReqVO));
     }
 
@@ -56,6 +68,13 @@ public class ProjectRoundController {
     @Operation(summary = "更新项目轮次")
     @PreAuthorize("@ss.hasPermission('project:info:update')")
     public CommonResult<Boolean> updateProjectRound(@Valid @RequestBody ProjectRoundSaveReqVO updateReqVO) {
+        ProjectRoundDO existing = projectRoundService.getProjectRound(updateReqVO.getId());
+        validateWriteRound(existing);
+        updateReqVO.setProjectId(existing.getProjectId());
+        if (updateReqVO.getServiceItemId() == null) {
+            updateReqVO.setServiceItemId(existing.getServiceItemId());
+        }
+        validateWritableTarget(updateReqVO.getProjectId(), updateReqVO.getServiceItemId());
         projectRoundService.updateProjectRound(updateReqVO);
         return success(true);
     }
@@ -65,6 +84,7 @@ public class ProjectRoundController {
     @Parameter(name = "id", description = "轮次编号", required = true)
     @PreAuthorize("@ss.hasPermission('project:info:update')")
     public CommonResult<Boolean> deleteProjectRound(@RequestParam("id") Long id) {
+        validateWriteRound(projectRoundService.getProjectRound(id));
         projectRoundService.deleteProjectRound(id);
         return success(true);
     }
@@ -75,6 +95,7 @@ public class ProjectRoundController {
     @PreAuthorize("@ss.hasAnyPermissions('project:info:query', 'project:my-tasks:query')")
     public CommonResult<ProjectRoundRespVO> getProjectRound(@RequestParam("id") Long id) {
         ProjectRoundDO round = projectRoundService.getProjectRound(id);
+        validateReadRound(round);
         return success(convertToRespVO(round));
     }
 
@@ -83,6 +104,7 @@ public class ProjectRoundController {
     @Parameter(name = "serviceItemId", description = "服务项编号", required = true)
     @PreAuthorize("@ss.hasAnyPermissions('project:info:query', 'project:my-tasks:query')")
     public CommonResult<List<ProjectRoundRespVO>> getProjectRoundList(@RequestParam("serviceItemId") Long serviceItemId) {
+        validateReadableServiceItem(serviceItemId);
         List<ProjectRoundDO> list = projectRoundService.getProjectRoundListByServiceItemId(serviceItemId);
         return success(list.stream().map(this::convertToRespVO).collect(Collectors.toList()));
     }
@@ -149,6 +171,7 @@ public class ProjectRoundController {
     @PreAuthorize("@ss.hasAnyPermissions('project:info:update', 'project:my-tasks:update')")
     public CommonResult<Boolean> updateRoundStatus(@RequestParam("id") Long id,
                                                    @RequestParam("status") Integer status) {
+        validateWriteRound(projectRoundService.getProjectRound(id));
         projectRoundService.updateRoundStatus(id, status);
         return success(true);
     }
@@ -158,6 +181,7 @@ public class ProjectRoundController {
     @PreAuthorize("@ss.hasAnyPermissions('project:info:update', 'project:my-tasks:update')")
     public CommonResult<Boolean> updateRoundProgress(@RequestParam("id") Long id,
                                                      @RequestParam("progress") Integer progress) {
+        validateWriteRound(projectRoundService.getProjectRound(id));
         projectRoundService.updateRoundProgress(id, progress);
         return success(true);
     }
@@ -182,6 +206,7 @@ public class ProjectRoundController {
             @RequestParam("id") Long id,
             @RequestParam("templateCode") String templateCode,
             HttpServletResponse response) throws IOException {
+        validateReadRound(projectRoundService.getProjectRound(id));
         // 生成报告
         byte[] reportData = reportGenerateService.generateRoundPentestReport(id, templateCode);
 
@@ -210,6 +235,7 @@ public class ProjectRoundController {
             @RequestParam("id") Long id,
             @RequestParam("templateCode") String templateCode,
             HttpServletResponse response) throws IOException {
+        validateReadRound(projectRoundService.getProjectRound(id));
         // 生成报告
         byte[] reportData = reportGenerateService.generateRoundRetestReport(id, templateCode);
 
@@ -238,6 +264,7 @@ public class ProjectRoundController {
             @RequestParam("id") Long id,
             @RequestParam("templateCode") String templateCode,
             HttpServletResponse response) throws IOException {
+        validateReadRound(projectRoundService.getProjectRound(id));
         byte[] zipData = reportGenerateService.generateRoundPentestReportsZip(id, templateCode);
 
         ProjectRoundDO round = projectRoundService.getProjectRound(id);
@@ -262,6 +289,7 @@ public class ProjectRoundController {
             @RequestParam("id") Long id,
             @RequestParam("templateCode") String templateCode,
             HttpServletResponse response) throws IOException {
+        validateReadRound(projectRoundService.getProjectRound(id));
         byte[] zipData = reportGenerateService.generateRoundRetestReportsZip(id, templateCode);
 
         ProjectRoundDO round = projectRoundService.getProjectRound(id);
@@ -275,6 +303,56 @@ public class ProjectRoundController {
 
         response.getOutputStream().write(zipData);
         response.getOutputStream().flush();
+    }
+
+    private ServiceItemDO validateReadableServiceItem(Long serviceItemId) {
+        ServiceItemDO item = serviceItemMapper.selectById(serviceItemId);
+        if (item == null || !projectAccessService.canReadDept(
+                item.getProjectId(), getLoginUserId(), item.getDeptId())) {
+            throwForbidden();
+        }
+        return item;
+    }
+
+    private void validateWritableTarget(Long projectId, Long serviceItemId) {
+        if (serviceItemId == null) {
+            projectAccessService.validateManageProject(projectId, getLoginUserId());
+            return;
+        }
+        ServiceItemDO item = validateReadableServiceItem(serviceItemId);
+        if (!projectId.equals(item.getProjectId()) || !canOperateProject(item.getProjectId())) {
+            throwForbidden();
+        }
+    }
+
+    private void validateReadRound(ProjectRoundDO round) {
+        if (round == null) {
+            throwForbidden();
+        }
+        if (round.getServiceItemId() != null) {
+            validateReadableServiceItem(round.getServiceItemId());
+        } else {
+            projectAccessService.validateViewProject(round.getProjectId(), getLoginUserId());
+        }
+    }
+
+    private void validateWriteRound(ProjectRoundDO round) {
+        validateReadRound(round);
+        if (!canOperateProject(round.getProjectId())) {
+            throwForbidden();
+        }
+    }
+
+    private boolean canOperateProject(Long projectId) {
+        Integer role = projectAccessService.getEffectiveRole(projectId, getLoginUserId());
+        return ProjectMemberRoleEnum.MANAGER.getValue().equals(role)
+                || ProjectMemberRoleEnum.EXECUTOR.getValue().equals(role)
+                || ProjectMemberRoleEnum.DEPT_LEADER.getValue().equals(role);
+    }
+
+    private void throwForbidden() {
+        throw cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception(
+                cn.shuhe.system.framework.common.exception.enums.GlobalErrorCodeConstants.FORBIDDEN);
     }
 
 }

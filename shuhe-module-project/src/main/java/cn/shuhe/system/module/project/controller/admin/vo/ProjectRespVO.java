@@ -63,6 +63,24 @@ public class ProjectRespVO {
     @Schema(description = "服务项数量", example = "3")
     private Integer serviceItemCount;
 
+    @Schema(description = "按合同频次与轮次验收加权计算的履约进度", example = "42")
+    private Integer progress;
+
+    @Schema(description = "合同计划执行次数（不包含按需服务）", example = "24")
+    private Integer plannedExecutionCount;
+
+    @Schema(description = "已经提单人验收通过的执行次数", example = "10")
+    private Integer acceptedExecutionCount;
+
+    @Schema(description = "是否包含无法预设总次数的按需服务")
+    private Boolean hasOnDemandService;
+
+    @Schema(description = "当前用户是否可管理项目基础信息与成员")
+    private Boolean canManage;
+
+    @Schema(description = "当前用户可见的部门服务包摘要")
+    private List<ProjectDepartmentSummaryRespVO> departmentSummaries;
+
     // ========== 通用字段 ==========
 
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)

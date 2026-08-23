@@ -8,16 +8,20 @@ import cn.shuhe.system.module.project.controller.admin.vo.ProjectSiteSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectSiteDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectSiteMemberDO;
+import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
+import cn.shuhe.system.module.project.dal.mysql.BusinessTimeMapper;
 import cn.shuhe.system.module.project.dal.mysql.ContractTimeMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectSiteMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectSiteMemberMapper;
+import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -47,6 +51,12 @@ public class ProjectSiteServiceImpl implements ProjectSiteService {
     @Resource
     private ContractTimeMapper contractTimeMapper;
 
+    @Resource
+    private BusinessTimeMapper businessTimeMapper;
+
+    @Resource
+    private ServiceItemMapper serviceItemMapper;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSite(ProjectSiteSaveReqVO createReqVO) {
@@ -61,22 +71,10 @@ public class ProjectSiteServiceImpl implements ProjectSiteService {
         site.setStatus(ProjectSiteDO.STATUS_ENABLED);
         site.setSort(0);
 
-        // 自动从 CRM 合同获取时间（保持一致性）
-        if (project.getContractId() != null) {
-            Map<String, LocalDateTime> contractTime = contractTimeMapper.selectContractTime(project.getContractId());
-            if (contractTime != null) {
-                LocalDateTime startTime = contractTime.get("startTime");
-                LocalDateTime endTime = contractTime.get("endTime");
-                if (startTime != null) {
-                    site.setStartDate(startTime.toLocalDate());
-                }
-                if (endTime != null) {
-                    site.setEndDate(endTime.toLocalDate());
-                }
-                log.info("[createSite][从CRM合同自动获取时间，contractId={}，startDate={}，endDate={}]",
-                        project.getContractId(), site.getStartDate(), site.getEndDate());
-            }
-        }
+        SiteDates dates = resolveSiteDates(project, site.getStartDate(), site.getEndDate());
+        site.setStartDate(dates.startDate());
+        site.setEndDate(dates.endDate());
+        validateDateRange(site.getStartDate(), site.getEndDate());
 
         siteMapper.insert(site);
 
@@ -88,13 +86,17 @@ public class ProjectSiteServiceImpl implements ProjectSiteService {
     @Override
     public void updateSite(ProjectSiteSaveReqVO updateReqVO) {
         // 校验存在
-        validateSiteExists(updateReqVO.getId());
+        ProjectSiteDO existing = validateSiteExists(updateReqVO.getId());
+        ProjectDO project = projectMapper.selectById(existing.getProjectId());
+        if (project == null) {
+            throw exception(PROJECT_NOT_EXISTS);
+        }
 
-        // 更新（注意：时间字段由 CRM 合同决定，不允许手动修改）
         ProjectSiteDO updateObj = BeanUtils.toBean(updateReqVO, ProjectSiteDO.class);
-        // 清除时间字段，保持与 CRM 合同一致
-        updateObj.setStartDate(null);
-        updateObj.setEndDate(null);
+        SiteDates dates = resolveSiteDates(project, updateReqVO.getStartDate(), updateReqVO.getEndDate());
+        updateObj.setStartDate(dates.startDate());
+        updateObj.setEndDate(dates.endDate());
+        validateDateRange(updateObj.getStartDate(), updateObj.getEndDate());
         siteMapper.updateById(updateObj);
     }
 
@@ -172,6 +174,19 @@ public class ProjectSiteServiceImpl implements ProjectSiteService {
      */
     private ProjectSiteRespVO convertToRespVO(ProjectSiteDO site) {
         ProjectSiteRespVO respVO = BeanUtils.toBean(site, ProjectSiteRespVO.class);
+        ProjectDO project = projectMapper.selectById(site.getProjectId());
+        SiteDates dates = project == null
+                ? new SiteDates(site.getStartDate(), site.getEndDate(), "manual", "手工录入")
+                : resolveSiteDates(project, site.getStartDate(), site.getEndDate());
+        respVO.setStartDate(dates.startDate());
+        respVO.setEndDate(dates.endDate());
+        respVO.setDateSource(dates.source());
+        respVO.setDateSourceName(dates.sourceName());
+
+        boolean hasOnsiteServiceItem = serviceItemMapper
+                .selectListByProjectIdAndDeptType(site.getProjectId(), site.getDeptType()).stream()
+                .anyMatch(item -> !Integer.valueOf(4).equals(item.getStatus()) && isOnsiteItem(item));
+        respVO.setHasOnsiteServiceItem(hasOnsiteServiceItem);
 
         // 查询该驻场点的人员列表
         List<ProjectSiteMemberDO> members = memberMapper.selectListBySiteId(site.getId());
@@ -202,23 +217,121 @@ public class ProjectSiteServiceImpl implements ProjectSiteService {
                 memberVOs.add(memberVO);
             }
             respVO.setMembers(memberVOs);
-            // 统计在岗人数
-            long activeCount = members.stream()
-                    .filter(m -> m.getStatus() != null && m.getStatus() == ProjectSiteMemberDO.STATUS_ACTIVE)
+            long activeOnsiteCount = members.stream()
+                    .filter(m -> Integer.valueOf(ProjectSiteMemberDO.MEMBER_TYPE_ONSITE).equals(m.getMemberType()))
+                    .filter(m -> Integer.valueOf(ProjectSiteMemberDO.STATUS_ACTIVE).equals(m.getStatus()))
                     .count();
-            respVO.setMemberCount((int) activeCount);
+            long managementCount = members.stream()
+                    .filter(m -> Integer.valueOf(ProjectSiteMemberDO.MEMBER_TYPE_MANAGEMENT).equals(m.getMemberType()))
+                    .filter(m -> !Integer.valueOf(ProjectSiteMemberDO.STATUS_LEFT).equals(m.getStatus()))
+                    .count();
+            respVO.setManagementMemberCount((int) managementCount);
+            fillDeliveryStatus(respVO, site, dates, hasOnsiteServiceItem, (int) activeOnsiteCount);
+            if (!Integer.valueOf(2).equals(respVO.getDeliveryStatus())) {
+                memberVOs.stream()
+                        .filter(member -> Integer.valueOf(ProjectSiteMemberDO.MEMBER_TYPE_ONSITE)
+                                .equals(member.getMemberType()))
+                        .filter(member -> Integer.valueOf(ProjectSiteMemberDO.STATUS_ACTIVE)
+                                .equals(member.getStatus()))
+                        .forEach(member -> member.setStatusName("待入场"));
+            }
         } else {
             respVO.setMembers(Collections.emptyList());
-            respVO.setMemberCount(0);
+            respVO.setManagementMemberCount(0);
+            fillDeliveryStatus(respVO, site, dates, hasOnsiteServiceItem, 0);
         }
 
         return respVO;
     }
 
+    private void fillDeliveryStatus(ProjectSiteRespVO respVO, ProjectSiteDO site, SiteDates dates,
+                                    boolean hasOnsiteServiceItem, int activeOnsiteCount) {
+        LocalDate today = LocalDate.now();
+        int deliveryStatus;
+        String deliveryStatusName;
+        if (Integer.valueOf(ProjectSiteDO.STATUS_DISABLED).equals(site.getStatus())
+                || dates.endDate() != null && dates.endDate().isBefore(today)) {
+            deliveryStatus = 3;
+            deliveryStatusName = "已退场";
+        } else if (!hasOnsiteServiceItem) {
+            deliveryStatus = 0;
+            deliveryStatusName = "计划中";
+        } else if (dates.startDate() != null && dates.startDate().isAfter(today)
+                || activeOnsiteCount == 0) {
+            deliveryStatus = 1;
+            deliveryStatusName = "待入场";
+        } else {
+            deliveryStatus = 2;
+            deliveryStatusName = "驻场中";
+        }
+        int actualCount = deliveryStatus == 2 ? activeOnsiteCount : 0;
+        int plannedCount = site.getStaffCount() == null ? 0 : Math.max(0, site.getStaffCount());
+        respVO.setDeliveryStatus(deliveryStatus);
+        respVO.setDeliveryStatusName(deliveryStatusName);
+        respVO.setPlannedMemberCount(plannedCount);
+        respVO.setActiveOnsiteMemberCount(actualCount);
+        respVO.setMemberCount(actualCount); // 兼容旧前端字段，但只表示实际驻场人数
+        respVO.setStaffingGap(Math.max(0, plannedCount - actualCount));
+    }
+
+    private boolean isOnsiteItem(ServiceItemDO item) {
+        return Integer.valueOf(ServiceItemDO.SERVICE_MODE_ONSITE).equals(item.getServiceMode())
+                || Integer.valueOf(ServiceItemDO.SERVICE_MEMBER_TYPE_ONSITE).equals(item.getServiceMemberType());
+    }
+
+    private SiteDates resolveSiteDates(ProjectDO project, LocalDate manualStart, LocalDate manualEnd) {
+        if (project.getContractId() != null) {
+            Map<String, LocalDateTime> contractTime = contractTimeMapper.selectContractTime(project.getContractId());
+            if (contractTime != null) {
+                LocalDateTime start = contractTime.get("startTime");
+                LocalDateTime end = contractTime.get("endTime");
+                if (start != null || end != null) {
+                    return new SiteDates(start == null ? null : start.toLocalDate(),
+                            end == null ? null : end.toLocalDate(),
+                            "signed_contract", "合同日期");
+                }
+            }
+        }
+        if (project.getBusinessId() != null) {
+            Map<String, Object> earlyInvestmentTime =
+                    businessTimeMapper.selectEarlyInvestmentTime(project.getBusinessId());
+            LocalDate earlyStart = toLocalDate(earlyInvestmentTime == null
+                    ? null : earlyInvestmentTime.get("startDate"));
+            LocalDate earlyEnd = toLocalDate(earlyInvestmentTime == null
+                    ? null : earlyInvestmentTime.get("endDate"));
+            if (earlyInvestmentTime != null
+                    && (earlyStart != null || earlyEnd != null)) {
+                return new SiteDates(earlyStart, earlyEnd,
+                        "approved_early_investment", "提前投入计划");
+            }
+        }
+        return new SiteDates(manualStart, manualEnd, "manual", "手工录入");
+    }
+
+    private LocalDate toLocalDate(Object value) {
+        if (value instanceof LocalDate localDate) {
+            return localDate;
+        }
+        if (value instanceof java.sql.Date sqlDate) {
+            return sqlDate.toLocalDate();
+        }
+        return null;
+    }
+
+    private void validateDateRange(LocalDate startDate, LocalDate endDate) {
+        if (startDate != null && endDate != null && endDate.isBefore(startDate)) {
+            throw exception(PROJECT_SITE_DATE_INVALID);
+        }
+    }
+
+    private record SiteDates(LocalDate startDate, LocalDate endDate,
+                             String source, String sourceName) {
+    }
+
     /**
      * 校验驻场点是否存在
      */
-    private void validateSiteExists(Long id) {
+    private ProjectSiteDO validateSiteExists(Long id) {
         if (id == null) {
             throw exception(PROJECT_SITE_NOT_EXISTS);
         }
@@ -226,6 +339,7 @@ public class ProjectSiteServiceImpl implements ProjectSiteService {
         if (site == null) {
             throw exception(PROJECT_SITE_NOT_EXISTS);
         }
+        return site;
     }
 
 }
