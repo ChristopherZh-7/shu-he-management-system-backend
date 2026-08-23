@@ -36,6 +36,9 @@ import java.time.temporal.WeekFields;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static cn.shuhe.system.framework.common.exception.enums.GlobalErrorCodeConstants.FORBIDDEN;
+import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
+
 /**
  * 周工作聚合服务实现类
  * 聚合日常管理记录和项目管理记录，按日期展示
@@ -82,9 +85,15 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
     @Override
     public WeeklyWorkAggregateRespVO getWeeklyWorkAggregate(WeeklyWorkAggregateReqVO reqVO) {
         // 确定查询的用户ID
-        Long userId = reqVO.getUserId();
-        if (userId == null) {
-            userId = SecurityFrameworkUtils.getLoginUserId();
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        Long targetUserId = reqVO.getUserId() == null ? loginUserId : reqVO.getUserId();
+        if (!Objects.equals(targetUserId, loginUserId)) {
+            boolean viewable = getViewableUserList().stream()
+                    .map(user -> ((Number) user.get("id")).longValue())
+                    .anyMatch(targetUserId::equals);
+            if (!viewable) {
+                throw exception(FORBIDDEN);
+            }
         }
 
         // 计算该周的日期范围
@@ -94,12 +103,13 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
 
         // 1. 查询日常管理记录
         DailyManagementRecordDO dailyRecord = dailyManagementRecordMapper.selectByCreatorAndYearAndWeek(
-                String.valueOf(userId), reqVO.getYear(), reqVO.getWeekNumber());
+                String.valueOf(targetUserId), reqVO.getYear(), reqVO.getWeekNumber());
 
         // 2. 查询项目管理记录（该周内的所有记录）
         List<ProjectWorkRecordDO> projectRecords = new ArrayList<>();
         if (Boolean.TRUE.equals(reqVO.getIncludeProjectRecords())) {
-            projectRecords = projectWorkRecordMapper.selectListByCreatorAndDateRange(userId, weekStartDate, weekEndDate);
+            projectRecords = projectWorkRecordMapper.selectListByCreatorAndDateRange(
+                    targetUserId, weekStartDate, weekEndDate);
         }
 
         // 3. 按日期分组项目记录
@@ -107,24 +117,7 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
                 .collect(Collectors.groupingBy(ProjectWorkRecordDO::getRecordDate));
 
         // 4. 查询本周的节假日数据
-        Map<LocalDate, HolidayDO> holidayMap = new HashMap<>();
-        try {
-            List<HolidayDO> monthHolidays = holidayService.getHolidaysByMonth(
-                    weekStartDate.getYear(), weekStartDate.getMonthValue());
-            for (HolidayDO h : monthHolidays) {
-                holidayMap.put(h.getDate(), h);
-            }
-            // 如果跨月，也加载下个月的
-            if (weekStartDate.getMonthValue() != weekEndDate.getMonthValue()) {
-                List<HolidayDO> nextMonthHolidays = holidayService.getHolidaysByMonth(
-                        weekEndDate.getYear(), weekEndDate.getMonthValue());
-                for (HolidayDO h : nextMonthHolidays) {
-                    holidayMap.put(h.getDate(), h);
-                }
-            }
-        } catch (Exception e) {
-            log.warn("获取节假日数据失败，使用默认周末判断", e);
-        }
+        Map<LocalDate, HolidayDO> holidayMap = loadHolidayMap(weekStartDate, weekEndDate);
 
         // 5. 构建每日工作列表（周一到周日，前端根据工作日状态决定显示哪些天）
         List<DailyWorkVO> dailyWorks = new ArrayList<>();
@@ -188,18 +181,9 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
     @Override
     public WeeklyWorkAggregateRespVO getCurrentWeekAggregate() {
         LocalDate today = LocalDate.now();
-        WeekFields weekFields = WeekFields.of(Locale.getDefault());
-
-        int year = today.getYear();
+        WeekFields weekFields = WeekFields.ISO;
+        int year = today.get(weekFields.weekBasedYear());
         int weekNumber = today.get(weekFields.weekOfWeekBasedYear());
-
-        // 计算本周一
-        LocalDate monday = today.with(DayOfWeek.MONDAY);
-        // 如果周一在下一年，调整年份和周数
-        if (monday.getYear() != year) {
-            year = monday.getYear();
-            weekNumber = monday.get(weekFields.weekOfWeekBasedYear());
-        }
 
         WeeklyWorkAggregateReqVO reqVO = new WeeklyWorkAggregateReqVO();
         reqVO.setYear(year);
@@ -210,23 +194,39 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
     }
 
     /**
-     * 计算指定年份和周数的周一和周五日期
+     * 按 ISO-8601 计算指定周的周一和周日日期。
      */
     private LocalDate[] calculateWeekDates(int year, int weekNumber) {
-        WeekFields weekFields = WeekFields.of(Locale.getDefault());
-
-        // 获取该年第一天
-        LocalDate firstDayOfYear = LocalDate.of(year, 1, 1);
-        
-        // 计算该周的周一
-        LocalDate monday = firstDayOfYear
+        WeekFields weekFields = WeekFields.ISO;
+        LocalDate monday = LocalDate.of(year, 1, 4)
                 .with(weekFields.weekOfWeekBasedYear(), weekNumber)
-                .with(DayOfWeek.MONDAY);
-        
-        // 周五
-        LocalDate friday = monday.plusDays(4);
+                .with(weekFields.dayOfWeek(), 1);
+        return new LocalDate[]{monday, monday.plusDays(6)};
+    }
 
-        return new LocalDate[]{monday, friday};
+    private Map<LocalDate, HolidayDO> loadHolidayMap(LocalDate startDate, LocalDate endDate) {
+        Map<LocalDate, HolidayDO> holidayMap = new HashMap<>();
+        try {
+            LocalDate month = startDate.withDayOfMonth(1);
+            LocalDate lastMonth = endDate.withDayOfMonth(1);
+            while (!month.isAfter(lastMonth)) {
+                for (HolidayDO holiday : holidayService.getHolidaysByMonth(month.getYear(), month.getMonthValue())) {
+                    holidayMap.put(holiday.getDate(), holiday);
+                }
+                month = month.plusMonths(1);
+            }
+        } catch (Exception e) {
+            log.warn("获取节假日数据失败，使用默认周末判断", e);
+        }
+        return holidayMap;
+    }
+
+    private boolean isWorkday(LocalDate date, Map<LocalDate, HolidayDO> holidayMap) {
+        HolidayDO holiday = holidayMap.get(date);
+        if (holiday != null) {
+            return Integer.valueOf(1).equals(holiday.getIsWorkday());
+        }
+        return date.getDayOfWeek() != DayOfWeek.SATURDAY && date.getDayOfWeek() != DayOfWeek.SUNDAY;
     }
 
     /**
@@ -401,6 +401,10 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
         LocalDate[] weekDates = calculateWeekDates(year, weekNumber);
         LocalDate weekStartDate = weekDates[0];
         LocalDate weekEndDate = weekDates[1];
+        Map<LocalDate, HolidayDO> holidayMap = loadHolidayMap(weekStartDate, weekEndDate);
+        int requiredWorkDays = (int) weekStartDate.datesUntil(weekEndDate.plusDays(1))
+                .filter(date -> isWorkday(date, holidayMap))
+                .count();
 
         // 3. 构建响应
         TeamOverviewRespVO respVO = new TeamOverviewRespVO();
@@ -439,8 +443,9 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
             // 构建每日详情
             List<TeamOverviewRespVO.DayDetail> dayDetails = new ArrayList<>();
             int dailyContentDays = 0;
+            Set<LocalDate> distinctWorkDates = new HashSet<>();
 
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < 7; i++) {
                 LocalDate currentDate = weekStartDate.plusDays(i);
                 TeamOverviewRespVO.DayDetail dayDetail = new TeamOverviewRespVO.DayDetail();
                 dayDetail.setDate(currentDate);
@@ -451,12 +456,24 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
                     dayDetail.setDailyContent(content);
                     if (content != null && !content.trim().isEmpty()) {
                         dailyContentDays++;
+                        if (isWorkday(currentDate, holidayMap)) {
+                            distinctWorkDates.add(currentDate);
+                        }
                     }
                 }
 
                 List<ProjectWorkRecordDO> dayProjectRecords = projectRecordsByDate.getOrDefault(currentDate, Collections.emptyList());
                 dayDetail.setProjectRecords(convertToProjectRecordRespVOs(dayProjectRecords));
                 dayDetail.setProjectRecordCount(dayProjectRecords.size());
+                int dayActualMinutes = dayProjectRecords.stream()
+                        .map(ProjectWorkRecordDO::getActualMinutes)
+                        .filter(Objects::nonNull)
+                        .mapToInt(Integer::intValue)
+                        .sum();
+                dayDetail.setActualMinutes(dayActualMinutes);
+                if (!dayProjectRecords.isEmpty() && isWorkday(currentDate, holidayMap)) {
+                    distinctWorkDates.add(currentDate);
+                }
 
                 dayDetails.add(dayDetail);
             }
@@ -464,6 +481,40 @@ public class WeeklyWorkAggregateServiceImpl implements WeeklyWorkAggregateServic
             summary.setDayDetails(dayDetails);
             summary.setProjectRecordCount(projectRecords.size());
             summary.setDailyContentDays(dailyContentDays);
+            int actualMinutes = projectRecords.stream()
+                    .map(ProjectWorkRecordDO::getActualMinutes)
+                    .filter(Objects::nonNull)
+                    .mapToInt(Integer::intValue)
+                    .sum();
+            int linkedActualMinutes = projectRecords.stream()
+                    .filter(record -> record.getVerificationStatus() != null
+                            && record.getVerificationStatus() >= ProjectWorkRecordDO.VERIFICATION_LINKED)
+                    .map(ProjectWorkRecordDO::getActualMinutes)
+                    .filter(Objects::nonNull)
+                    .mapToInt(Integer::intValue)
+                    .sum();
+            int linkedRecordCount = (int) projectRecords.stream()
+                    .filter(record -> record.getVerificationStatus() != null
+                            && record.getVerificationStatus() >= ProjectWorkRecordDO.VERIFICATION_LINKED)
+                    .count();
+            int distinctDeliveryCount = (int) projectRecords.stream()
+                    .filter(record -> record.getSourceId() != null
+                            && !ProjectWorkRecordDO.SOURCE_MANUAL.equals(record.getSourceType()))
+                    .map(record -> record.getSourceType() + ":" + record.getSourceId())
+                    .distinct()
+                    .count();
+            summary.setDistinctWorkDays(distinctWorkDates.size());
+            summary.setRequiredWorkDays(requiredWorkDays);
+            summary.setActualMinutes(actualMinutes);
+            summary.setLinkedActualMinutes(linkedActualMinutes);
+            summary.setLinkedRecordCount(linkedRecordCount);
+            summary.setDistinctDeliveryCount(distinctDeliveryCount);
+            summary.setFillRate(requiredWorkDays == 0 ? 100
+                    : Math.min(100, distinctWorkDates.size() * 100 / requiredWorkDays));
+            summary.setLoadRate(requiredWorkDays == 0 ? 0
+                    : Math.round(actualMinutes * 100f / (requiredWorkDays * 480)));
+            summary.setVerificationRate(actualMinutes == 0 ? 0
+                    : Math.round(linkedActualMinutes * 100f / actualMinutes));
             summary.setHasWeeklySummary(dailyRecord != null && dailyRecord.getWeeklySummary() != null
                     && !dailyRecord.getWeeklySummary().trim().isEmpty());
             summary.setWeeklySummary(dailyRecord != null ? dailyRecord.getWeeklySummary() : null);

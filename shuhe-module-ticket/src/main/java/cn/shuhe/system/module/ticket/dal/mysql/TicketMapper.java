@@ -63,4 +63,10 @@ public interface TicketMapper extends BaseMapperX<TicketDO> {
                 .orderByDesc(TicketDO::getId));
     }
 
+    default List<TicketDO> selectListByAssigneeId(Long assigneeId) {
+        return selectList(new LambdaQueryWrapperX<TicketDO>()
+                .eq(TicketDO::getAssigneeId, assigneeId)
+                .orderByDesc(TicketDO::getId));
+    }
+
 }

@@ -12,14 +12,17 @@ import cn.shuhe.system.module.project.controller.admin.vo.ProjectWorkRecordPageR
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectWorkRecordRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectWorkRecordSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectWorkRecordDO;
-import cn.shuhe.system.module.project.dal.dataobject.SecurityOperationContractDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
-import cn.shuhe.system.module.project.dal.mysql.SecurityOperationContractMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import cn.shuhe.system.module.project.service.ProjectWorkRecordService;
 import cn.shuhe.system.module.project.service.access.ProjectAccessService;
+import cn.shuhe.system.module.ticket.dal.dataobject.TicketDO;
+import cn.shuhe.system.module.ticket.dal.mysql.TicketExecutorMapper;
+import cn.shuhe.system.module.ticket.dal.mysql.TicketMapper;
 import cn.shuhe.system.module.system.api.dept.DeptApi;
 import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
@@ -40,6 +43,9 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
+import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.shuhe.system.module.project.enums.ErrorCodeConstants.WORK_RECORD_SOURCE_INVALID;
+import static cn.shuhe.system.module.project.enums.ErrorCodeConstants.WORK_RECORD_SOURCE_NOT_ASSIGNED;
 
 @Tag(name = "管理后台 - 项目工作记录")
 @RestController
@@ -55,10 +61,16 @@ public class ProjectWorkRecordController {
     private ProjectMapper projectMapper;
 
     @Resource
-    private SecurityOperationContractMapper securityOperationContractMapper;
+    private ServiceItemMapper serviceItemMapper;
 
     @Resource
-    private ServiceItemMapper serviceItemMapper;
+    private ProjectRoundMapper projectRoundMapper;
+
+    @Resource
+    private TicketMapper ticketMapper;
+
+    @Resource
+    private TicketExecutorMapper ticketExecutorMapper;
 
     @Resource
     private cn.shuhe.system.module.project.service.ServiceItemService serviceItemService;
@@ -76,7 +88,8 @@ public class ProjectWorkRecordController {
     @Operation(summary = "创建工作记录")
     @PreAuthorize("@ss.hasAnyPermissions('project:work-record:create', 'project:management-record:create', 'project:my-work-record:create')")
     public CommonResult<Long> createWorkRecord(@Valid @RequestBody ProjectWorkRecordSaveReqVO createReqVO) {
-        validateWorkRecordTarget(createReqVO.getProjectId(), createReqVO.getServiceItemId());
+        validateWorkRecordTarget(createReqVO.getProjectId(), createReqVO.getServiceItemId(),
+                createReqVO.getSourceType(), createReqVO.getSourceId());
         return success(workRecordService.createWorkRecord(createReqVO));
     }
 
@@ -87,7 +100,8 @@ public class ProjectWorkRecordController {
         ProjectWorkRecordDO existing = workRecordService.getWorkRecord(updateReqVO.getId());
         validateReadWorkRecord(existing);
         updateReqVO.setProjectId(existing.getProjectId());
-        validateWorkRecordTarget(existing.getProjectId(), updateReqVO.getServiceItemId());
+        validateWorkRecordTarget(existing.getProjectId(), updateReqVO.getServiceItemId(),
+                updateReqVO.getSourceType(), updateReqVO.getSourceId());
         workRecordService.updateWorkRecord(updateReqVO);
         return success(true);
     }
@@ -95,7 +109,7 @@ public class ProjectWorkRecordController {
     @DeleteMapping("/delete")
     @Operation(summary = "删除工作记录")
     @Parameter(name = "id", description = "记录编号", required = true)
-    @PreAuthorize("@ss.hasAnyPermissions('project:work-record:delete', 'project:management-record:delete')")
+    @PreAuthorize("@ss.hasAnyPermissions('project:work-record:delete', 'project:management-record:delete', 'project:my-work-record:update')")
     public CommonResult<Boolean> deleteWorkRecord(@RequestParam("id") Long id) {
         validateReadWorkRecord(workRecordService.getWorkRecord(id));
         workRecordService.deleteWorkRecord(id);
@@ -312,19 +326,86 @@ public class ProjectWorkRecordController {
         return success(result);
     }
 
-    private void validateWorkRecordTarget(Long projectId, Long serviceItemId) {
+    private void validateWorkRecordTarget(Long projectId, Long serviceItemId, String sourceType, Long sourceId) {
         Long userId = SecurityFrameworkUtils.getLoginUserId();
-        projectAccessService.validateViewProject(projectId, userId);
-        AdminUserRespDTO user = adminUserApi.getUser(userId);
-        if (user == null || !projectAccessService.canReadDept(projectId, userId, user.getDeptId())) {
-            throwForbidden();
+        String normalizedSourceType = sourceType == null || sourceType.isBlank()
+                ? ProjectWorkRecordDO.SOURCE_MANUAL : sourceType;
+        if (ProjectWorkRecordDO.SOURCE_INTERNAL.equals(normalizedSourceType)) {
+            if (projectId != null || serviceItemId != null || sourceId != null) {
+                throw exception(WORK_RECORD_SOURCE_INVALID);
+            }
+            return;
         }
+        if (projectId == null) {
+            throw exception(WORK_RECORD_SOURCE_INVALID);
+        }
+        ServiceItemDO targetServiceItem = null;
         if (serviceItemId != null) {
-            ServiceItemDO item = validateReadableServiceItem(serviceItemId);
-            if (!projectId.equals(item.getProjectId())) {
-                throwForbidden();
+            targetServiceItem = serviceItemMapper.selectById(serviceItemId);
+            if (targetServiceItem == null || !projectId.equals(targetServiceItem.getProjectId())) {
+                throw exception(WORK_RECORD_SOURCE_INVALID);
             }
         }
+        if (ProjectWorkRecordDO.SOURCE_MANUAL.equals(normalizedSourceType)) {
+            if (sourceId != null) {
+                throw exception(WORK_RECORD_SOURCE_INVALID);
+            }
+            projectAccessService.validateViewProject(projectId, userId);
+            AdminUserRespDTO user = adminUserApi.getUser(userId);
+            Long targetDeptId = targetServiceItem != null ? targetServiceItem.getDeptId()
+                    : user != null ? user.getDeptId() : null;
+            if (user == null || targetDeptId == null
+                    || !projectAccessService.canReadDept(projectId, userId, targetDeptId)) {
+                throwForbidden();
+            }
+            return;
+        }
+        if (sourceId == null || serviceItemId == null) {
+            throw exception(WORK_RECORD_SOURCE_INVALID);
+        }
+        if (ProjectWorkRecordDO.SOURCE_SERVICE_ITEM.equals(normalizedSourceType)) {
+            if (!sourceId.equals(serviceItemId) || targetServiceItem == null
+                    || Integer.valueOf(4).equals(targetServiceItem.getStatus())) {
+                throw exception(WORK_RECORD_SOURCE_INVALID);
+            }
+            if (!Objects.equals(targetServiceItem.getExecutorId(), userId)) {
+                throw exception(WORK_RECORD_SOURCE_NOT_ASSIGNED);
+            }
+            return;
+        }
+        if (ProjectWorkRecordDO.SOURCE_ROUND.equals(normalizedSourceType)) {
+            ProjectRoundDO round = projectRoundMapper.selectById(sourceId);
+            if (round == null || !projectId.equals(round.getProjectId())
+                    || !serviceItemId.equals(round.getServiceItemId())
+                    || Integer.valueOf(3).equals(round.getStatus())) {
+                throw exception(WORK_RECORD_SOURCE_INVALID);
+            }
+            List<Long> executorIds;
+            try {
+                executorIds = JSONUtil.toList(round.getExecutorIds(), Long.class);
+            } catch (Exception ex) {
+                executorIds = List.of();
+            }
+            if (!executorIds.contains(userId)) {
+                throw exception(WORK_RECORD_SOURCE_NOT_ASSIGNED);
+            }
+            return;
+        }
+        if (ProjectWorkRecordDO.SOURCE_TICKET.equals(normalizedSourceType)) {
+            TicketDO ticket = ticketMapper.selectById(sourceId);
+            if (ticket == null || !projectId.equals(ticket.getProjectId())
+                    || !serviceItemId.equals(ticket.getServiceItemId())
+                    || Integer.valueOf(5).equals(ticket.getStatus())) {
+                throw exception(WORK_RECORD_SOURCE_INVALID);
+            }
+            boolean assigned = Objects.equals(ticket.getAssigneeId(), userId)
+                    || ticketExecutorMapper.existsByTicketIdAndUserId(sourceId, userId);
+            if (!assigned) {
+                throw exception(WORK_RECORD_SOURCE_NOT_ASSIGNED);
+            }
+            return;
+        }
+        throw exception(WORK_RECORD_SOURCE_INVALID);
     }
 
     private ServiceItemDO validateReadableServiceItem(Long serviceItemId) {
@@ -337,7 +418,14 @@ public class ProjectWorkRecordController {
     }
 
     private boolean canReadWorkRecord(ProjectWorkRecordDO record) {
-        return record != null && projectAccessService.canReadDept(
+        if (record == null) {
+            return false;
+        }
+        if (record.getProjectId() == null) {
+            return Objects.equals(record.getCreator(),
+                    String.valueOf(SecurityFrameworkUtils.getLoginUserId()));
+        }
+        return projectAccessService.canReadDept(
                 record.getProjectId(), SecurityFrameworkUtils.getLoginUserId(), record.getDeptId());
     }
 

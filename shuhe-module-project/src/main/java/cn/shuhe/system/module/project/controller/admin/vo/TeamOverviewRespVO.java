@@ -52,6 +52,33 @@ public class TeamOverviewRespVO {
         @Schema(description = "日常记录填写天数")
         private Integer dailyContentDays;
 
+        @Schema(description = "有实际记录的去重工作日数")
+        private Integer distinctWorkDays;
+
+        @Schema(description = "本周应填工作日数（已扣除节假日并包含调休）")
+        private Integer requiredWorkDays;
+
+        @Schema(description = "个人实际投入分钟数")
+        private Integer actualMinutes;
+
+        @Schema(description = "已关联轮次或工单的投入分钟数")
+        private Integer linkedActualMinutes;
+
+        @Schema(description = "已关联记录数量")
+        private Integer linkedRecordCount;
+
+        @Schema(description = "去重后的关联任务/交付数量")
+        private Integer distinctDeliveryCount;
+
+        @Schema(description = "填报完成率0-100，按去重工作日计算")
+        private Integer fillRate;
+
+        @Schema(description = "负载率0-100+，按8小时/应工作日计算")
+        private Integer loadRate;
+
+        @Schema(description = "工时证据可信度0-100，按已关联工时占比计算")
+        private Integer verificationRate;
+
         @Schema(description = "是否有周总结")
         private Boolean hasWeeklySummary;
 
@@ -86,6 +113,9 @@ public class TeamOverviewRespVO {
 
         @Schema(description = "项目记录数量")
         private Integer projectRecordCount;
+
+        @Schema(description = "当天个人实际投入分钟数")
+        private Integer actualMinutes;
 
     }
 

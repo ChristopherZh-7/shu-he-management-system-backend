@@ -4,6 +4,8 @@ import cn.shuhe.system.framework.mybatis.core.mapper.BaseMapperX;
 import cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundDO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -13,6 +15,15 @@ import java.util.List;
  */
 @Mapper
 public interface ProjectRoundMapper extends BaseMapperX<ProjectRoundDO> {
+
+    /**
+     * 查询明确分派给某用户的有效轮次。
+     */
+    @Select("SELECT * FROM project_round WHERE deleted = 0 AND status <> 3 " +
+            "AND executor_ids IS NOT NULL " +
+            "AND JSON_CONTAINS(executor_ids, CAST(#{userId} AS CHAR), '$') " +
+            "ORDER BY deadline ASC, round_no ASC")
+    List<ProjectRoundDO> selectListByExecutorUserId(@Param("userId") Long userId);
 
     /**
      * 根据项目ID查询轮次列表

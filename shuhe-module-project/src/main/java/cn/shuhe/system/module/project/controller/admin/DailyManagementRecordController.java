@@ -19,11 +19,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.WeekFields;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
@@ -98,27 +96,18 @@ public class DailyManagementRecordController {
     @PreAuthorize("@ss.hasPermission('project:daily-record:query')")
     public CommonResult<Map<String, Object>> getCurrentWeekInfo() {
         LocalDate today = LocalDate.now();
-        WeekFields weekFields = WeekFields.of(Locale.getDefault());
-        
-        int year = today.getYear();
+        WeekFields weekFields = WeekFields.ISO;
+        int year = today.get(weekFields.weekBasedYear());
         int weekNumber = today.get(weekFields.weekOfWeekBasedYear());
-        
-        // 计算本周一和本周五
-        LocalDate monday = today.with(DayOfWeek.MONDAY);
-        LocalDate friday = today.with(DayOfWeek.FRIDAY);
-        
-        // 如果周一在下一年，调整年份
-        if (monday.getYear() != year) {
-            year = monday.getYear();
-            weekNumber = monday.get(weekFields.weekOfWeekBasedYear());
-        }
+        LocalDate monday = today.with(weekFields.dayOfWeek(), 1);
+        LocalDate friday = monday.plusDays(4);
         
         Map<String, Object> result = new HashMap<>();
         result.put("year", year);
         result.put("weekNumber", weekNumber);
         result.put("weekStartDate", monday.toString());
         result.put("weekEndDate", friday.toString());
-        result.put("todayDayOfWeek", today.getDayOfWeek().getValue()); // 1=周一, 5=周五
+        result.put("todayDayOfWeek", today.getDayOfWeek().getValue()); // 1=周一, 7=周日
         
         return success(result);
     }

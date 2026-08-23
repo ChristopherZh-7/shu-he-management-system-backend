@@ -26,6 +26,15 @@ public class ProjectWorkRecordPageReqVO extends PageParam {
     @Schema(description = "服务项ID", example = "1")
     private Long serviceItemId;
 
+    @Schema(description = "任务来源类型", example = "round")
+    private String sourceType;
+
+    @Schema(description = "任务来源ID", example = "1")
+    private Long sourceId;
+
+    @Schema(description = "核验状态: 0-自报 1-已关联 2-已验收", example = "1")
+    private Integer verificationStatus;
+
     @Schema(description = "工作类型", example = "patrol")
     private String workType;
 

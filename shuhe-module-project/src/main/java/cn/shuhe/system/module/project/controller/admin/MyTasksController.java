@@ -16,6 +16,9 @@ import cn.shuhe.system.module.system.api.dept.DeptApi;
 import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
+import cn.shuhe.system.module.ticket.dal.dataobject.TicketDO;
+import cn.shuhe.system.module.ticket.dal.mysql.TicketExecutorMapper;
+import cn.shuhe.system.module.ticket.dal.mysql.TicketMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
@@ -57,6 +60,12 @@ public class MyTasksController {
     private ProjectRoundMapper projectRoundMapper;
 
     @Resource
+    private TicketMapper ticketMapper;
+
+    @Resource
+    private TicketExecutorMapper ticketExecutorMapper;
+
+    @Resource
     private AdminUserApi adminUserApi;
 
     @Resource
@@ -73,20 +82,51 @@ public class MyTasksController {
         MyTasksRespVO resp = new MyTasksRespVO();
         resp.setProjects(new ArrayList<>());
 
-        if (user == null || user.getDeptId() == null) {
+        if (user == null) {
             return success(resp);
         }
 
         Integer userDeptType = getUserDeptType(user.getDeptId());
-        if (userDeptType == null) {
-            return success(resp);
-        }
 
         // Step 1: Get project IDs that have service items of this dept type
-        List<Long> projectIds = serviceItemMapper.selectProjectIdsByDeptType(userDeptType);
-        if (CollUtil.isEmpty(projectIds)) {
+        Set<Long> candidateProjectIds = new LinkedHashSet<>();
+        if (userDeptType != null) {
+            candidateProjectIds.addAll(serviceItemMapper.selectProjectIdsByDeptType(userDeptType));
+        }
+
+        List<ServiceItemDO> myServiceItems = serviceItemMapper.selectListByExecutorId(userId);
+        myServiceItems.stream().map(ServiceItemDO::getProjectId).filter(Objects::nonNull)
+                .forEach(candidateProjectIds::add);
+
+        // 明确分派给我的轮次不受当前部门类型限制（如总经办协作执行）
+        List<ProjectRoundDO> myRounds = projectRoundMapper.selectListByExecutorUserId(userId);
+        myRounds.stream().map(ProjectRoundDO::getProjectId).filter(Objects::nonNull)
+                .forEach(candidateProjectIds::add);
+
+        // 工单可能来自跨部门协作，将明确分派给我的工单项目补进候选范围
+        Set<Long> myTicketIds = new HashSet<>(ticketExecutorMapper.selectTicketIdsByUserId(userId));
+        List<TicketDO> ticketCandidates = new ArrayList<>(ticketMapper.selectListByAssigneeId(userId));
+        myTicketIds.addAll(ticketCandidates.stream().map(TicketDO::getId).collect(Collectors.toSet()));
+        List<TicketDO> myTickets;
+        if (!myTicketIds.isEmpty()) {
+            Map<Long, TicketDO> ticketById = ticketCandidates.stream()
+                    .collect(Collectors.toMap(TicketDO::getId, ticket -> ticket, (left, right) -> left));
+            for (TicketDO ticket : ticketMapper.selectBatchIds(myTicketIds)) {
+                ticketById.put(ticket.getId(), ticket);
+            }
+            myTickets = ticketById.values().stream()
+                    .filter(ticket -> ticket.getStatus() == null || ticket.getStatus() != 5)
+                    .toList();
+            myTickets.stream().map(TicketDO::getProjectId).filter(Objects::nonNull)
+                    .forEach(candidateProjectIds::add);
+        } else {
+            myTickets = Collections.emptyList();
+        }
+
+        if (candidateProjectIds.isEmpty()) {
             return success(resp);
         }
+        List<Long> projectIds = new ArrayList<>(candidateProjectIds);
 
         // Step 2: Load projects
         List<ProjectDO> projects = projectMapper.selectBatchIds(projectIds);
@@ -97,7 +137,29 @@ public class MyTasksController {
         // Step 3: Load service items for these projects (filtered by dept type, only active)
         Map<Long, List<ServiceItemDO>> serviceItemsByProject = new HashMap<>();
         for (Long projectId : projectIds) {
-            List<ServiceItemDO> items = serviceItemMapper.selectListByProjectIdAndDeptType(projectId, userDeptType);
+            List<ServiceItemDO> items = userDeptType == null ? new ArrayList<>() : new ArrayList<>(
+                    serviceItemMapper.selectListByProjectIdAndDeptType(projectId, userDeptType));
+            Set<Long> existingItemIds = items.stream().map(ServiceItemDO::getId).collect(Collectors.toSet());
+            myServiceItems.stream()
+                    .filter(item -> Objects.equals(item.getProjectId(), projectId))
+                    .filter(item -> existingItemIds.add(item.getId()))
+                    .forEach(items::add);
+            myRounds.stream()
+                    .filter(round -> Objects.equals(round.getProjectId(), projectId))
+                    .map(ProjectRoundDO::getServiceItemId)
+                    .filter(Objects::nonNull)
+                    .filter(serviceItemId -> existingItemIds.add(serviceItemId))
+                    .map(serviceItemMapper::selectById)
+                    .filter(Objects::nonNull)
+                    .forEach(items::add);
+            myTickets.stream()
+                    .filter(ticket -> Objects.equals(ticket.getProjectId(), projectId))
+                    .map(TicketDO::getServiceItemId)
+                    .filter(Objects::nonNull)
+                    .filter(existingItemIds::add)
+                    .map(serviceItemMapper::selectById)
+                    .filter(Objects::nonNull)
+                    .forEach(items::add);
             if (CollUtil.isNotEmpty(items)) {
                 // Only include non-cancelled items
                 items = items.stream()
@@ -123,7 +185,11 @@ public class MyTasksController {
             }
         }
 
-        // Step 5: Assemble response, prioritizing projects where user is an executor
+        Map<Long, List<TicketDO>> ticketsByServiceItem = myTickets.stream()
+                .filter(ticket -> ticket.getServiceItemId() != null)
+                .collect(Collectors.groupingBy(TicketDO::getServiceItemId));
+
+        // Step 5: Assemble response，只保留明确分派给当前用户的任务
         String userIdStr = String.valueOf(userId);
         List<MyTasksRespVO.TaskProject> taskProjects = new ArrayList<>();
 
@@ -137,26 +203,28 @@ public class MyTasksController {
             tp.setProjectId(project.getId());
             tp.setProjectName(project.getName());
             tp.setCustomerName(project.getCustomerName());
-            tp.setDeptType(userDeptType);
 
             List<MyTasksRespVO.TaskServiceItem> taskItems = new ArrayList<>();
-            boolean hasMyRound = false;
-
             for (ServiceItemDO item : items) {
                 MyTasksRespVO.TaskServiceItem tsi = new MyTasksRespVO.TaskServiceItem();
                 tsi.setServiceItemId(item.getId());
                 tsi.setServiceType(item.getServiceType());
+                tsi.setDeptType(item.getDeptType());
                 tsi.setServiceTypeName(
                         serviceItemService.resolveServiceTypeLabel(item.getDeptType(), item.getServiceType()));
                 tsi.setServiceMode(item.getServiceMode());
                 tsi.setStatus(item.getStatus());
                 tsi.setProgress(item.getProgress());
+                tsi.setIsMyServiceItem(Objects.equals(item.getExecutorId(), userId));
 
                 List<ProjectRoundDO> rounds = roundsByServiceItem.get(item.getId());
                 List<MyTasksRespVO.TaskRound> taskRounds = new ArrayList<>();
 
                 if (CollUtil.isNotEmpty(rounds)) {
                     for (ProjectRoundDO round : rounds) {
+                        if (Integer.valueOf(3).equals(round.getStatus())) {
+                            continue;
+                        }
                         MyTasksRespVO.TaskRound tr = new MyTasksRespVO.TaskRound();
                         tr.setRoundId(round.getId());
                         tr.setName(round.getName());
@@ -169,18 +237,34 @@ public class MyTasksController {
                         boolean isMyRound = isUserInExecutors(round.getExecutorIds(), userIdStr);
                         tr.setIsMyRound(isMyRound);
                         if (isMyRound) {
-                            hasMyRound = true;
+                            taskRounds.add(tr);
                         }
-
-                        taskRounds.add(tr);
                     }
                 }
 
                 tsi.setRounds(taskRounds);
-                taskItems.add(tsi);
+                List<MyTasksRespVO.TaskTicket> taskTickets = ticketsByServiceItem
+                        .getOrDefault(item.getId(), Collections.emptyList()).stream()
+                        .map(ticket -> {
+                            MyTasksRespVO.TaskTicket taskTicket = new MyTasksRespVO.TaskTicket();
+                            taskTicket.setTicketId(ticket.getId());
+                            taskTicket.setTicketNo(ticket.getTicketNo());
+                            taskTicket.setTitle(ticket.getTitle());
+                            taskTicket.setStatus(ticket.getStatus());
+                            taskTicket.setDueTime(ticket.getDueTime());
+                            return taskTicket;
+                        }).toList();
+                tsi.setTickets(taskTickets);
+                if (Boolean.TRUE.equals(tsi.getIsMyServiceItem()) || !taskRounds.isEmpty() || !taskTickets.isEmpty()) {
+                    taskItems.add(tsi);
+                }
             }
 
+            if (taskItems.isEmpty()) {
+                continue;
+            }
             tp.setServiceItems(taskItems);
+            tp.setDeptType(taskItems.get(0).getDeptType());
             taskProjects.add(tp);
         }
 

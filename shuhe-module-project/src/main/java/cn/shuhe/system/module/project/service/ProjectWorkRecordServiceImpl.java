@@ -7,10 +7,12 @@ import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectWorkRecordPageReqVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectWorkRecordSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectDO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectWorkRecordDO;
 import cn.shuhe.system.module.project.dal.dataobject.SecurityOperationContractDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectWorkRecordMapper;
 import cn.shuhe.system.module.project.dal.mysql.SecurityOperationContractMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
@@ -18,6 +20,8 @@ import cn.shuhe.system.module.system.api.dept.DeptApi;
 import cn.shuhe.system.module.system.api.dept.dto.DeptRespDTO;
 import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
+import cn.shuhe.system.module.ticket.dal.dataobject.TicketDO;
+import cn.shuhe.system.module.ticket.dal.mysql.TicketMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -46,6 +50,12 @@ public class ProjectWorkRecordServiceImpl implements ProjectWorkRecordService {
 
     @Resource
     private ServiceItemMapper serviceItemMapper;
+
+    @Resource
+    private ProjectRoundMapper projectRoundMapper;
+
+    @Resource
+    private TicketMapper ticketMapper;
 
     @Resource
     @org.springframework.context.annotation.Lazy
@@ -95,12 +105,15 @@ public class ProjectWorkRecordServiceImpl implements ProjectWorkRecordService {
             }
         }
         
-        // 6. 处理附件（JSON存储）
+        // 6. 来源快照与核验状态只能由后端生成，不能信任客户端
+        fillSourceMetadata(record);
+
+        // 7. 处理附件（JSON存储）
         if (createReqVO.getAttachments() != null && !createReqVO.getAttachments().isEmpty()) {
             record.setAttachments(JSONUtil.toJsonStr(createReqVO.getAttachments()));
         }
         
-        // 7. 插入数据库
+        // 8. 插入数据库
         workRecordMapper.insert(record);
         
         return record.getId();
@@ -114,17 +127,17 @@ public class ProjectWorkRecordServiceImpl implements ProjectWorkRecordService {
             return;
         }
         
-        // 安全运营项目从 security_operation_contract 表获取
+        // 现行服务事项统一关联 project 表，优先从统一项目取名称。
+        ProjectDO project = projectMapper.selectById(record.getProjectId());
+        if (project != null) {
+            record.setProjectName(project.getName());
+            return;
+        }
+        // 兼容历史安全运营记录仍使用合同主键的情况。
         if (record.getProjectType() == 2) {
             SecurityOperationContractDO contract = securityOperationContractMapper.selectById(record.getProjectId());
             if (contract != null) {
                 record.setProjectName(contract.getName());
-            }
-        } else {
-            // 安全服务/数据安全项目从 project 表获取
-            ProjectDO project = projectMapper.selectById(record.getProjectId());
-            if (project != null) {
-                record.setProjectName(project.getName());
             }
         }
     }
@@ -160,8 +173,60 @@ public class ProjectWorkRecordServiceImpl implements ProjectWorkRecordService {
                 updateRecord.setServiceType(serviceItem.getServiceType());
             }
         }
+
+        fillSourceMetadata(updateRecord);
         
         workRecordMapper.updateById(updateRecord);
+    }
+
+    private void fillSourceMetadata(ProjectWorkRecordDO record) {
+        String sourceType = record.getSourceType();
+        if (sourceType == null || sourceType.isBlank()) {
+            sourceType = ProjectWorkRecordDO.SOURCE_MANUAL;
+        }
+        record.setSourceType(sourceType);
+        record.setSourceName(null);
+        record.setVerificationStatus(ProjectWorkRecordDO.VERIFICATION_SELF_REPORTED);
+
+        if (ProjectWorkRecordDO.SOURCE_INTERNAL.equals(sourceType)) {
+            record.setProjectId(null);
+            record.setProjectType(null);
+            record.setProjectName(null);
+            record.setServiceItemId(null);
+            record.setServiceType(null);
+            record.setSourceId(null);
+            record.setSourceName("内部工作");
+        } else if (ProjectWorkRecordDO.SOURCE_SERVICE_ITEM.equals(sourceType)
+                && record.getServiceItemId() != null) {
+            ServiceItemDO serviceItem = serviceItemMapper.selectById(record.getServiceItemId());
+            if (serviceItem != null) {
+                record.setSourceId(serviceItem.getId());
+                record.setSourceName(serviceItemService.resolveServiceTypeLabel(
+                        serviceItem.getDeptType(), serviceItem.getServiceType()));
+                record.setVerificationStatus(ProjectWorkRecordDO.VERIFICATION_LINKED);
+            }
+        } else if (ProjectWorkRecordDO.SOURCE_ROUND.equals(sourceType) && record.getSourceId() != null) {
+            ProjectRoundDO round = projectRoundMapper.selectById(record.getSourceId());
+            if (round != null) {
+                record.setSourceName(round.getName());
+                record.setVerificationStatus(ProjectWorkRecordDO.VERIFICATION_LINKED);
+            }
+        } else if (ProjectWorkRecordDO.SOURCE_TICKET.equals(sourceType) && record.getSourceId() != null) {
+            TicketDO ticket = ticketMapper.selectById(record.getSourceId());
+            if (ticket != null) {
+                String ticketName = ticket.getTicketNo();
+                if (ticket.getTitle() != null && !ticket.getTitle().isBlank()) {
+                    ticketName = ticketName + " " + ticket.getTitle();
+                }
+                record.setSourceName(ticketName);
+                record.setVerificationStatus(ProjectWorkRecordDO.VERIFICATION_LINKED);
+            }
+        } else {
+            record.setSourceId(null);
+        }
+        if (record.getCompletionPercent() == null) {
+            record.setCompletionPercent(100);
+        }
     }
 
     @Override

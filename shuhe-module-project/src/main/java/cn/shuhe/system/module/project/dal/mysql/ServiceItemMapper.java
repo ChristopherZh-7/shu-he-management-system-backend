@@ -16,6 +16,17 @@ import java.util.List;
 @Mapper
 public interface ServiceItemMapper extends BaseMapperX<ServiceItemDO> {
 
+    /**
+     * 查询明确指定给某执行人的有效服务事项。
+     */
+    default List<ServiceItemDO> selectListByExecutorId(Long userId) {
+        return selectList(new LambdaQueryWrapperX<ServiceItemDO>()
+                .eq(ServiceItemDO::getExecutorId, userId)
+                .ne(ServiceItemDO::getStatus, 4)
+                .eq(ServiceItemDO::getVisible, 1)
+                .orderByDesc(ServiceItemDO::getId));
+    }
+
     default PageResult<ServiceItemDO> selectPage(ServiceItemPageReqVO reqVO) {
         return selectPage(reqVO, new LambdaQueryWrapperX<ServiceItemDO>()
                 .eqIfPresent(ServiceItemDO::getProjectId, reqVO.getProjectId())

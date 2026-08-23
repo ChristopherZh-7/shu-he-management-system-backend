@@ -23,10 +23,10 @@ public class WeeklyWorkAggregateRespVO {
     @Schema(description = "本周开始日期（周一）", requiredMode = Schema.RequiredMode.REQUIRED, example = "2026-01-26")
     private LocalDate weekStartDate;
 
-    @Schema(description = "本周结束日期（周五）", requiredMode = Schema.RequiredMode.REQUIRED, example = "2026-01-30")
+    @Schema(description = "本周结束日期（周日）", requiredMode = Schema.RequiredMode.REQUIRED, example = "2026-02-01")
     private LocalDate weekEndDate;
 
-    @Schema(description = "每日工作列表（周一到周五）", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "每日工作列表（周一到周日）", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<DailyWorkVO> dailyWorks;
 
     @Schema(description = "本周总结（来自日常管理记录）")
@@ -51,7 +51,7 @@ public class WeeklyWorkAggregateRespVO {
         @Schema(description = "日期", requiredMode = Schema.RequiredMode.REQUIRED, example = "2026-01-27")
         private LocalDate date;
 
-        @Schema(description = "星期几（1=周一，5=周五）", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
+        @Schema(description = "星期几（1=周一，7=周日）", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
         private Integer dayOfWeek;
 
         @Schema(description = "星期名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "周一")

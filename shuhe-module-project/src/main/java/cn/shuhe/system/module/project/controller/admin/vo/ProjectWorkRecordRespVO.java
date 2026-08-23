@@ -3,6 +3,7 @@ package cn.shuhe.system.module.project.controller.admin.vo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,6 +30,15 @@ public class ProjectWorkRecordRespVO {
     @Schema(description = "服务类型（字典值）", example = "penetration_test")
     private String serviceType;
 
+    @Schema(description = "任务来源类型: manual-手工 round-项目轮次 ticket-服务工单 site-驻场")
+    private String sourceType;
+
+    @Schema(description = "任务来源ID")
+    private Long sourceId;
+
+    @Schema(description = "任务来源名称")
+    private String sourceName;
+
     @Schema(description = "记录日期", requiredMode = Schema.RequiredMode.REQUIRED, example = "2026-01-28")
     private LocalDate recordDate;
 
@@ -37,6 +47,24 @@ public class ProjectWorkRecordRespVO {
 
     @Schema(description = "工作内容", requiredMode = Schema.RequiredMode.REQUIRED, example = "完成现场巡检")
     private String workContent;
+
+    @Schema(description = "个人实际投入分钟数")
+    private Integer actualMinutes;
+
+    @Schema(description = "本条工作完成比例0-100")
+    private Integer completionPercent;
+
+    @Schema(description = "工作结果/产出说明")
+    private String workResult;
+
+    @Schema(description = "产出数量")
+    private BigDecimal outputQuantity;
+
+    @Schema(description = "产出单位")
+    private String outputUnit;
+
+    @Schema(description = "核验状态: 0-自报 1-已关联 2-已验收")
+    private Integer verificationStatus;
 
     @Schema(description = "附件URL列表", example = "[\"https://xxx.com/file1.pdf\"]")
     private List<String> attachments;

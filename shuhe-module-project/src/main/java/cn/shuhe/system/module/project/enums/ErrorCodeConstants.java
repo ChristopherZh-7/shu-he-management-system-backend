@@ -86,6 +86,8 @@ public interface ErrorCodeConstants {
     ErrorCode WORK_RECORD_NOT_EXISTS = new ErrorCode(1_030_013_000, "项目管理记录不存在");
     ErrorCode WORK_RECORD_UPDATE_NOT_OWNER = new ErrorCode(1_030_013_001, "只能修改自己创建的项目管理记录");
     ErrorCode WORK_RECORD_DELETE_NOT_OWNER = new ErrorCode(1_030_013_002, "只能删除自己创建的项目管理记录");
+    ErrorCode WORK_RECORD_SOURCE_INVALID = new ErrorCode(1_030_013_003, "工作记录来源不合法或与项目、服务项不匹配");
+    ErrorCode WORK_RECORD_SOURCE_NOT_ASSIGNED = new ErrorCode(1_030_013_004, "您不是该轮次或工单的执行人，请使用临时支援记录");
 
     // ========== 日常管理记录 1-030-014-000 ==========
     ErrorCode DAILY_RECORD_NOT_EXISTS = new ErrorCode(1_030_014_000, "日常管理记录不存在");

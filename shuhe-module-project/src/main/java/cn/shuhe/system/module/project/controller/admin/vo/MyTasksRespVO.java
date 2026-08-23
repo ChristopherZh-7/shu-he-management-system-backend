@@ -39,6 +39,9 @@ public class MyTasksRespVO {
         @Schema(description = "服务类型（字典值）")
         private String serviceType;
 
+        @Schema(description = "服务事项所属部门类型：1-安全服务 2-安全运营 3-数据安全")
+        private Integer deptType;
+
         @Schema(description = "服务类型中文 label（后端预翻译，前端可直接展示）")
         private String serviceTypeName;
 
@@ -51,8 +54,14 @@ public class MyTasksRespVO {
         @Schema(description = "进度 0-100")
         private Integer progress;
 
+        @Schema(description = "当前用户是否为服务项固定执行人")
+        private Boolean isMyServiceItem;
+
         @Schema(description = "轮次列表")
         private List<TaskRound> rounds;
+
+        @Schema(description = "工单列表")
+        private List<TaskTicket> tickets;
     }
 
     @Data
@@ -80,5 +89,23 @@ public class MyTasksRespVO {
 
         @Schema(description = "当前用户是否是此轮次的执行人")
         private Boolean isMyRound;
+    }
+
+    @Data
+    public static class TaskTicket {
+        @Schema(description = "工单ID")
+        private Long ticketId;
+
+        @Schema(description = "工单编号")
+        private String ticketNo;
+
+        @Schema(description = "工单标题")
+        private String title;
+
+        @Schema(description = "状态")
+        private Integer status;
+
+        @Schema(description = "截止时间")
+        private LocalDateTime dueTime;
     }
 }
