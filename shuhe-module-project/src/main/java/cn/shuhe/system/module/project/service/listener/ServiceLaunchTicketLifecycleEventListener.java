@@ -2,9 +2,12 @@ package cn.shuhe.system.module.project.service.listener;
 
 import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceLaunchDO;
+import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceLaunchMapper;
+import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import cn.shuhe.system.module.project.service.ProjectRoundService;
+import cn.shuhe.system.module.project.service.ProjectRoundReportArtifactService;
 import cn.shuhe.system.module.ticket.enums.TicketActionEnum;
 import cn.shuhe.system.module.ticket.enums.TicketBusinessTypeEnum;
 import cn.shuhe.system.module.ticket.framework.event.TicketLifecycleEvent;
@@ -30,6 +33,12 @@ public class ServiceLaunchTicketLifecycleEventListener {
     @Resource
     private ProjectRoundService projectRoundService;
 
+    @Resource
+    private ProjectRoundReportArtifactService reportArtifactService;
+
+    @Resource
+    private ServiceItemMapper serviceItemMapper;
+
     @EventListener
     public void onTicketLifecycleChanged(TicketLifecycleEvent event) {
         if (!TicketBusinessTypeEnum.SERVICE_LAUNCH.getType().equals(event.getBusinessType())
@@ -48,17 +57,45 @@ public class ServiceLaunchTicketLifecycleEventListener {
             throw new IllegalStateException("服务工单关联的项目轮次不存在，ticketId=" + event.getTicketId());
         }
         if (TicketActionEnum.FINISH.getAction().equals(event.getAction())) {
+            if (isPentest(round)) {
+                reportArtifactService.submitLatest(roundId);
+            }
             ProjectRoundDO delivery = new ProjectRoundDO();
             delivery.setId(roundId);
             delivery.setResult(event.getResult());
             projectRoundMapper.updateById(delivery);
+            projectRoundService.updateRoundProgress(roundId, 80);
+            projectRoundService.updateRoundStatus(roundId, 4);
+            log.info("【服务工单履约同步】项目轮次已提交技术审核，ticketId={} roundId={}", event.getTicketId(), roundId);
+            return;
+        }
+
+        if (TicketActionEnum.TECH_REVIEW_PASS.getAction().equals(event.getAction())) {
+            if (isPentest(round)) {
+                reportArtifactService.approveLatest(roundId, event.getResult());
+            }
             projectRoundService.updateRoundProgress(roundId, 90);
+            projectRoundService.updateRoundStatus(roundId, 5);
+            log.info("【服务工单履约同步】技术审核通过，轮次待项目验收，ticketId={} roundId={}",
+                    event.getTicketId(), roundId);
+            return;
+        }
+
+        if (TicketActionEnum.TECH_REVIEW_REJECT.getAction().equals(event.getAction())) {
+            if (isPentest(round)) {
+                reportArtifactService.rejectLatest(roundId, event.getResult());
+            }
+            projectRoundService.updateRoundProgress(roundId, 60);
             projectRoundService.updateRoundStatus(roundId, 1);
-            log.info("【服务工单履约同步】项目轮次已提交待验收，ticketId={} roundId={}", event.getTicketId(), roundId);
+            log.info("【服务工单履约同步】技术审核驳回，轮次恢复执行，ticketId={} roundId={}",
+                    event.getTicketId(), roundId);
             return;
         }
 
         if (TicketActionEnum.REVIEW_PASS.getAction().equals(event.getAction())) {
+            if (isPentest(round)) {
+                reportArtifactService.deliverLatest(roundId, event.getResult());
+            }
             ProjectRoundDO accepted = new ProjectRoundDO();
             accepted.setId(roundId);
             accepted.setActualEndTime(LocalDateTime.now());
@@ -88,5 +125,13 @@ public class ServiceLaunchTicketLifecycleEventListener {
             log.info("【服务工单履约同步】项目轮次已恢复执行中，ticketId={} roundId={} action={}",
                     event.getTicketId(), roundId, event.getAction());
         }
+    }
+
+    private boolean isPentest(ProjectRoundDO round) {
+        if (round.getServiceItemId() == null) {
+            return false;
+        }
+        ServiceItemDO serviceItem = serviceItemMapper.selectById(round.getServiceItemId());
+        return serviceItem != null && "penetration_test".equals(serviceItem.getServiceType());
     }
 }

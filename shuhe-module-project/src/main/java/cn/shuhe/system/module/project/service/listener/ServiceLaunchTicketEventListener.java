@@ -2,14 +2,18 @@ package cn.shuhe.system.module.project.service.listener;
 
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceLaunchSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundDO;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundMemberDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceLaunchDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMemberMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceLaunchMapper;
 import cn.shuhe.system.module.project.service.ProjectRoundService;
 import cn.shuhe.system.module.project.service.ServiceLaunchService;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketDO;
+import cn.shuhe.system.module.ticket.dal.dataobject.TicketExecutorDO;
+import cn.shuhe.system.module.ticket.dal.mysql.TicketExecutorMapper;
 import cn.shuhe.system.module.ticket.dal.mysql.TicketMapper;
 import cn.shuhe.system.module.ticket.enums.TicketBusinessTypeEnum;
 import cn.shuhe.system.module.ticket.framework.event.TicketAcceptedEvent;
@@ -20,8 +24,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -59,6 +63,9 @@ public class ServiceLaunchTicketEventListener {
     private ProjectRoundMapper projectRoundMapper;
 
     @Resource
+    private ProjectRoundMemberMapper projectRoundMemberMapper;
+
+    @Resource
     private ProjectRoundService projectRoundService;
 
     @Resource
@@ -66,6 +73,9 @@ public class ServiceLaunchTicketEventListener {
 
     @Resource
     private TicketMapper ticketMapper;
+
+    @Resource
+    private TicketExecutorMapper ticketExecutorMapper;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -101,12 +111,12 @@ public class ServiceLaunchTicketEventListener {
             throw new IllegalStateException("服务工单接单后未能创建项目执行轮次，ticketId=" + event.getTicketId());
         }
 
-        ProjectRoundDO roundStart = new ProjectRoundDO();
-        roundStart.setId(roundId);
-        roundStart.setActualStartTime(LocalDateTime.now());
-        projectRoundMapper.updateById(roundStart);
-        projectRoundService.updateRoundStatus(roundId, 1);
-        log.info("【工单接单·服务派遣】已 handleApproved，launchId={} roundId={} executors={}",
+        // 接单只完成责任分派，轮次仍处于待准备；授权、范围和目标齐备后才能开始。
+        TicketDO ticket = ticketMapper.selectById(event.getTicketId());
+        ProjectRoundDO roundUpdate = buildRoundOrchestrationUpdate(roundId, event, ext);
+        projectRoundMapper.updateById(roundUpdate);
+        saveRoundMembers(roundId, ticket, event.getAcceptedBy());
+        log.info("【工单接单·服务派遣】已创建待准备轮次，launchId={} roundId={} executors={}",
                 launchId, roundId, event.getExecutorIds());
 
         // 3. 回写 ticket.business_id 让前端能从工单跳转到 service_launch 详情
@@ -114,6 +124,65 @@ public class ServiceLaunchTicketEventListener {
         ticketUpdate.setId(event.getTicketId());
         ticketUpdate.setBusinessId(launchId);
         ticketMapper.updateById(ticketUpdate);
+    }
+
+    private ProjectRoundDO buildRoundOrchestrationUpdate(Long roundId, TicketAcceptedEvent event,
+                                                          Map<String, Object> ext) {
+        ProjectRoundDO update = new ProjectRoundDO();
+        update.setId(roundId);
+        update.setTicketId(event.getTicketId());
+        update.setSourceType("ticket");
+        update.setPlanStartTime(asDateTime(ext, EXT_PLAN_START_TIME));
+        update.setCurrentPhase("preparation");
+        update.setScopeSummary(asString(ext, "scopeSummary"));
+        update.setExcludedScope(asString(ext, "excludedScope"));
+        update.setDeliverableRequirements(asString(ext, "deliverables"));
+        update.setAuthorizationStatus(defaultString(asString(ext, "authorizationStatus"), "pending"));
+        update.setAuthorizationValidUntil(asDateTime(ext, "authorizationValidUntil"));
+        update.setTestMode(asString(ext, "testMode"));
+        update.setTestWindow(asString(ext, "testWindow"));
+        update.setSourceIps(asString(ext, "sourceIps"));
+        update.setEmergencyContact(asString(ext, "emergencyContact"));
+        update.setStopConditions(asString(ext, "stopConditions"));
+        update.setRetestPolicy(defaultString(asString(ext, "retestPolicy"), "included_same_round"));
+        return update;
+    }
+
+    private void saveRoundMembers(Long roundId, TicketDO ticket, Long assignedBy) {
+        if (ticket == null) {
+            return;
+        }
+        insertRoundMember(roundId, ticket.getProjectManagerId(), ticket.getProjectManagerName(), null,
+                "project_manager", "确认范围、客户交付与最终验收", "working", assignedBy);
+        insertRoundMember(roundId, ticket.getAssigneeId(), ticket.getAssigneeName(), ticket.getAssigneeDeptId(),
+                "support_owner", "技术资源调度与协调", "working", assignedBy);
+        List<TicketExecutorDO> participants = ticketExecutorMapper.selectListByTicketId(ticket.getId());
+        for (TicketExecutorDO participant : participants) {
+            insertRoundMember(roundId, participant.getUserId(), participant.getUserName(),
+                    participant.getUserDeptId(), participant.getRoleType(), participant.getResponsibility(),
+                    participant.getTaskStatus(), assignedBy);
+        }
+    }
+
+    private void insertRoundMember(Long roundId, Long userId, String userName, Long deptId,
+                                   String roleType, String responsibility, String taskStatus, Long assignedBy) {
+        if (userId == null) {
+            return;
+        }
+        projectRoundMemberMapper.insert(ProjectRoundMemberDO.builder()
+                .roundId(roundId)
+                .userId(userId)
+                .userName(userName)
+                .userDeptId(deptId)
+                .roleType(roleType)
+                .responsibility(responsibility)
+                .taskStatus(taskStatus == null ? "pending" : taskStatus)
+                .assignedBy(assignedBy)
+                .build());
+    }
+
+    private String defaultString(String value, String defaultValue) {
+        return value == null || value.isBlank() ? defaultValue : value;
     }
 
     /**

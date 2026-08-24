@@ -57,4 +57,7 @@ public interface ErrorCodeConstants {
     ErrorCode TICKET_EXECUTOR_NOT_EXISTS = new ErrorCode(1_032_007_002, "执行人不存在或已离职：{}");
     ErrorCode TICKET_DRIVER_FAILED       = new ErrorCode(1_032_007_003, "业务驱动器处理失败：{}");
     ErrorCode TICKET_EXECUTOR_OUT_OF_SCOPE = new ErrorCode(1_032_007_004, "执行人 {} 不在您管辖的部门范围内，只能指派自己或下属部门成员");
+    ErrorCode TICKET_PRIMARY_EXECUTOR_REQUIRED = new ErrorCode(1_032_007_005, "请选择主执行人");
+    ErrorCode TICKET_TECH_REVIEWER_REQUIRED = new ErrorCode(1_032_007_006, "请选择技术审核人");
+    ErrorCode TICKET_ROLE_CONFLICT = new ErrorCode(1_032_007_007, "主执行人不能同时担任技术审核人");
 }

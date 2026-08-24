@@ -42,6 +42,19 @@ public interface ErrorCodeConstants {
     ErrorCode PROJECT_ROUND_TIME_BEFORE_CONTRACT = new ErrorCode(1_030_004_001, "轮次开始时间不能早于合同开始时间（{}）");
     ErrorCode PROJECT_ROUND_TIME_AFTER_CONTRACT = new ErrorCode(1_030_004_002, "轮次结束时间不能晚于合同结束时间（{}）");
     ErrorCode PROJECT_ROUND_COUNT_EXCEED_LIMIT = new ErrorCode(1_030_004_003, "轮次数量已达上限（最多{}次），无法创建新轮次");
+    ErrorCode PROJECT_ROUND_STATUS_INVALID = new ErrorCode(1_030_004_004, "轮次状态不允许从 {} 变更为 {}");
+    ErrorCode PROJECT_ROUND_AUTH_REQUIRED = new ErrorCode(1_030_004_005, "渗透测试授权未核验或已过期，不能开始执行");
+    ErrorCode PROJECT_ROUND_SCOPE_INCOMPLETE = new ErrorCode(1_030_004_006, "请先补齐测试范围、时间窗口、应急联系人和停止条件");
+    ErrorCode PROJECT_ROUND_TARGET_INCOMPLETE = new ErrorCode(1_030_004_007, "渗透测试目标未完整配置：至少一个范围内目标，且每个目标需指定主责人并核验授权");
+    ErrorCode PROJECT_ROUND_DELIVERY_INCOMPLETE = new ErrorCode(1_030_004_008, "仍有目标未完成测试或漏洞处于草稿，不能提交技术审核");
+    ErrorCode PROJECT_ROUND_REPORT_REQUIRED = new ErrorCode(1_030_004_009, "请先生成报告版本，再提交技术审核");
+    ErrorCode PROJECT_ROUND_REPORT_STATUS_INVALID = new ErrorCode(1_030_004_010, "报告版本当前状态不允许该操作");
+    ErrorCode PROJECT_ROUND_RETEST_BATCH_NOT_EXISTS = new ErrorCode(1_030_004_011, "复测批次不存在");
+    ErrorCode PROJECT_ROUND_RETEST_VULNERABILITY_MISMATCH = new ErrorCode(1_030_004_012, "漏洞不属于该复测批次的轮次");
+    ErrorCode PROJECT_ROUND_PRIMARY_EXECUTOR_REQUIRED = new ErrorCode(1_030_004_013, "请指定轮次主执行人");
+    ErrorCode PROJECT_ROUND_TECH_REVIEWER_REQUIRED = new ErrorCode(1_030_004_014, "请指定轮次技术审核人");
+    ErrorCode PROJECT_ROUND_ROLE_CONFLICT = new ErrorCode(1_030_004_015, "主执行人和技术审核人不能是同一人");
+    ErrorCode PROJECT_ROUND_ROLE_USER_NOT_EXISTS = new ErrorCode(1_030_004_016, "轮次责任人不存在：{}");
 
     // ========== 测试目标 1-030-005-000 ==========
     ErrorCode PROJECT_ROUND_TARGET_NOT_EXISTS = new ErrorCode(1_030_005_000, "测试目标不存在");

@@ -33,7 +33,7 @@ class ServiceLaunchTicketLifecycleEventListenerTest extends BaseMockitoUnitTest 
     private ProjectRoundService projectRoundService;
 
     @Test
-    void finishOnlyMovesRoundToPendingAcceptance() {
+    void finishOnlyMovesRoundToPendingTechnicalReview() {
         prepare(88L, 9L);
 
         listener.onTicketLifecycleChanged(event(TicketActionEnum.FINISH, "报告已提交"));
@@ -41,8 +41,18 @@ class ServiceLaunchTicketLifecycleEventListenerTest extends BaseMockitoUnitTest 
         ArgumentCaptor<ProjectRoundDO> captor = ArgumentCaptor.forClass(ProjectRoundDO.class);
         verify(projectRoundMapper).updateById(captor.capture());
         assertNull(captor.getValue().getActualEndTime());
+        verify(projectRoundService).updateRoundProgress(9L, 80);
+        verify(projectRoundService).updateRoundStatus(9L, 4);
+    }
+
+    @Test
+    void technicalReviewPassMovesRoundToPendingProjectAcceptance() {
+        prepare(88L, 9L);
+
+        listener.onTicketLifecycleChanged(event(TicketActionEnum.TECH_REVIEW_PASS, "技术审核通过"));
+
         verify(projectRoundService).updateRoundProgress(9L, 90);
-        verify(projectRoundService).updateRoundStatus(9L, 1);
+        verify(projectRoundService).updateRoundStatus(9L, 5);
     }
 
     @Test

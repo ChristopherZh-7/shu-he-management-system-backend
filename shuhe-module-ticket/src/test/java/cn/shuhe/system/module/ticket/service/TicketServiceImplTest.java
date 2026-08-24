@@ -46,12 +46,12 @@ import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_ASSI
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_CATEGORY_DISABLED;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_CATEGORY_NOT_EXISTS;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_CREATOR_DEPT_MISSING;
-import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_EXECUTOR_EMPTY;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_EXECUTOR_NOT_EXISTS;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_NOT_ASSIGNEE;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_NOT_DEPT_LEADER;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_NOT_OWN;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_NO_PERMISSION;
+import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_PRIMARY_EXECUTOR_REQUIRED;
 import static cn.shuhe.system.module.ticket.enums.ErrorCodeConstants.TICKET_STATUS_INVALID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -127,7 +127,8 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
             assertEquals("Alice", saved.getCreatorName());
             assertNull(saved.getAssigneeId());
             assertNull(saved.getAssigneeName());
-            assertEquals(TicketStatusEnum.PENDING.getStatus(), saved.getStatus());
+            assertEquals(TicketStatusEnum.PENDING_PM_REVIEW.getStatus(), saved.getStatus());
+            assertEquals(me, saved.getProjectManagerId());
             assertNotNull(saved.getTicketNo());
             assertTrue(saved.getTicketNo().startsWith("TK"));
             verify(logMapper, times(1)).insert(any(TicketLogDO.class));
@@ -228,9 +229,9 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    void updateTicket_success_creatorAtPending() {
+    void updateTicket_success_creatorAtPendingProjectManagerReview() {
         long me = 100L;
-        TicketDO existing = makeTicket(1L, me, null, TicketStatusEnum.PENDING.getStatus());
+        TicketDO existing = makeTicket(1L, me, null, TicketStatusEnum.PENDING_PM_REVIEW.getStatus());
         try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
             when(ticketMapper.selectById(eq(1L))).thenReturn(existing);
@@ -347,8 +348,8 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
             when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(me);
             when(deptApi.getDeptListByLeaderUserId(eq(me))).thenReturn(Collections.singletonList(dept));
             when(deptApi.getChildDeptList(eq(deptId))).thenReturn(Collections.emptyList());
-            when(adminUserApi.getUserList(eq(Arrays.asList(201L, 202L))))
-                    .thenReturn(Arrays.asList(e1, e2));
+            when(adminUserApi.getUserList(eq(Arrays.asList(201L, 202L, me))))
+                    .thenReturn(Arrays.asList(e1, e2, acceptor));
             when(adminUserApi.getUser(eq(me))).thenReturn(acceptor);
             lenient().when(permissionApi.hasAnyRoles(eq(me), eq("super_admin"))).thenReturn(false);
 
@@ -367,10 +368,13 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
             assertNotNull(ticketCap.getValue().getFirstResponseTime());
 
             ArgumentCaptor<TicketExecutorDO> execCap = ArgumentCaptor.forClass(TicketExecutorDO.class);
-            verify(executorMapper, times(2)).insert(execCap.capture());
+            verify(executorMapper, times(3)).insert(execCap.capture());
             List<TicketExecutorDO> rows = execCap.getAllValues();
             assertEquals(201L, rows.get(0).getUserId());
             assertEquals(202L, rows.get(1).getUserId());
+            assertEquals(TicketExecutorDO.ROLE_PRIMARY_EXECUTOR, rows.get(0).getRoleType());
+            assertEquals(TicketExecutorDO.ROLE_COLLABORATOR, rows.get(1).getRoleType());
+            assertEquals(TicketExecutorDO.ROLE_TECH_REVIEWER, rows.get(2).getRoleType());
             assertEquals(me, rows.get(0).getAssignedBy());
 
             verify(logMapper, times(1)).insert(any(TicketLogDO.class));
@@ -415,13 +419,14 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         ticket.setDeptId(deptId);
         DeptRespDTO dept = makeDept(deptId, me);
         AdminUserRespDTO e1 = makeUser(201L, "Exec1", 9L);
+        AdminUserRespDTO reviewer = makeUser(me, "Manager", 9L);
 
         try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
             when(ticketMapper.selectById(eq(1L))).thenReturn(ticket);
             when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(me);
-            when(adminUserApi.getUserList(eq(Arrays.asList(201L, 999L))))
-                    .thenReturn(Collections.singletonList(e1));
+            when(adminUserApi.getUserList(eq(Arrays.asList(201L, 999L, me))))
+                    .thenReturn(Arrays.asList(e1, reviewer));
 
             TicketAcceptReqVO req = new TicketAcceptReqVO();
             req.setId(1L);
@@ -448,7 +453,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
             req.setId(1L);
             req.setExecutorIds(Collections.singletonList(null));
 
-            assertServiceException(() -> ticketService.acceptTicket(req), TICKET_EXECUTOR_EMPTY);
+            assertServiceException(() -> ticketService.acceptTicket(req), TICKET_PRIMARY_EXECUTOR_REQUIRED);
         }
     }
 
@@ -508,11 +513,10 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
     void finishTicket_executor_success() {
         long executorId = 201L;
         TicketDO existing = makeTicket(1L, 100L, 500L, TicketStatusEnum.IN_PROGRESS.getStatus());
+        existing.setPrimaryExecutorId(executorId);
         try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(executorId);
             when(ticketMapper.selectById(eq(1L))).thenReturn(existing);
-            when(executorMapper.existsByTicketIdAndUserId(eq(1L), eq(executorId))).thenReturn(true);
-
             TicketFinishReqVO req = new TicketFinishReqVO();
             req.setId(1L);
             req.setResult("已完成服务交付");
@@ -520,7 +524,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
 
             ArgumentCaptor<TicketDO> captor = ArgumentCaptor.forClass(TicketDO.class);
             verify(ticketMapper).updateById(captor.capture());
-            assertEquals(TicketStatusEnum.PENDING_REVIEW.getStatus(), captor.getValue().getStatus());
+            assertEquals(TicketStatusEnum.PENDING_TECH_REVIEW.getStatus(), captor.getValue().getStatus());
             assertNotNull(captor.getValue().getFinishTime());
         }
     }
@@ -613,9 +617,9 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    void calculateAvailableActions_creatorAtPending_canUpdateCancelComment() {
+    void calculateAvailableActions_creatorAtPendingProjectReview_canUpdateCancelComment() {
         long me = 100L, deptId = 9L;
-        TicketDO ticket = makeTicket(1L, me, 200L, TicketStatusEnum.PENDING.getStatus());
+        TicketDO ticket = makeTicket(1L, me, 200L, TicketStatusEnum.PENDING_PM_REVIEW.getStatus());
         ticket.setDeptId(deptId);
         when(permissionApi.hasAnyRoles(eq(me), eq("super_admin"))).thenReturn(false);
         when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(888L); // 当前用户不是部门负责人
@@ -646,6 +650,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         long me = 200L, deptId = 9L;
         TicketDO ticket = makeTicket(1L, 100L, me, TicketStatusEnum.IN_PROGRESS.getStatus());
         ticket.setDeptId(deptId);
+        ticket.setPrimaryExecutorId(me);
         when(permissionApi.hasAnyRoles(eq(me), eq("super_admin"))).thenReturn(false);
         lenient().when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(888L);
 
@@ -657,10 +662,11 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    void calculateAvailableActions_executorAtInProgress_canFinishComment() {
+    void calculateAvailableActions_primaryExecutorAtInProgress_canFinishComment() {
         long me = 201L;
         TicketDO ticket = makeTicket(1L, 100L, 500L, TicketStatusEnum.IN_PROGRESS.getStatus());
         ticket.setDeptId(9L);
+        ticket.setPrimaryExecutorId(me);
         when(executorMapper.existsByTicketIdAndUserId(eq(1L), eq(me))).thenReturn(true);
         lenient().when(permissionApi.hasAnyRoles(eq(me), eq("super_admin"))).thenReturn(false);
         lenient().when(deptApi.findLeaderUserIdRecursively(eq(9L))).thenReturn(888L);

@@ -1,7 +1,6 @@
 package cn.shuhe.system.module.ticket.controller.admin.vo;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -22,11 +21,25 @@ public class TicketAcceptReqVO {
     @NotNull(message = "工单 ID 不能为空")
     private Long id;
 
-    @Schema(description = "执行人用户 ID 列表（1 个或多个）",
-            requiredMode = Schema.RequiredMode.REQUIRED,
-            example = "[200, 201, 202]")
-    @NotEmpty(message = "执行人列表不能为空")
+    @Schema(description = "兼容历史客户端的执行人列表；新客户端使用主执行人和协作人")
     private List<Long> executorIds;
+
+    @Schema(description = "主执行人 ID", example = "200")
+    private Long primaryExecutorId;
+
+    @Schema(description = "协作人 ID 列表", example = "[201, 202]")
+    private List<Long> collaboratorIds;
+
+    @Schema(description = "技术审核人 ID", example = "203")
+    private Long techReviewerId;
+
+    @Schema(description = "主执行人负责内容")
+    @Size(max = 500, message = "负责内容不能超过 500 个字符")
+    private String primaryResponsibility;
+
+    @Schema(description = "协作说明")
+    @Size(max = 500, message = "协作说明不能超过 500 个字符")
+    private String collaboratorResponsibility;
 
     @Schema(description = "接单备注（写入执行人记录与操作日志）")
     @Size(max = 500, message = "备注不能超过 500 个字符")

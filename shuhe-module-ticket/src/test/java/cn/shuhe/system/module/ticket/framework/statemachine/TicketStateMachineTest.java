@@ -49,9 +49,25 @@ class TicketStateMachineTest {
     }
 
     @Test
-    void nextStatus_finishAtInProgress_movesToPendingReview() {
+    void nextStatus_finishAtInProgress_movesToPendingTechReview() {
         Integer to = TicketStateMachine.nextStatus(TicketStatusEnum.IN_PROGRESS.getStatus(), TicketActionEnum.FINISH);
-        assertEquals(TicketStatusEnum.PENDING_REVIEW.getStatus(), to);
+        assertEquals(TicketStatusEnum.PENDING_TECH_REVIEW.getStatus(), to);
+    }
+
+    @Test
+    void nextStatus_projectManagerReview_controlsEntryToDispatch() {
+        assertEquals(TicketStatusEnum.PENDING.getStatus(), TicketStateMachine.nextStatus(
+                TicketStatusEnum.PENDING_PM_REVIEW.getStatus(), TicketActionEnum.PM_REVIEW_PASS));
+        assertEquals(TicketStatusEnum.RETURNED.getStatus(), TicketStateMachine.nextStatus(
+                TicketStatusEnum.PENDING_PM_REVIEW.getStatus(), TicketActionEnum.PM_REVIEW_REJECT));
+    }
+
+    @Test
+    void nextStatus_technicalReview_controlsEntryToProjectAcceptance() {
+        assertEquals(TicketStatusEnum.PENDING_REVIEW.getStatus(), TicketStateMachine.nextStatus(
+                TicketStatusEnum.PENDING_TECH_REVIEW.getStatus(), TicketActionEnum.TECH_REVIEW_PASS));
+        assertEquals(TicketStatusEnum.IN_PROGRESS.getStatus(), TicketStateMachine.nextStatus(
+                TicketStatusEnum.PENDING_TECH_REVIEW.getStatus(), TicketActionEnum.TECH_REVIEW_REJECT));
     }
 
     @Test
@@ -107,9 +123,9 @@ class TicketStateMachineTest {
     }
 
     @Test
-    void nextStatus_resubmitAtReturned_movesToPending() {
+    void nextStatus_resubmitAtReturned_movesToPendingProjectManagerReview() {
         Integer to = TicketStateMachine.nextStatus(TicketStatusEnum.RETURNED.getStatus(), TicketActionEnum.RESUBMIT);
-        assertEquals(TicketStatusEnum.PENDING.getStatus(), to);
+        assertEquals(TicketStatusEnum.PENDING_PM_REVIEW.getStatus(), to);
     }
 
     @Test
@@ -133,7 +149,8 @@ class TicketStateMachineTest {
     @Test
     void nextStatus_transferAtNonTerminal_keepsStatus() {
         for (TicketStatusEnum from : new TicketStatusEnum[]{
-                TicketStatusEnum.PENDING, TicketStatusEnum.IN_PROGRESS, TicketStatusEnum.PENDING_REVIEW}) {
+                TicketStatusEnum.PENDING, TicketStatusEnum.IN_PROGRESS, TicketStatusEnum.PENDING_REVIEW,
+                TicketStatusEnum.PENDING_TECH_REVIEW}) {
             Integer to = TicketStateMachine.nextStatus(from.getStatus(), TicketActionEnum.TRANSFER);
             assertEquals(from.getStatus(), to, "transfer should keep status for " + from);
         }
@@ -168,7 +185,7 @@ class TicketStateMachineTest {
     void checkTransition_legal_returnsTargetStatus() {
         Integer to = TicketStateMachine.checkTransition(
                 TicketStatusEnum.IN_PROGRESS.getStatus(), TicketActionEnum.FINISH);
-        assertEquals(TicketStatusEnum.PENDING_REVIEW.getStatus(), to);
+        assertEquals(TicketStatusEnum.PENDING_TECH_REVIEW.getStatus(), to);
     }
 
     @Test

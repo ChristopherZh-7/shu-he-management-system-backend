@@ -39,6 +39,21 @@ public interface ProjectRoundTargetMapper extends BaseMapperX<ProjectRoundTarget
                 .eq(ProjectRoundTargetDO::getRoundId, roundId));
     }
 
+    default Long selectCountReadyInScopeByRoundId(Long roundId) {
+        return selectCount(new LambdaQueryWrapperX<ProjectRoundTargetDO>()
+                .eq(ProjectRoundTargetDO::getRoundId, roundId)
+                .eq(ProjectRoundTargetDO::getScopeStatus, "in_scope")
+                .isNotNull(ProjectRoundTargetDO::getOwnerId)
+                .in(ProjectRoundTargetDO::getAuthorizationStatus, "verified", "not_required"));
+    }
+
+    default Long selectCountIncompleteInScopeByRoundId(Long roundId) {
+        return selectCount(new LambdaQueryWrapperX<ProjectRoundTargetDO>()
+                .eq(ProjectRoundTargetDO::getRoundId, roundId)
+                .eq(ProjectRoundTargetDO::getScopeStatus, "in_scope")
+                .ne(ProjectRoundTargetDO::getTestStatus, "completed"));
+    }
+
     /**
      * 获取轮次的最大排序值
      */

@@ -46,7 +46,15 @@ public class ProjectRoundTargetServiceImpl implements ProjectRoundTargetService 
                 .name(createReqVO.getName())
                 .url(createReqVO.getUrl())
                 .type(createReqVO.getType())
+                .ownerId(createReqVO.getOwnerId())
+                .ownerName(createReqVO.getOwnerName())
+                .scopeStatus(defaultValue(createReqVO.getScopeStatus(), "in_scope"))
+                .authorizationStatus(defaultValue(createReqVO.getAuthorizationStatus(), "pending"))
+                .testStatus(defaultValue(createReqVO.getTestStatus(), "pending"))
                 .description(createReqVO.getDescription())
+                .testConclusion(createReqVO.getTestConclusion())
+                .startedAt(createReqVO.getStartedAt())
+                .completedAt(createReqVO.getCompletedAt())
                 .sort(newSort)
                 .build();
 
@@ -65,7 +73,15 @@ public class ProjectRoundTargetServiceImpl implements ProjectRoundTargetService 
         updateObj.setName(updateReqVO.getName());
         updateObj.setUrl(updateReqVO.getUrl());
         updateObj.setType(updateReqVO.getType());
+        updateObj.setOwnerId(updateReqVO.getOwnerId());
+        updateObj.setOwnerName(updateReqVO.getOwnerName());
+        updateObj.setScopeStatus(updateReqVO.getScopeStatus());
+        updateObj.setAuthorizationStatus(updateReqVO.getAuthorizationStatus());
+        updateObj.setTestStatus(updateReqVO.getTestStatus());
         updateObj.setDescription(updateReqVO.getDescription());
+        updateObj.setTestConclusion(updateReqVO.getTestConclusion());
+        updateObj.setStartedAt(updateReqVO.getStartedAt());
+        updateObj.setCompletedAt(updateReqVO.getCompletedAt());
         updateObj.setSort(updateReqVO.getSort());
 
         targetMapper.updateById(updateObj);
@@ -111,11 +127,20 @@ public class ProjectRoundTargetServiceImpl implements ProjectRoundTargetService 
                     .name(target.getName())
                     .url(target.getUrl())
                     .type(target.getType())
+                    .ownerId(target.getOwnerId())
+                    .ownerName(target.getOwnerName())
+                    .scopeStatus(defaultValue(target.getScopeStatus(), "in_scope"))
+                    .authorizationStatus(defaultValue(target.getAuthorizationStatus(), "pending"))
+                    .testStatus(defaultValue(target.getTestStatus(), "pending"))
                     .description(target.getDescription())
                     .sort(sort++)
                     .build();
             targetMapper.insert(targetDO);
         }
+    }
+
+    private String defaultValue(String value, String defaultValue) {
+        return value == null || value.isBlank() ? defaultValue : value;
     }
 
 }

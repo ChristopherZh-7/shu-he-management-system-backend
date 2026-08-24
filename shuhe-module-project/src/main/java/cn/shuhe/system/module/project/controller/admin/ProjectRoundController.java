@@ -5,14 +5,20 @@ import cn.hutool.json.JSONUtil;
 import cn.shuhe.system.framework.common.pojo.CommonResult;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectRoundRespVO;
 import cn.shuhe.system.module.project.controller.admin.vo.ProjectRoundSaveReqVO;
+import cn.shuhe.system.module.project.controller.admin.vo.ProjectRoundMemberRespVO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceLaunchDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.mysql.ServiceLaunchMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMemberMapper;
+import cn.shuhe.system.framework.common.util.object.BeanUtils;
 import cn.shuhe.system.module.project.enums.ProjectMemberRoleEnum;
 import cn.shuhe.system.module.project.service.ProjectRoundService;
 import cn.shuhe.system.module.project.service.ReportGenerateService;
+import cn.shuhe.system.module.project.service.ProjectRoundReportArtifactService;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundReportArtifactDO;
+import cn.hutool.crypto.digest.DigestUtil;
 import cn.shuhe.system.module.project.service.access.ProjectAccessService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -56,6 +62,12 @@ public class ProjectRoundController {
     @Resource
     private ProjectAccessService projectAccessService;
 
+    @Resource
+    private ProjectRoundReportArtifactService reportArtifactService;
+
+    @Resource
+    private ProjectRoundMemberMapper projectRoundMemberMapper;
+
     @PostMapping("/create")
     @Operation(summary = "创建项目轮次")
     @PreAuthorize("@ss.hasPermission('project:info:update')")
@@ -70,6 +82,7 @@ public class ProjectRoundController {
     public CommonResult<Boolean> updateProjectRound(@Valid @RequestBody ProjectRoundSaveReqVO updateReqVO) {
         ProjectRoundDO existing = projectRoundService.getProjectRound(updateReqVO.getId());
         validateWriteRound(existing);
+        validateRoundManager(existing);
         updateReqVO.setProjectId(existing.getProjectId());
         if (updateReqVO.getServiceItemId() == null) {
             updateReqVO.setServiceItemId(existing.getServiceItemId());
@@ -84,7 +97,9 @@ public class ProjectRoundController {
     @Parameter(name = "id", description = "轮次编号", required = true)
     @PreAuthorize("@ss.hasPermission('project:info:update')")
     public CommonResult<Boolean> deleteProjectRound(@RequestParam("id") Long id) {
-        validateWriteRound(projectRoundService.getProjectRound(id));
+        ProjectRoundDO round = projectRoundService.getProjectRound(id);
+        validateWriteRound(round);
+        validateRoundManager(round);
         projectRoundService.deleteProjectRound(id);
         return success(true);
     }
@@ -120,17 +135,38 @@ public class ProjectRoundController {
         vo.setId(round.getId());
         vo.setProjectId(round.getProjectId());
         vo.setServiceItemId(round.getServiceItemId());
+        vo.setTicketId(round.getTicketId());
+        vo.setSourceType(round.getSourceType());
         vo.setRoundNo(round.getRoundNo());
         vo.setName(round.getName());
         vo.setDeadline(round.getDeadline());
+        vo.setPlanStartTime(round.getPlanStartTime());
         vo.setPlanEndTime(round.getPlanEndTime());
         vo.setActualStartTime(round.getActualStartTime());
         vo.setActualEndTime(round.getActualEndTime());
         vo.setStatus(round.getStatus());
+        vo.setSubStatus(round.getSubStatus());
+        vo.setCurrentPhase(round.getCurrentPhase());
         vo.setProgress(round.getProgress());
         vo.setResult(round.getResult());
         vo.setAttachments(round.getAttachments());
         vo.setRemark(round.getRemark());
+        vo.setScopeSummary(round.getScopeSummary());
+        vo.setExcludedScope(round.getExcludedScope());
+        vo.setDeliverableRequirements(round.getDeliverableRequirements());
+        vo.setAuthorizationStatus(round.getAuthorizationStatus());
+        vo.setAuthorizationValidUntil(round.getAuthorizationValidUntil());
+        vo.setTestMode(round.getTestMode());
+        vo.setTestWindow(round.getTestWindow());
+        vo.setSourceIps(round.getSourceIps());
+        vo.setEmergencyContact(round.getEmergencyContact());
+        vo.setStopConditions(round.getStopConditions());
+        vo.setRetestPolicy(round.getRetestPolicy());
+        vo.setScopeLockedBy(round.getScopeLockedBy());
+        vo.setScopeLockedAt(round.getScopeLockedAt());
+        vo.setMembers(projectRoundMemberMapper.selectListByRoundId(round.getId()).stream()
+                .map(member -> BeanUtils.toBean(member, ProjectRoundMemberRespVO.class))
+                .toList());
         vo.setIsOutside(round.getIsOutside());
         vo.setIsCrossDept(round.getIsCrossDept());
         vo.setServiceLaunchId(round.getServiceLaunchId());
@@ -171,7 +207,9 @@ public class ProjectRoundController {
     @PreAuthorize("@ss.hasAnyPermissions('project:info:update', 'project:my-tasks:update')")
     public CommonResult<Boolean> updateRoundStatus(@RequestParam("id") Long id,
                                                    @RequestParam("status") Integer status) {
-        validateWriteRound(projectRoundService.getProjectRound(id));
+        ProjectRoundDO round = projectRoundService.getProjectRound(id);
+        validateWriteRound(round);
+        validateRoundStatusActor(round, status);
         projectRoundService.updateRoundStatus(id, status);
         return success(true);
     }
@@ -214,6 +252,8 @@ public class ProjectRoundController {
         ProjectRoundDO round = projectRoundService.getProjectRound(id);
         String roundName = round.getName() != null ? round.getName() : "第" + round.getRoundNo() + "次执行";
         String fileName = String.format("渗透测试报告_%s.docx", roundName);
+        reportArtifactService.recordGenerated(id, "pentest", templateCode, fileName,
+                DigestUtil.sha256Hex(reportData));
 
         // 设置响应头
         response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
@@ -243,6 +283,8 @@ public class ProjectRoundController {
         ProjectRoundDO round = projectRoundService.getProjectRound(id);
         String roundName = round.getName() != null ? round.getName() : "第" + round.getRoundNo() + "次执行";
         String fileName = String.format("复测报告_%s.docx", roundName);
+        reportArtifactService.recordGenerated(id, "retest", templateCode, fileName,
+                DigestUtil.sha256Hex(reportData));
 
         // 设置响应头
         response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
@@ -270,6 +312,8 @@ public class ProjectRoundController {
         ProjectRoundDO round = projectRoundService.getProjectRound(id);
         String roundName = round.getName() != null ? round.getName() : "第" + round.getRoundNo() + "次执行";
         String fileName = String.format("渗透测试报告_按系统_%s.zip", roundName);
+        reportArtifactService.recordGenerated(id, "pentest", templateCode, fileName,
+                DigestUtil.sha256Hex(zipData));
 
         response.setContentType("application/zip");
         response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
@@ -295,6 +339,8 @@ public class ProjectRoundController {
         ProjectRoundDO round = projectRoundService.getProjectRound(id);
         String roundName = round.getName() != null ? round.getName() : "第" + round.getRoundNo() + "次执行";
         String fileName = String.format("复测报告_按系统_%s.zip", roundName);
+        reportArtifactService.recordGenerated(id, "retest", templateCode, fileName,
+                DigestUtil.sha256Hex(zipData));
 
         response.setContentType("application/zip");
         response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
@@ -303,6 +349,15 @@ public class ProjectRoundController {
 
         response.getOutputStream().write(zipData);
         response.getOutputStream().flush();
+    }
+
+    @GetMapping("/report-artifacts")
+    @Operation(summary = "查看报告版本、审核与交付记录")
+    @PreAuthorize("@ss.hasAnyPermissions('project:info:query', 'project:my-tasks:query')")
+    public CommonResult<List<ProjectRoundReportArtifactDO>> getReportArtifacts(
+            @RequestParam("id") Long id) {
+        validateReadRound(projectRoundService.getProjectRound(id));
+        return success(reportArtifactService.listByRoundId(id));
     }
 
     private ServiceItemDO validateReadableServiceItem(Long serviceItemId) {
@@ -339,6 +394,51 @@ public class ProjectRoundController {
     private void validateWriteRound(ProjectRoundDO round) {
         validateReadRound(round);
         if (!canOperateProject(round.getProjectId())) {
+            throwForbidden();
+        }
+    }
+
+    /**
+     * 状态动作按责任链授权。工单来源轮次除“主执行人开始”外，只能由工单生命周期同步，
+     * 防止用户从轮次接口绕过项目经理、技术审核或最终验收。
+     */
+    private void validateRoundStatusActor(ProjectRoundDO round, Integer toStatus) {
+        Long userId = getLoginUserId();
+        int fromStatus = round.getStatus() == null ? 0 : round.getStatus();
+        boolean primaryExecutor = projectRoundMemberMapper.existsByRoundIdAndUserIdAndRole(
+                round.getId(), userId, "primary_executor");
+        boolean techReviewer = projectRoundMemberMapper.existsByRoundIdAndUserIdAndRole(
+                round.getId(), userId, "tech_reviewer");
+        boolean projectManager = projectRoundMemberMapper.existsByRoundIdAndUserIdAndRole(
+                round.getId(), userId, "project_manager")
+                || projectAccessService.canManageProject(round.getProjectId(), userId);
+
+        if ("ticket".equals(round.getSourceType())) {
+            if (!(fromStatus == 0 && Integer.valueOf(1).equals(toStatus) && primaryExecutor)) {
+                throwForbidden();
+            }
+            return;
+        }
+
+        boolean allowedActor = switch (fromStatus) {
+            case 0 -> Integer.valueOf(1).equals(toStatus) ? primaryExecutor : projectManager;
+            case 1 -> Integer.valueOf(4).equals(toStatus) ? primaryExecutor : projectManager;
+            case 2, 5, 6 -> projectManager;
+            case 4 -> techReviewer;
+            case 7 -> primaryExecutor;
+            default -> false;
+        };
+        if (!allowedActor) {
+            throwForbidden();
+        }
+    }
+
+    private void validateRoundManager(ProjectRoundDO round) {
+        Long userId = getLoginUserId();
+        boolean projectManager = projectRoundMemberMapper.existsByRoundIdAndUserIdAndRole(
+                round.getId(), userId, "project_manager")
+                || projectAccessService.canManageProject(round.getProjectId(), userId);
+        if (!projectManager) {
             throwForbidden();
         }
     }

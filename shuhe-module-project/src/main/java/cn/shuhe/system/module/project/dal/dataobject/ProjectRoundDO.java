@@ -40,6 +40,12 @@ public class ProjectRoundDO extends BaseDO {
      */
     private Long serviceItemId;
 
+    /** 来源服务工单ID */
+    private Long ticketId;
+
+    /** ticket / manual / retest */
+    private String sourceType;
+
     /**
      * 工作流流程实例ID
      * 
@@ -58,6 +64,9 @@ public class ProjectRoundDO extends BaseDO {
     private String name;
 
     // ========== 时间信息 ==========
+
+    /** 计划开始时间 */
+    private LocalDateTime planStartTime;
 
     /**
      * 截止日期（任务应在此日期前完成）
@@ -107,9 +116,15 @@ public class ProjectRoundDO extends BaseDO {
     private String executorNames;
 
     /**
-     * 状态：0待执行 1执行中 2已完成 3已取消
+     * 状态：0待准备 1执行中 2已完成 3已取消 4待技术审核 5待项目验收
+     * 6待整改 7复测中
      */
     private Integer status;
+
+    private String subStatus;
+
+    /** preparation/initial_test/tech_review/delivery/remediation/retest/completed */
+    private String currentPhase;
 
     /**
      * 进度 0-100
@@ -132,6 +147,22 @@ public class ProjectRoundDO extends BaseDO {
      * 备注
      */
     private String remark;
+
+    // ========== 渗透测试边界与授权 ==========
+
+    private String scopeSummary;
+    private String excludedScope;
+    private String deliverableRequirements;
+    private String authorizationStatus;
+    private LocalDateTime authorizationValidUntil;
+    private String testMode;
+    private String testWindow;
+    private String sourceIps;
+    private String emergencyContact;
+    private String stopConditions;
+    private String retestPolicy;
+    private Long scopeLockedBy;
+    private LocalDateTime scopeLockedAt;
 
     // ========== 钉钉群 ==========
 

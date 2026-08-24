@@ -9,6 +9,9 @@ import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectRoundVulnerabilityMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectRoundTargetMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMemberMapper;
+import cn.shuhe.system.module.project.dal.dataobject.ProjectRoundMemberDO;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
 import cn.shuhe.system.module.system.api.dingtalk.DingtalkNotifyApi;
 import cn.shuhe.system.module.system.api.notify.NotifyMessageSendApi;
@@ -88,6 +91,15 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
     @Resource
     private ProjectRoundVulnerabilityMapper vulnerabilityMapper;
 
+    @Resource
+    private ProjectRoundTargetMapper targetMapper;
+
+    @Resource
+    private ProjectRoundMemberMapper memberMapper;
+
+    @Resource
+    private ProjectRoundReportArtifactService reportArtifactService;
+
     /**
      * 部门类型对应的服务类型字典类型
      */
@@ -99,6 +111,7 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
 
     @Override
     public Long createProjectRound(ProjectRoundSaveReqVO createReqVO) {
+        validateManualRoundRoles(createReqVO);
         // 优先使用 serviceItemId，兼容历史数据（projectId 曾用于存储 serviceItemId）
         Long serviceItemId = createReqVO.getServiceItemId() != null 
                 ? createReqVO.getServiceItemId() 
@@ -137,15 +150,19 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
 
         // 转换并保存
         ProjectRoundDO round = new ProjectRoundDO();
-        round.setProjectId(createReqVO.getProjectId());
+        round.setProjectId(serviceItem.getProjectId());
         round.setServiceItemId(serviceItemId); // 使用解析后的 serviceItemId
         round.setName(createReqVO.getName());
         round.setDeadline(createReqVO.getDeadline());
+        round.setPlanStartTime(createReqVO.getPlanStartTime());
         round.setPlanEndTime(createReqVO.getPlanEndTime());
         round.setRemark(createReqVO.getRemark());
+        round.setSourceType("manual");
+        round.setCurrentPhase("preparation");
+        applyGovernanceFields(round, createReqVO);
         round.setRoundNo(newRoundNo);
-        // 状态：如果指定了就用指定的，否则默认待执行
-        round.setStatus(createReqVO.getStatus() != null ? createReqVO.getStatus() : 0);
+        // 新轮次必须从待准备开始，禁止由客户端跳过授权、执行和审核环节。
+        round.setStatus(0);
         round.setProgress(0);
 
         // 处理执行人ID列表，转换为JSON字符串
@@ -167,6 +184,7 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
         }
 
         projectRoundMapper.insert(round);
+        saveManualRoundMembers(round.getId(), serviceItem.getProjectId(), createReqVO);
 
         // 确保项目有钉钉群（没有则创建），拉执行人进群，发轮次通知
         try {
@@ -176,6 +194,87 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
         }
 
         return round.getId();
+    }
+
+    private void validateManualRoundRoles(ProjectRoundSaveReqVO reqVO) {
+        Long primaryId = reqVO.getPrimaryExecutorId();
+        if (primaryId == null && CollUtil.isNotEmpty(reqVO.getExecutorIds())) {
+            primaryId = reqVO.getExecutorIds().get(0);
+            reqVO.setPrimaryExecutorId(primaryId);
+        }
+        if (primaryId == null) {
+            throw exception(PROJECT_ROUND_PRIMARY_EXECUTOR_REQUIRED);
+        }
+        if (reqVO.getTechReviewerId() == null) {
+            throw exception(PROJECT_ROUND_TECH_REVIEWER_REQUIRED);
+        }
+        if (primaryId.equals(reqVO.getTechReviewerId())) {
+            throw exception(PROJECT_ROUND_ROLE_CONFLICT);
+        }
+        Long resolvedPrimaryId = primaryId;
+        List<Long> executors = new java.util.ArrayList<>();
+        executors.add(resolvedPrimaryId);
+        if (CollUtil.isNotEmpty(reqVO.getCollaboratorIds())) {
+            reqVO.getCollaboratorIds().stream()
+                    .filter(java.util.Objects::nonNull)
+                    .filter(id -> !id.equals(resolvedPrimaryId) && !id.equals(reqVO.getTechReviewerId()))
+                    .distinct().forEach(executors::add);
+        }
+        reqVO.setExecutorIds(executors);
+        java.util.LinkedHashSet<Long> participantIds = new java.util.LinkedHashSet<>(executors);
+        participantIds.add(reqVO.getTechReviewerId());
+        List<AdminUserRespDTO> participants = adminUserApi.getUserList(participantIds);
+        java.util.Set<Long> existingUserIds = participants.stream()
+                .map(AdminUserRespDTO::getId).collect(Collectors.toSet());
+        java.util.List<Long> missingUserIds = participantIds.stream()
+                .filter(id -> !existingUserIds.contains(id)).toList();
+        if (!missingUserIds.isEmpty()) {
+            throw exception(PROJECT_ROUND_ROLE_USER_NOT_EXISTS, missingUserIds);
+        }
+        List<AdminUserRespDTO> users = participants.stream()
+                .filter(user -> executors.contains(user.getId())).toList();
+        reqVO.setExecutorNames(users.stream().map(AdminUserRespDTO::getNickname)
+                .collect(Collectors.joining(",")));
+    }
+
+    private void saveManualRoundMembers(Long roundId, Long projectId, ProjectRoundSaveReqVO reqVO) {
+        java.util.LinkedHashMap<Long, String> roles = new java.util.LinkedHashMap<>();
+        roles.put(reqVO.getPrimaryExecutorId(), "primary_executor");
+        if (reqVO.getCollaboratorIds() != null) {
+            reqVO.getCollaboratorIds().forEach(id -> roles.putIfAbsent(id, "collaborator"));
+        }
+        roles.put(reqVO.getTechReviewerId(), "tech_reviewer");
+        Map<Long, AdminUserRespDTO> users = adminUserApi.getUserList(roles.keySet()).stream()
+                .collect(Collectors.toMap(AdminUserRespDTO::getId, u -> u, (a, b) -> a));
+        Long assignedBy = SecurityFrameworkUtils.getLoginUserId();
+        roles.forEach((userId, role) -> {
+            AdminUserRespDTO user = users.get(userId);
+            if (user == null) return;
+            memberMapper.insert(ProjectRoundMemberDO.builder()
+                    .roundId(roundId).userId(userId).userName(user.getNickname())
+                    .userDeptId(user.getDeptId()).roleType(role)
+                    .responsibility("primary_executor".equals(role)
+                            ? reqVO.getPrimaryResponsibility()
+                            : ("collaborator".equals(role) ? reqVO.getCollaboratorResponsibility() : "技术质量审核"))
+                    .taskStatus("tech_reviewer".equals(role) ? "pending" : "working")
+                    .assignedBy(assignedBy).build());
+        });
+        // 项目经理不由新建轮次的人任意选择，直接继承项目权威配置；历史项目未配置时由创建人兜底。
+        ProjectDO project = projectMapper.selectById(projectId);
+        Long projectManagerId = project != null && CollUtil.isNotEmpty(project.getManagerIds())
+                ? project.getManagerIds().get(0) : assignedBy;
+        String projectManagerName = project != null && CollUtil.isNotEmpty(project.getManagerNames())
+                ? project.getManagerNames().get(0) : null;
+        if (projectManagerId != null) {
+            AdminUserRespDTO projectManager = adminUserApi.getUser(projectManagerId);
+            memberMapper.insert(ProjectRoundMemberDO.builder()
+                    .roundId(roundId).userId(projectManagerId)
+                    .userName(projectManager != null ? projectManager.getNickname() : projectManagerName)
+                    .userDeptId(projectManager == null ? null : projectManager.getDeptId())
+                    .roleType("project_manager")
+                    .responsibility("确认范围、协调客户交付并完成项目验收")
+                    .taskStatus("working").assignedBy(assignedBy).build());
+        }
     }
 
     /**
@@ -314,6 +413,9 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
         if (existingRound == null) {
             throw exception(PROJECT_ROUND_NOT_EXISTS);
         }
+        if (!"ticket".equals(existingRound.getSourceType())) {
+            validateManualRoundRoles(updateReqVO);
+        }
 
         // 校验轮次时间在合同范围内
         ProjectDO project = projectMapper.selectById(existingRound.getProjectId());
@@ -325,8 +427,10 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
         updateObj.setId(updateReqVO.getId());
         updateObj.setName(updateReqVO.getName());
         updateObj.setDeadline(updateReqVO.getDeadline());
+        updateObj.setPlanStartTime(updateReqVO.getPlanStartTime());
         updateObj.setPlanEndTime(updateReqVO.getPlanEndTime());
         updateObj.setRemark(updateReqVO.getRemark());
+        applyGovernanceFields(updateObj, updateReqVO);
         
         // 如果截止日期变化了，重新计算提醒时间并重置提醒状态
         if (updateReqVO.getDeadline() != null) {
@@ -338,16 +442,7 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
             }
         }
         
-        // 更新状态和实际时间
-        if (updateReqVO.getStatus() != null) {
-            updateObj.setStatus(updateReqVO.getStatus());
-        }
-        if (updateReqVO.getActualStartTime() != null) {
-            updateObj.setActualStartTime(updateReqVO.getActualStartTime());
-        }
-        if (updateReqVO.getActualEndTime() != null) {
-            updateObj.setActualEndTime(updateReqVO.getActualEndTime());
-        }
+        // 状态与实际时间只能通过 updateRoundStatus 变更，防止编辑表单越过审核链。
         if (updateReqVO.getRoundNo() != null) {
             updateObj.setRoundNo(updateReqVO.getRoundNo());
         }
@@ -361,6 +456,27 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
         updateObj.setExecutorNames(updateReqVO.getExecutorNames());
         
         projectRoundMapper.updateById(updateObj);
+        if (!"ticket".equals(existingRound.getSourceType())) {
+            memberMapper.delete(new cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX<ProjectRoundMemberDO>()
+                    .eq(ProjectRoundMemberDO::getRoundId, existingRound.getId()));
+            saveManualRoundMembers(existingRound.getId(), existingRound.getProjectId(), updateReqVO);
+        }
+    }
+
+    private void applyGovernanceFields(ProjectRoundDO target, ProjectRoundSaveReqVO source) {
+        target.setScopeSummary(source.getScopeSummary());
+        target.setExcludedScope(source.getExcludedScope());
+        target.setDeliverableRequirements(source.getDeliverableRequirements());
+        target.setAuthorizationStatus(source.getAuthorizationStatus() == null
+                ? "pending" : source.getAuthorizationStatus());
+        target.setAuthorizationValidUntil(source.getAuthorizationValidUntil());
+        target.setTestMode(source.getTestMode());
+        target.setTestWindow(source.getTestWindow());
+        target.setSourceIps(source.getSourceIps());
+        target.setEmergencyContact(source.getEmergencyContact());
+        target.setStopConditions(source.getStopConditions());
+        target.setRetestPolicy(source.getRetestPolicy() == null
+                ? "included_same_round" : source.getRetestPolicy());
     }
 
     @Override
@@ -449,10 +565,38 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
 
         Integer oldStatus = round.getStatus();
 
+        validateRoundTransition(round, status);
+        if (status == 1 && (oldStatus == null || oldStatus == 0)) {
+            validatePentestStartGate(round);
+        }
+        if (status == 4 && Integer.valueOf(1).equals(oldStatus)) {
+            validatePentestDeliveryGate(round);
+        }
+        if (!"ticket".equals(round.getSourceType()) && isPentestRound(round)) {
+            if (status == 4 && Integer.valueOf(1).equals(oldStatus)) {
+                reportArtifactService.submitLatest(id);
+            } else if (status == 5 && Integer.valueOf(4).equals(oldStatus)) {
+                reportArtifactService.approveLatest(id, "手工轮次技术审核通过");
+            } else if (status == 1 && Integer.valueOf(4).equals(oldStatus)) {
+                reportArtifactService.rejectLatest(id, "手工轮次技术审核驳回");
+            } else if (status == 2 && Integer.valueOf(5).equals(oldStatus)) {
+                reportArtifactService.deliverLatest(id, "项目经理验收交付");
+            }
+        }
+
         // 更新状态
         ProjectRoundDO updateObj = new ProjectRoundDO();
         updateObj.setId(id);
         updateObj.setStatus(status);
+        updateObj.setCurrentPhase(resolvePhase(status));
+        if (status == 1 && (oldStatus == null || oldStatus == 0)) {
+            updateObj.setActualStartTime(LocalDateTime.now());
+            updateObj.setScopeLockedBy(SecurityFrameworkUtils.getLoginUserId());
+            updateObj.setScopeLockedAt(LocalDateTime.now());
+        }
+        if (status == 2) {
+            updateObj.setActualEndTime(LocalDateTime.now());
+        }
         projectRoundMapper.updateById(updateObj);
 
         // 当状态变为"执行中"(1)时，通知执行人
@@ -476,6 +620,75 @@ public class ProjectRoundServiceImpl implements ProjectRoundService {
                 log.warn("[updateRoundStatus] 发送完成通知失败, roundId={}", id, e);
             }
         }
+    }
+
+    private void validateRoundTransition(ProjectRoundDO round, Integer toStatus) {
+        Integer from = round.getStatus() == null ? 0 : round.getStatus();
+        if (java.util.Objects.equals(from, toStatus)) {
+            return;
+        }
+        Map<Integer, java.util.Set<Integer>> allowed = Map.of(
+                0, java.util.Set.of(1, 3),
+                1, java.util.Set.of(3, 4),
+                2, java.util.Set.of(1, 3, 6),
+                4, java.util.Set.of(1, 5),
+                5, java.util.Set.of(1, 2, 6),
+                6, java.util.Set.of(3, 7),
+                7, java.util.Set.of(4, 6));
+        if (!allowed.getOrDefault(from, java.util.Collections.emptySet()).contains(toStatus)) {
+            throw exception(PROJECT_ROUND_STATUS_INVALID, from, toStatus);
+        }
+    }
+
+    private void validatePentestStartGate(ProjectRoundDO round) {
+        if (!isPentestRound(round)) {
+            return;
+        }
+        boolean authOk = "verified".equals(round.getAuthorizationStatus())
+                || "not_required".equals(round.getAuthorizationStatus());
+        boolean authExpired = round.getAuthorizationValidUntil() != null
+                && round.getAuthorizationValidUntil().isBefore(LocalDateTime.now());
+        if (!authOk || authExpired) {
+            throw exception(PROJECT_ROUND_AUTH_REQUIRED);
+        }
+        if (isBlank(round.getScopeSummary()) || isBlank(round.getTestWindow())
+                || isBlank(round.getEmergencyContact()) || isBlank(round.getStopConditions())) {
+            throw exception(PROJECT_ROUND_SCOPE_INCOMPLETE);
+        }
+        if (targetMapper.selectCountReadyInScopeByRoundId(round.getId()) <= 0) {
+            throw exception(PROJECT_ROUND_TARGET_INCOMPLETE);
+        }
+    }
+
+    private void validatePentestDeliveryGate(ProjectRoundDO round) {
+        if (!isPentestRound(round)) {
+            return;
+        }
+        if (targetMapper.selectCountIncompleteInScopeByRoundId(round.getId()) > 0
+                || vulnerabilityMapper.selectDraftCountByRoundId(round.getId()) > 0) {
+            throw exception(PROJECT_ROUND_DELIVERY_INCOMPLETE);
+        }
+    }
+
+    private boolean isPentestRound(ProjectRoundDO round) {
+        ServiceItemDO serviceItem = serviceItemMapper.selectById(round.getServiceItemId());
+        return serviceItem != null && "penetration_test".equals(serviceItem.getServiceType());
+    }
+
+    private String resolvePhase(Integer status) {
+        return switch (status == null ? 0 : status) {
+            case 1 -> "initial_test";
+            case 4 -> "tech_review";
+            case 5 -> "delivery";
+            case 6 -> "remediation";
+            case 7 -> "retest";
+            case 2 -> "completed";
+            default -> "preparation";
+        };
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /**

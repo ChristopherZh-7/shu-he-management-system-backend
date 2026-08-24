@@ -8,6 +8,7 @@ import cn.shuhe.system.module.project.dal.dataobject.ProjectSiteDO;
 import cn.shuhe.system.module.project.dal.dataobject.ProjectSiteMemberDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMemberMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectSiteMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectSiteMemberMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
@@ -48,6 +49,9 @@ public class RoundDeadlineRemindJob implements JobHandler {
 
     @Resource
     private ProjectRoundMapper projectRoundMapper;
+
+    @Resource
+    private ProjectRoundMemberMapper projectRoundMemberMapper;
 
     @Resource
     private ServiceItemMapper serviceItemMapper;
@@ -200,8 +204,22 @@ public class RoundDeadlineRemindJob implements JobHandler {
      */
     private List<Long> resolveNotifyUserIds(ProjectRoundDO round, ServiceItemDO serviceItem) {
         List<Long> userIds = new ArrayList<>();
+
+        // 新轮次以角色表为准：截止提醒发给执行组和技术支撑负责人。
+        List<Long> roleUserIds = projectRoundMemberMapper.selectListByRoundId(round.getId()).stream()
+                .filter(member -> java.util.Set.of("primary_executor", "collaborator", "support_owner")
+                        .contains(member.getRoleType()))
+                .filter(member -> !"completed".equals(member.getTaskStatus()))
+                .map(member -> member.getUserId())
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (CollUtil.isNotEmpty(roleUserIds)) {
+            userIds.addAll(roleUserIds);
+            return userIds;
+        }
         
-        // 1. 优先使用 Round 中的 executorIds
+        // 兼容迁移前只有 executorIds 的历史轮次。
         if (round.getExecutorIds() != null && !round.getExecutorIds().isEmpty()) {
             try {
                 List<Long> executorIds = JSONUtil.toList(round.getExecutorIds(), Long.class);

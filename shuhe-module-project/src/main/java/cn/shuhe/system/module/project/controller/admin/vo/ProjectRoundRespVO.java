@@ -20,6 +20,9 @@ public class ProjectRoundRespVO {
     @Schema(description = "服务项ID", example = "1")
     private Long serviceItemId;
 
+    private Long ticketId;
+    private String sourceType;
+
     @Schema(description = "轮次序号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Integer roundNo;
 
@@ -30,6 +33,9 @@ public class ProjectRoundRespVO {
 
     @Schema(description = "截止日期（任务应在此日期前完成）")
     private LocalDateTime deadline;
+
+    @Schema(description = "计划开始时间")
+    private LocalDateTime planStartTime;
 
     @Schema(description = "计划结束时间（保留字段）")
     private LocalDateTime planEndTime;
@@ -48,8 +54,11 @@ public class ProjectRoundRespVO {
     @Schema(description = "执行人姓名列表", example = "王五,李六")
     private String executorNames;
 
-    @Schema(description = "状态：0待执行 1执行中 2已完成 3已取消", example = "1")
+    @Schema(description = "状态：0待准备 1执行中 2已完成 3已取消 4待技术审核 5待项目验收 6待整改 7复测中", example = "1")
     private Integer status;
+
+    private String subStatus;
+    private String currentPhase;
 
     @Schema(description = "进度 0-100", example = "50")
     private Integer progress;
@@ -64,6 +73,23 @@ public class ProjectRoundRespVO {
 
     @Schema(description = "备注")
     private String remark;
+
+    private String scopeSummary;
+    private String excludedScope;
+    private String deliverableRequirements;
+    private String authorizationStatus;
+    private LocalDateTime authorizationValidUntil;
+    private String testMode;
+    private String testWindow;
+    private String sourceIps;
+    private String emergencyContact;
+    private String stopConditions;
+    private String retestPolicy;
+    private Long scopeLockedBy;
+    private LocalDateTime scopeLockedAt;
+
+    @Schema(description = "轮次角色与责任分工")
+    private List<ProjectRoundMemberRespVO> members;
 
     // ========== 来源标识 ==========
 

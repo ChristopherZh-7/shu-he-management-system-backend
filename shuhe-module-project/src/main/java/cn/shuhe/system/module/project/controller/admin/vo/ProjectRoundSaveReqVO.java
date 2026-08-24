@@ -1,6 +1,5 @@
 package cn.shuhe.system.module.project.controller.admin.vo;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -25,9 +24,11 @@ public class ProjectRoundSaveReqVO {
     @Schema(description = "轮次名称", example = "第1次渗透测试")
     private String name;
 
-    @Schema(description = "计划开始时间")
-    @JsonAlias("planStartTime")
+    @Schema(description = "任务截止时间")
     private LocalDateTime deadline;
+
+    @Schema(description = "计划开始时间")
+    private LocalDateTime planStartTime;
 
     @Schema(description = "计划结束时间（保留字段）")
     private LocalDateTime planEndTime;
@@ -50,7 +51,30 @@ public class ProjectRoundSaveReqVO {
     @Schema(description = "执行人姓名列表", example = "王五,李六")
     private String executorNames;
 
+    @Schema(description = "主执行人ID（手工新建轮次必填）")
+    private Long primaryExecutorId;
+
+    private List<Long> collaboratorIds;
+
+    @Schema(description = "技术审核人ID（手工新建轮次必填）")
+    private Long techReviewerId;
+
+    private String primaryResponsibility;
+    private String collaboratorResponsibility;
+
     @Schema(description = "备注")
     private String remark;
+
+    private String scopeSummary;
+    private String excludedScope;
+    private String deliverableRequirements;
+    private String authorizationStatus;
+    private LocalDateTime authorizationValidUntil;
+    private String testMode;
+    private String testWindow;
+    private String sourceIps;
+    private String emergencyContact;
+    private String stopConditions;
+    private String retestPolicy;
 
 }

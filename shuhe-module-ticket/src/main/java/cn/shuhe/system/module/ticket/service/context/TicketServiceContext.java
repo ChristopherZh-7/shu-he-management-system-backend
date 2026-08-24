@@ -32,6 +32,8 @@ public class TicketServiceContext implements Serializable {
     private Long projectId;
     private String projectCode;
     private String projectName;
+    private Long projectManagerId;
+    private String projectManagerName;
 
     private Long responsibleDeptId;
     private String responsibleDeptName;

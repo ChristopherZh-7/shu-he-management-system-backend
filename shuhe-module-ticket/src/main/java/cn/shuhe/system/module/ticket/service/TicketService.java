@@ -48,6 +48,12 @@ public interface TicketService {
 
     // ========== 状态机 ==========
 
+    /** 项目经理确认服务申请；status: 7 → 0。 */
+    void projectReviewPassTicket(@Valid TicketReviewPassReqVO reqVO);
+
+    /** 项目经理退回服务申请；status: 7 → 6。 */
+    void projectReviewRejectTicket(@Valid TicketReviewRejectReqVO reqVO);
+
     /** 分派处理人；status: 0 → 0（仅改 assignee）。 */
     void assignTicket(@Valid TicketAssignReqVO reqVO);
 
@@ -62,8 +68,14 @@ public interface TicketService {
     /** 接单开始；status: 0 → 1。 */
     void startTicket(Long id);
 
-    /** 完成工单（提交验收）；status: 1 → 2。 */
+    /** 主执行人提交交付；status: 1 → 8。 */
     void finishTicket(@Valid TicketFinishReqVO reqVO);
+
+    /** 技术审核通过；status: 8 → 2。 */
+    void techReviewPassTicket(@Valid TicketReviewPassReqVO reqVO);
+
+    /** 技术审核驳回；status: 8 → 1。 */
+    void techReviewRejectTicket(@Valid TicketReviewRejectReqVO reqVO);
 
     /**
      * 验收通过；status: 2 → 3，回写 reviewer / reviewTime / finishTime。

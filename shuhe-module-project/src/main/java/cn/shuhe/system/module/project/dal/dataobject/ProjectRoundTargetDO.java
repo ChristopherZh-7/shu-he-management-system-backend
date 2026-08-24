@@ -51,10 +51,20 @@ public class ProjectRoundTargetDO extends BaseDO {
      */
     private String type;
 
+    private Long ownerId;
+    private String ownerName;
+    private String scopeStatus;
+    private String authorizationStatus;
+    private String testStatus;
+
     /**
      * 目标描述
      */
     private String description;
+
+    private String testConclusion;
+    private java.time.LocalDateTime startedAt;
+    private java.time.LocalDateTime completedAt;
 
     /**
      * 排序

@@ -26,8 +26,26 @@ public class ProjectRoundTargetSaveReqVO {
     @Schema(description = "目标类型", example = "web")
     private String type;
 
+    @Schema(description = "目标主责执行人ID")
+    private Long ownerId;
+
+    private String ownerName;
+
+    @Schema(description = "in_scope / excluded / change_pending")
+    private String scopeStatus;
+
+    @Schema(description = "pending / verified / not_required")
+    private String authorizationStatus;
+
+    @Schema(description = "pending / testing / completed / blocked")
+    private String testStatus;
+
     @Schema(description = "目标描述", example = "公司官网系统")
     private String description;
+
+    private String testConclusion;
+    private java.time.LocalDateTime startedAt;
+    private java.time.LocalDateTime completedAt;
 
     @Schema(description = "排序", example = "1")
     private Integer sort;

@@ -27,8 +27,18 @@ public class ProjectRoundTargetRespVO {
     @Schema(description = "目标类型", example = "web")
     private String type;
 
+    private Long ownerId;
+    private String ownerName;
+    private String scopeStatus;
+    private String authorizationStatus;
+    private String testStatus;
+
     @Schema(description = "目标描述", example = "公司官网系统")
     private String description;
+
+    private String testConclusion;
+    private java.time.LocalDateTime startedAt;
+    private java.time.LocalDateTime completedAt;
 
     @Schema(description = "排序", example = "1")
     private Integer sort;

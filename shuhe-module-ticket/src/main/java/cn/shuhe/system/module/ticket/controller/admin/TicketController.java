@@ -16,6 +16,7 @@ import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReturnReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReviewPassReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketReviewRejectReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketRespVO;
+import cn.shuhe.system.module.ticket.controller.admin.vo.TicketParticipantRespVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketSaveReqVO;
 import cn.shuhe.system.module.ticket.controller.admin.vo.TicketTransferReqVO;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketCategoryDO;
@@ -104,6 +105,9 @@ public class TicketController {
                 .map(executor -> executor.getUserName())
                 .filter(java.util.Objects::nonNull)
                 .toList());
+        vo.setParticipants(ticketService.getTicketExecutors(id).stream()
+                .map(executor -> BeanUtils.toBean(executor, TicketParticipantRespVO.class))
+                .toList());
         vo.setActions(ticketService.calculateAvailableActions(ticket, currentUserId));
         Long commentCount = commentMapper.selectCountByTicketId(id);
         vo.setCommentCount(commentCount == null ? 0 : commentCount.intValue());
@@ -142,6 +146,22 @@ public class TicketController {
 
     // ========== 状态机 ==========
 
+    @PutMapping("/project-review-pass")
+    @Operation(summary = "项目经理确认服务申请（状态 7→0）")
+    @PreAuthorize("@ss.hasPermission('ticket:ticket:update')")
+    public CommonResult<Boolean> projectReviewPassTicket(@Valid @RequestBody TicketReviewPassReqVO reqVO) {
+        ticketService.projectReviewPassTicket(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/project-review-reject")
+    @Operation(summary = "项目经理退回服务申请（状态 7→6）")
+    @PreAuthorize("@ss.hasPermission('ticket:ticket:update')")
+    public CommonResult<Boolean> projectReviewRejectTicket(@Valid @RequestBody TicketReviewRejectReqVO reqVO) {
+        ticketService.projectReviewRejectTicket(reqVO);
+        return success(true);
+    }
+
     @PutMapping("/assign")
     @Operation(summary = "分派处理人")
     @PreAuthorize("@ss.hasPermission('ticket:ticket:assign')")
@@ -168,15 +188,31 @@ public class TicketController {
     }
 
     @PutMapping("/finish")
-    @Operation(summary = "完成工单（处理人提交验收，状态 1→2）")
+    @Operation(summary = "主执行人提交交付（状态 1→8）")
     @PreAuthorize("@ss.hasPermission('ticket:ticket:finish')")
     public CommonResult<Boolean> finishTicket(@Valid @RequestBody TicketFinishReqVO reqVO) {
         ticketService.finishTicket(reqVO);
         return success(true);
     }
 
+    @PutMapping("/tech-review-pass")
+    @Operation(summary = "技术审核通过（状态 8→2）")
+    @PreAuthorize("@ss.hasPermission('ticket:ticket:finish')")
+    public CommonResult<Boolean> techReviewPassTicket(@Valid @RequestBody TicketReviewPassReqVO reqVO) {
+        ticketService.techReviewPassTicket(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/tech-review-reject")
+    @Operation(summary = "技术审核驳回（状态 8→1）")
+    @PreAuthorize("@ss.hasPermission('ticket:ticket:finish')")
+    public CommonResult<Boolean> techReviewRejectTicket(@Valid @RequestBody TicketReviewRejectReqVO reqVO) {
+        ticketService.techReviewRejectTicket(reqVO);
+        return success(true);
+    }
+
     @PutMapping("/review-pass")
-    @Operation(summary = "验收通过（提单人，状态 2→3）")
+    @Operation(summary = "项目经理验收通过（状态 2→3）")
     @PreAuthorize("@ss.hasPermission('ticket:ticket:close')")
     public CommonResult<Boolean> reviewPassTicket(@Valid @RequestBody TicketReviewPassReqVO reqVO) {
         ticketService.reviewPassTicket(reqVO);
@@ -184,7 +220,7 @@ public class TicketController {
     }
 
     @PutMapping("/review-reject")
-    @Operation(summary = "验收驳回（提单人，状态 2→1 退回执行人重做）")
+    @Operation(summary = "项目经理验收驳回（状态 2→1 退回执行人重做）")
     @PreAuthorize("@ss.hasPermission('ticket:ticket:close')")
     public CommonResult<Boolean> reviewRejectTicket(@Valid @RequestBody TicketReviewRejectReqVO reqVO) {
         ticketService.reviewRejectTicket(reqVO);
@@ -208,7 +244,7 @@ public class TicketController {
     }
 
     @PutMapping("/resubmit")
-    @Operation(summary = "重新提交（提单人，状态 6→0）")
+    @Operation(summary = "重新提交（提单人，状态 6→7）")
     @Parameter(name = "id", description = "工单 ID", required = true)
     @PreAuthorize("@ss.hasPermission('ticket:ticket:update')")
     public CommonResult<Boolean> resubmitTicket(@RequestParam("id") Long id) {

@@ -31,6 +31,10 @@ public final class TicketStateMachine {
     private static final Map<TicketActionEnum, Map<Integer, Integer>> TRANSITIONS = new HashMap<>();
 
     static {
+        // 项目经理确认：7 → 0；退回：7 → 6。
+        put(TicketActionEnum.PM_REVIEW_PASS, TicketStatusEnum.PENDING_PM_REVIEW, TicketStatusEnum.PENDING);
+        put(TicketActionEnum.PM_REVIEW_REJECT, TicketStatusEnum.PENDING_PM_REVIEW, TicketStatusEnum.RETURNED);
+
         // assign：仅在 0 待处理 时允许，目标仍为 0（只改 assignee_id 不改状态）
         put(TicketActionEnum.ASSIGN, TicketStatusEnum.PENDING, TicketStatusEnum.PENDING);
 
@@ -40,8 +44,12 @@ public final class TicketStateMachine {
         // start：0 → 1（处理人接单）
         put(TicketActionEnum.START, TicketStatusEnum.PENDING, TicketStatusEnum.IN_PROGRESS);
 
-        // submit_review：1 → 2（与 finish 等价，保留兼容）
-        put(TicketActionEnum.SUBMIT_REVIEW, TicketStatusEnum.IN_PROGRESS, TicketStatusEnum.PENDING_REVIEW);
+        // 主执行人提交交付：1 → 8，必须先经过技术审核。
+        put(TicketActionEnum.SUBMIT_REVIEW, TicketStatusEnum.IN_PROGRESS, TicketStatusEnum.PENDING_TECH_REVIEW);
+
+        // 技术审核：8 → 2；驳回：8 → 1。
+        put(TicketActionEnum.TECH_REVIEW_PASS, TicketStatusEnum.PENDING_TECH_REVIEW, TicketStatusEnum.PENDING_REVIEW);
+        put(TicketActionEnum.TECH_REVIEW_REJECT, TicketStatusEnum.PENDING_TECH_REVIEW, TicketStatusEnum.IN_PROGRESS);
 
         // review_pass：2 → 3（提单人验收通过）
         put(TicketActionEnum.REVIEW_PASS, TicketStatusEnum.PENDING_REVIEW, TicketStatusEnum.COMPLETED);
@@ -49,8 +57,8 @@ public final class TicketStateMachine {
         // review_reject：2 → 1（提单人驳回，退回原执行人重做）
         put(TicketActionEnum.REVIEW_REJECT, TicketStatusEnum.PENDING_REVIEW, TicketStatusEnum.IN_PROGRESS);
 
-        // finish：1 → 2（执行人提交结果后进入待验收，由提单人 review_pass/review_reject 闭环）
-        put(TicketActionEnum.FINISH, TicketStatusEnum.IN_PROGRESS, TicketStatusEnum.PENDING_REVIEW);
+        // finish：1 → 8（执行人提交交付后先进入技术审核）。
+        put(TicketActionEnum.FINISH, TicketStatusEnum.IN_PROGRESS, TicketStatusEnum.PENDING_TECH_REVIEW);
 
         // close：3 → 4
         put(TicketActionEnum.CLOSE, TicketStatusEnum.COMPLETED, TicketStatusEnum.CLOSED);
@@ -62,17 +70,19 @@ public final class TicketStateMachine {
         // return：0 → 6（部门负责人拒单退回提单人）
         put(TicketActionEnum.RETURN, TicketStatusEnum.PENDING, TicketStatusEnum.RETURNED);
 
-        // resubmit：6 → 0（提单人修改后重新提交）
-        put(TicketActionEnum.RESUBMIT, TicketStatusEnum.RETURNED, TicketStatusEnum.PENDING);
+        // resubmit：6 → 7（退回修改后必须重新经过项目经理确认）。
+        put(TicketActionEnum.RESUBMIT, TicketStatusEnum.RETURNED, TicketStatusEnum.PENDING_PM_REVIEW);
 
         // cancel：0 → 5（待处理直接取消）；6 → 5（已退回放弃）
         put(TicketActionEnum.CANCEL, TicketStatusEnum.PENDING, TicketStatusEnum.CANCELLED);
         put(TicketActionEnum.CANCEL, TicketStatusEnum.RETURNED, TicketStatusEnum.CANCELLED);
+        put(TicketActionEnum.CANCEL, TicketStatusEnum.PENDING_PM_REVIEW, TicketStatusEnum.CANCELLED);
 
         // transfer：0/1/2 任意非终态状态都允许，状态不变（只改 assignee_id）
         put(TicketActionEnum.TRANSFER, TicketStatusEnum.PENDING, TicketStatusEnum.PENDING);
         put(TicketActionEnum.TRANSFER, TicketStatusEnum.IN_PROGRESS, TicketStatusEnum.IN_PROGRESS);
         put(TicketActionEnum.TRANSFER, TicketStatusEnum.PENDING_REVIEW, TicketStatusEnum.PENDING_REVIEW);
+        put(TicketActionEnum.TRANSFER, TicketStatusEnum.PENDING_TECH_REVIEW, TicketStatusEnum.PENDING_TECH_REVIEW);
 
         // comment：任意状态都允许，状态不变（不在本工具内强校验，由 Service 决定）
     }

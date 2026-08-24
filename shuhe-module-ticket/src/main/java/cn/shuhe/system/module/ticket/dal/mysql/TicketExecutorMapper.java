@@ -52,6 +52,16 @@ public interface TicketExecutorMapper extends BaseMapperX<TicketExecutorDO> {
                 .eq(TicketExecutorDO::getUserId, userId)) > 0;
     }
 
+    default boolean existsByTicketIdAndUserIdAndRole(Long ticketId, Long userId, String roleType) {
+        if (ticketId == null || userId == null || roleType == null) {
+            return false;
+        }
+        return selectCount(new LambdaQueryWrapperX<TicketExecutorDO>()
+                .eq(TicketExecutorDO::getTicketId, ticketId)
+                .eq(TicketExecutorDO::getUserId, userId)
+                .eq(TicketExecutorDO::getRoleType, roleType)) > 0;
+    }
+
     /**
      * 同步一张工单的全部执行人状态。工单级「提交交付」视为整个执行组已完成；
      * 驳回或重开后则整组恢复为执行中。
@@ -59,7 +69,15 @@ public interface TicketExecutorMapper extends BaseMapperX<TicketExecutorDO> {
     default void updateStatusByTicketId(Long ticketId, Integer status) {
         update(null, new LambdaUpdateWrapper<TicketExecutorDO>()
                 .eq(TicketExecutorDO::getTicketId, ticketId)
+                .ne(TicketExecutorDO::getRoleType, TicketExecutorDO.ROLE_TECH_REVIEWER)
                 .set(TicketExecutorDO::getStatus, status));
+    }
+
+    default void updateTaskStatusByTicketIdAndRole(Long ticketId, String roleType, String taskStatus) {
+        update(null, new LambdaUpdateWrapper<TicketExecutorDO>()
+                .eq(TicketExecutorDO::getTicketId, ticketId)
+                .eq(TicketExecutorDO::getRoleType, roleType)
+                .set(TicketExecutorDO::getTaskStatus, taskStatus));
     }
 
     /**

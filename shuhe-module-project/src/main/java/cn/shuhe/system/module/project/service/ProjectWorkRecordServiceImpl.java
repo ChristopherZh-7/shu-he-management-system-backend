@@ -13,6 +13,7 @@ import cn.shuhe.system.module.project.dal.dataobject.SecurityOperationContractDO
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.mysql.ProjectMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMapper;
+import cn.shuhe.system.module.project.dal.mysql.ProjectRoundMemberMapper;
 import cn.shuhe.system.module.project.dal.mysql.ProjectWorkRecordMapper;
 import cn.shuhe.system.module.project.dal.mysql.SecurityOperationContractMapper;
 import cn.shuhe.system.module.project.dal.mysql.ServiceItemMapper;
@@ -22,6 +23,7 @@ import cn.shuhe.system.module.system.api.user.AdminUserApi;
 import cn.shuhe.system.module.system.api.user.dto.AdminUserRespDTO;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketDO;
 import cn.shuhe.system.module.ticket.dal.mysql.TicketMapper;
+import cn.shuhe.system.module.ticket.dal.mysql.TicketExecutorMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -55,7 +57,13 @@ public class ProjectWorkRecordServiceImpl implements ProjectWorkRecordService {
     private ProjectRoundMapper projectRoundMapper;
 
     @Resource
+    private ProjectRoundMemberMapper projectRoundMemberMapper;
+
+    @Resource
     private TicketMapper ticketMapper;
+
+    @Resource
+    private TicketExecutorMapper ticketExecutorMapper;
 
     @Resource
     @org.springframework.context.annotation.Lazy
@@ -208,12 +216,14 @@ public class ProjectWorkRecordServiceImpl implements ProjectWorkRecordService {
         } else if (ProjectWorkRecordDO.SOURCE_ROUND.equals(sourceType) && record.getSourceId() != null) {
             ProjectRoundDO round = projectRoundMapper.selectById(record.getSourceId());
             if (round != null) {
+                validateRoundWorkRecordMembership(round.getId());
                 record.setSourceName(round.getName());
                 record.setVerificationStatus(ProjectWorkRecordDO.VERIFICATION_LINKED);
             }
         } else if (ProjectWorkRecordDO.SOURCE_TICKET.equals(sourceType) && record.getSourceId() != null) {
             TicketDO ticket = ticketMapper.selectById(record.getSourceId());
             if (ticket != null) {
+                validateTicketWorkRecordMembership(ticket);
                 String ticketName = ticket.getTicketNo();
                 if (ticket.getTitle() != null && !ticket.getTitle().isBlank()) {
                     ticketName = ticketName + " " + ticket.getTitle();
@@ -226,6 +236,28 @@ public class ProjectWorkRecordServiceImpl implements ProjectWorkRecordService {
         }
         if (record.getCompletionPercent() == null) {
             record.setCompletionPercent(100);
+        }
+    }
+
+    private void validateRoundWorkRecordMembership(Long roundId) {
+        Long userId = getLoginUserId();
+        if (!projectRoundMemberMapper.existsByRoundIdAndUserId(roundId, userId)) {
+            throw cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception(
+                    cn.shuhe.system.framework.common.exception.enums.GlobalErrorCodeConstants.FORBIDDEN);
+        }
+    }
+
+    private void validateTicketWorkRecordMembership(TicketDO ticket) {
+        Long userId = getLoginUserId();
+        boolean related = Objects.equals(ticket.getCreatorId(), userId)
+                || Objects.equals(ticket.getProjectManagerId(), userId)
+                || Objects.equals(ticket.getAssigneeId(), userId)
+                || Objects.equals(ticket.getPrimaryExecutorId(), userId)
+                || Objects.equals(ticket.getTechReviewerId(), userId)
+                || ticketExecutorMapper.existsByTicketIdAndUserId(ticket.getId(), userId);
+        if (!related) {
+            throw cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception(
+                    cn.shuhe.system.framework.common.exception.enums.GlobalErrorCodeConstants.FORBIDDEN);
         }
     }
 

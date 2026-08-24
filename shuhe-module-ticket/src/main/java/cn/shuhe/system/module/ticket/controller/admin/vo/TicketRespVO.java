@@ -44,7 +44,7 @@ public class TicketRespVO {
     @Schema(description = "BPM 流程实例 ID")
     private String processInstanceId;
 
-    @Schema(description = "状态码 0~6")
+    @Schema(description = "状态码：0待派工 1执行中 2待项目验收 3已完成 4已关闭 5已取消 6已退回 7待项目确认 8待技术审核")
     private Integer status;
 
     @Schema(description = "状态中文（展开）")
@@ -58,6 +58,27 @@ public class TicketRespVO {
 
     @Schema(description = "提单人姓名快照")
     private String creatorName;
+
+    @Schema(description = "项目经理 ID")
+    private Long projectManagerId;
+
+    @Schema(description = "项目经理姓名快照")
+    private String projectManagerName;
+
+    @Schema(description = "主执行人 ID")
+    private Long primaryExecutorId;
+
+    @Schema(description = "主执行人姓名快照")
+    private String primaryExecutorName;
+
+    @Schema(description = "技术审核人 ID")
+    private Long techReviewerId;
+
+    @Schema(description = "技术审核人姓名快照")
+    private String techReviewerName;
+
+    @Schema(description = "服务场景（penetration_test / vulnerability_scan / incident_response 等）")
+    private String serviceScene;
 
     @Schema(description = "处理人 ID")
     private Long assigneeId;
@@ -73,6 +94,9 @@ public class TicketRespVO {
 
     @Schema(description = "实际执行人姓名列表（详情查询返回）")
     private List<String> executorNames;
+
+    @Schema(description = "角色、责任边界与任务状态")
+    private List<TicketParticipantRespVO> participants;
 
     @Schema(description = "归属部门 ID")
     private Long deptId;

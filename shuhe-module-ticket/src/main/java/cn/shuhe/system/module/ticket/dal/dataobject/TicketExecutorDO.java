@@ -51,10 +51,19 @@ public class TicketExecutorDO extends BaseDO {
      */
     private Long userDeptId;
 
+    /** primary_executor / collaborator / tech_reviewer。 */
+    private String roleType;
+
+    /** 本人在本工单中的负责内容。 */
+    private String responsibility;
+
     /**
      * 状态：0=执行中 / 1=已完成 / 2=已退出。
      */
     private Integer status;
+
+    /** pending / working / submitted / completed / exited。 */
+    private String taskStatus;
 
     /**
      * 分派人（接单的主管）ID。
@@ -65,5 +74,9 @@ public class TicketExecutorDO extends BaseDO {
      * 分派备注。
      */
     private String remark;
+
+    public static final String ROLE_PRIMARY_EXECUTOR = "primary_executor";
+    public static final String ROLE_COLLABORATOR = "collaborator";
+    public static final String ROLE_TECH_REVIEWER = "tech_reviewer";
 
 }

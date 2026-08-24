@@ -148,6 +148,8 @@ public class ProjectTicketServiceContextResolver implements TicketServiceContext
                 .projectId(project.getId())
                 .projectCode(project.getCode())
                 .projectName(project.getName())
+                .projectManagerId(first(project.getManagerIds()))
+                .projectManagerName(first(project.getManagerNames()))
                 .responsibleDeptId(responsibleDeptId)
                 .responsibleDeptName(responsibleDeptName)
                 .customerId(item.getCustomerId() != null ? item.getCustomerId() : project.getCustomerId())
@@ -157,6 +159,10 @@ public class ProjectTicketServiceContextResolver implements TicketServiceContext
                 .sourceType(contractId == null ? "approved_early_investment" : "signed_contract")
                 .remainingCount(serviceItemService.getRemainingCount(item.getId()))
                 .build();
+    }
+
+    private <T> T first(List<T> values) {
+        return values == null || values.isEmpty() ? null : values.get(0);
     }
 
     private Long resolveResponsibleDeptId(ServiceItemDO item, ProjectDeptServiceDO deptService) {

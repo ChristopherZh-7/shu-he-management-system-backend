@@ -103,6 +103,12 @@ public class TicketDO extends BaseDO {
      */
     private String creatorName;
 
+    /** 项目经理/业务负责人 ID（创建工单时从项目负责人快照固化）。 */
+    private Long projectManagerId;
+
+    /** 项目经理姓名快照。 */
+    private String projectManagerName;
+
     /**
      * 当前处理人 ID。
      */
@@ -117,6 +123,18 @@ public class TicketDO extends BaseDO {
      * 处理人部门 ID（冗余存储，避免反复查询）。
      */
     private Long assigneeDeptId;
+
+    /** 主执行人 ID。 */
+    private Long primaryExecutorId;
+
+    /** 主执行人姓名快照。 */
+    private String primaryExecutorName;
+
+    /** 技术审核人 ID。 */
+    private Long techReviewerId;
+
+    /** 技术审核人姓名快照。 */
+    private String techReviewerName;
 
     /**
      * 工单归属部门 ID（{@code DeptDataPermissionRule} 自动过滤字段）。
@@ -197,6 +215,9 @@ public class TicketDO extends BaseDO {
      * 关联客户 ID（可选）。
      */
     private Long customerId;
+
+    /** 服务场景，如 penetration_test / vuln_scan / incident。 */
+    private String serviceScene;
 
     /**
      * 扩展字段（JSON）。

@@ -22,7 +22,9 @@ public enum TicketStatusEnum implements ArrayValuable<Integer> {
     COMPLETED(3, "已验收"),
     CLOSED(4, "已关闭"),
     CANCELLED(5, "已取消"),
-    RETURNED(6, "已退回");
+    RETURNED(6, "已退回"),
+    PENDING_PM_REVIEW(7, "待项目经理确认"),
+    PENDING_TECH_REVIEW(8, "待技术审核");
 
     public static final Integer[] ARRAYS = Arrays.stream(values()).map(TicketStatusEnum::getStatus).toArray(Integer[]::new);
 
