@@ -25,6 +25,9 @@ import java.util.Map;
 @AllArgsConstructor
 public class TicketAcceptedEvent implements Serializable {
 
+    /** Explicit confirmation supplied only by the authenticated approver. */
+    private Boolean golishAuthorizationApproved;
+
     private static final long serialVersionUID = 1L;
 
     /** 工单 ID。 */

@@ -306,6 +306,29 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
     // ========== acceptTicket（主管接单 · 多执行人 · 发事件） ==========
 
     @Test
+    void acceptAutomaticTicketRejectsStaleOrUnconfirmedApprovalBeforeWriting() {
+        long me = 500L;
+        TicketDO ticket = makeTicket(1L,100L,null,TicketStatusEnum.PENDING.getStatus());
+        ticket.setDeptId(9L);
+        ticket.setExtJson(java.util.Map.of("golish", java.util.Map.of("enabled",true,"validUntil","2026-12-01T00:00:00Z")));
+        try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
+            sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
+            when(ticketMapper.selectById(1L)).thenReturn(ticket);
+            when(permissionApi.hasAnyRoles(me,"super_admin")).thenReturn(true);
+            TicketAcceptReqVO request = new TicketAcceptReqVO();
+            request.setId(1L); request.setExecutorIds(List.of(me));
+            var unconfirmed = org.junit.jupiter.api.Assertions.assertThrows(cn.shuhe.system.framework.common.exception.ServiceException.class, () -> ticketService.acceptTicket(request));
+            assertTrue(unconfirmed.getMessage().contains("自动测试申请"));
+            request.setGolishAuthorizationApproved(true);
+            request.setGolishAuthorizationSnapshot(java.util.Map.of("enabled",true,"validUntil","changed"));
+            var stale = org.junit.jupiter.api.Assertions.assertThrows(cn.shuhe.system.framework.common.exception.ServiceException.class, () -> ticketService.acceptTicket(request));
+            assertTrue(stale.getMessage().contains("自动测试申请"));
+            verify(ticketMapper, never()).updateById(any(TicketDO.class));
+            verify(eventPublisher, never()).publishEvent(any());
+        }
+    }
+
+    @Test
     void acceptTicket_success_publishesEventAndWritesExecutors() {
         long me = 500L, deptId = 9L;
         TicketDO ticket = makeTicket(1L, 100L, null, TicketStatusEnum.PENDING.getStatus());

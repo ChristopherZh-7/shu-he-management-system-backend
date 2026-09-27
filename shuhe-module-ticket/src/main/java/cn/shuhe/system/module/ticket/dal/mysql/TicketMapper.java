@@ -5,6 +5,8 @@ import cn.shuhe.system.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.shuhe.system.module.ticket.dal.dataobject.TicketDO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -17,6 +19,11 @@ import java.util.List;
  */
 @Mapper
 public interface TicketMapper extends BaseMapperX<TicketDO> {
+
+    // Acquire before reading the approval snapshot. update_time may only have
+    // second precision, so timestamp comparisons cannot serialize concurrent edits.
+    @Select("SELECT id FROM shuhe_ticket WHERE id = #{id} FOR UPDATE")
+    Long lockById(@Param("id") Long id);
 
     /**
      * 按工单编号唯一查找。

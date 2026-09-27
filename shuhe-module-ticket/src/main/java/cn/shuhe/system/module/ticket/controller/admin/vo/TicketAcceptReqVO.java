@@ -18,6 +18,12 @@ import java.util.List;
 @Data
 public class TicketAcceptReqVO {
 
+    @Schema(description = "已核对授权文件、有效期和网站范围，批准 GolishAI 自动测试")
+    private Boolean golishAuthorizationApproved;
+
+    @Schema(description = "审批页面核对过的自动测试申请快照，内容变化时拒绝审批")
+    private java.util.Map<String, Object> golishAuthorizationSnapshot;
+
     @Schema(description = "工单 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1024")
     @NotNull(message = "工单 ID 不能为空")
     private Long id;

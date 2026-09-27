@@ -38,6 +38,9 @@ import java.util.Objects;
 @Slf4j
 public class ServiceLaunchTicketEventListener {
 
+    @Resource
+    private cn.shuhe.system.module.project.service.golish.GolishApprovalService golishApprovalService;
+
     // ext_json 字段名约定（与前端 assembleSaveReq 保持一致）
     private static final String EXT_PROJECT_ID = "projectId";
     private static final String EXT_DEPT_TYPE = "deptType";
@@ -82,6 +85,10 @@ public class ServiceLaunchTicketEventListener {
 
         // 2. 走「审批通过」路径：写执行人 + 创建 round + 回写 round_id（+ 跨部门成本 / 外出记录）
         Long roundId = serviceLaunchService.handleApproved(launchId, event.getExecutorIds());
+
+        // Persist the immutable delivery in the same transaction. Network I/O is
+        // performed by the background worker only after this transaction commits.
+        golishApprovalService.enqueueApproved(event, req.getServiceItemId(), roundId);
         log.info("【工单接单·服务派遣】已 handleApproved，launchId={} roundId={} executors={}",
                 launchId, roundId, event.getExecutorIds());
 

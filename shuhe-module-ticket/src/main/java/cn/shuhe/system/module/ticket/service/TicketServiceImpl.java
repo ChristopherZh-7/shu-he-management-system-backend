@@ -202,6 +202,7 @@ public class TicketServiceImpl implements TicketService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateTicket(TicketSaveReqVO updateReqVO) {
+        ticketMapper.lockById(updateReqVO.getId());
         TicketDO existing = mustExist(updateReqVO.getId());
         Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
         // 仅提单人本人 / 超管可改，且必须 status=0 待处理 或 status=6 已退回（退回后修改再重提）
@@ -227,13 +228,27 @@ public class TicketServiceImpl implements TicketService {
         update.setCustomerId(updateReqVO.getCustomerId());
         update.setExtJson(updateReqVO.getExtJson());
         update.setRemark(updateReqVO.getRemark());
-        ticketMapper.updateById(update);
+        if (hasGolish(existing.getExtJson()) || hasGolish(updateReqVO.getExtJson())) {
+            if (ticketMapper.update(update, new LambdaUpdateWrapper<TicketDO>()
+                    .eq(TicketDO::getId, existing.getId()).eq(TicketDO::getStatus, existing.getStatus())
+                    .eq(existing.getUpdateTime() != null, TicketDO::getUpdateTime, existing.getUpdateTime())) != 1) {
+                throw exception(TICKET_DRIVER_FAILED, "工单已被审批或修改，请刷新后重试");
+            }
+        } else ticketMapper.updateById(update);
+    }
+
+    private static boolean hasGolish(Map<String, Object> ext) {
+        return ext != null && ext.get("golish") instanceof Map<?, ?> request && Boolean.TRUE.equals(request.get("enabled"));
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteTicket(Long id) {
+        ticketMapper.lockById(id);
         TicketDO existing = mustExist(id);
+        if (hasGolish(existing.getExtJson()) && existing.getBusinessId() != null) {
+            throw exception(TICKET_DRIVER_FAILED, "已审批的自动测试工单需保留授权和结果关联，不能删除");
+        }
         Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
         if (!isSuperAdmin(currentUserId)) {
             throw exception(TICKET_NO_PERMISSION);
@@ -380,11 +395,20 @@ public class TicketServiceImpl implements TicketService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void acceptTicket(TicketAcceptReqVO reqVO) {
+        ticketMapper.lockById(reqVO.getId());
         TicketDO ticket = mustExist(reqVO.getId());
         Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
 
         // 1. 鉴权：必须是 ticket.dept_id 的部门负责人（或 super_admin）
         ensureDeptLeaderOrAdmin(ticket.getDeptId(), currentUserId);
+
+        Object automation = ticket.getExtJson() == null ? null : ticket.getExtJson().get("golish");
+        boolean automatic = hasGolish(ticket.getExtJson());
+        if (automation instanceof Map<?, ?> request && Boolean.TRUE.equals(request.get("enabled"))) {
+            if (!Boolean.TRUE.equals(reqVO.getGolishAuthorizationApproved()) || !request.equals(reqVO.getGolishAuthorizationSnapshot())) {
+                throw exception(TICKET_DRIVER_FAILED, "自动测试申请已变化或尚未核对授权，请刷新审批页面后确认");
+            }
+        }
 
         // 2. 状态机校验 0 → 1
         Integer toStatus = TicketStateMachine.checkTransition(ticket.getStatus(), TicketActionEnum.ACCEPT);
@@ -431,7 +455,13 @@ public class TicketServiceImpl implements TicketService {
         update.setAssigneeDeptId(acceptor.getDeptId());
         update.setStatus(toStatus);
         update.setFirstResponseTime(LocalDateTime.now());
-        ticketMapper.updateById(update);
+        if (automatic) {
+            if (ticketMapper.update(update, new LambdaUpdateWrapper<TicketDO>()
+                    .eq(TicketDO::getId, ticket.getId()).eq(TicketDO::getStatus, ticket.getStatus())
+                    .eq(ticket.getUpdateTime() != null, TicketDO::getUpdateTime, ticket.getUpdateTime())) != 1) {
+                throw exception(TICKET_DRIVER_FAILED, "工单已被审批或修改，请刷新后重新核对授权");
+            }
+        } else ticketMapper.updateById(update);
 
         // 6. 写执行人表（按顺序 insert；唯一索引兜底）
         for (Long executorId : executorIds) {
@@ -467,6 +497,7 @@ public class TicketServiceImpl implements TicketService {
 
         // 8. 发事件供业务驱动器消费（同步发布；异常会回滚事务）
         TicketAcceptedEvent event = TicketAcceptedEvent.builder()
+                .golishAuthorizationApproved(reqVO.getGolishAuthorizationApproved())
                 .ticketId(ticket.getId())
                 .ticketNo(ticket.getTicketNo())
                 .title(ticket.getTitle())
@@ -498,6 +529,10 @@ public class TicketServiceImpl implements TicketService {
     @Transactional(rollbackFor = Exception.class)
     public void startTicket(Long id) {
         TicketDO ticket = mustExist(id);
+
+        if (ticket.getExtJson() != null && ticket.getExtJson().get("golish") instanceof Map<?, ?> request && Boolean.TRUE.equals(request.get("enabled"))) {
+            throw exception(TICKET_DRIVER_FAILED, "自动测试工单须由主管核对授权后接单审批");
+        }
         Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
         if (!Objects.equals(ticket.getAssigneeId(), currentUserId)) {
             throw exception(TICKET_NOT_ASSIGNEE);
@@ -704,6 +739,7 @@ public class TicketServiceImpl implements TicketService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void cancelTicket(Long id) {
+        ticketMapper.lockById(id);
         TicketDO ticket = mustExist(id);
         Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
         if (!Objects.equals(ticket.getCreatorId(), currentUserId)
