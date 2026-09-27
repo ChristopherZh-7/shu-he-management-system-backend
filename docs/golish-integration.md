@@ -52,3 +52,13 @@ mvn -pl shuhe-module-project -am test -Dtest=GolishIntegrationTest,TicketService
 Windows 若 Microsoft JDK 的本机 HTTP 测试报 Unix domain socket `Invalid argument`，可仅给该次 Maven 测试添加 `-DargLine=-Djdk.net.unixdomain.tmpdir=<不存在的临时目录>`，使 JDK 的本机 selector 管道回退至 TCP；不修改系统设置。
 
 基线 `ca61aa3` 的 `TicketServiceImplTest` 有 7 个既有失败（部门负责人/执行人测试和一个 Mockito 多余桩），在独立未修改工作区复现。本次专项测试不将这些既有失败计为通过。
+
+### 2026-09-27 实际本地部署
+
+已用完整 Spring Boot 服务、MySQL 8、Redis 和实际前端页面联调，GolishAI 一侧为真实 Go 服务与 DSH Harness。申请人 `localrequester` 在页面提交工单 `TK20260927001`，主管 `localadmin` 审批后创建轮次 5，后台发送 `ticket-4:round-5`，自动同步单位、范围、资产和授权原件，并创建 Core 项目 `f94744dc-a775-43e6-8fbc-6fd7924163f5`。
+
+重放仍只有同一个项目；534 字节授权原件在两端及下载后摘要一致。申请人可查看本人工单进度、下载本工单原件，调用主管重试接口返回 403。数据库只使用表结构、菜单、字典和本次生成的虚构业务数据；Flowable 空库使用引擎自动建表。已有工单菜单及 review loop 迁移也已执行。
+
+真实模型 `deepseek-official/deepseek-flash` 首次调用返回 `QUOTA`；同一账户的余额接口返回 `is_available=false`，项目已暂停。这次尚未完成模型对本地靶站的测试，不能据此声称漏洞测试或报告交付已经验收。GolishAI 现在回传 `model_quota_exhausted`，Shuhe 页面显示额度不足及继续执行入口说明。
+
+本机页面：Shuhe `http://127.0.0.1:5666/ticket/detail/4`，GolishAI `http://127.0.0.1:3222/agent-pentest?project=f94744dc-a775-43e6-8fbc-6fd7924163f5`。配置、数据库 Compose、启动 PID 和账号密码保存在本地忽略的 `.golish-local/`；凭据不提交。完整端口及 GolishAI 启动参数见其内部工作区 `docs/shuhe-local-acceptance.md`。
