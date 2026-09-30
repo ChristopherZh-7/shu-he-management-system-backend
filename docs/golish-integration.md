@@ -36,7 +36,33 @@
 python3 scripts/golish-integration/local-web.py --dist ../frontend/apps/web-antd/dist
 ```
 
-管理已配置的本机服务（脚本只操作所属 PID，不初始化或删除数据库）：
+### 一个入口同时启动管理平台与 Golish
+
+以后从后端仓库使用下面的统一入口启动管理平台，就会连同 Golish 无头 API、原生 Harness、MySQL 和 Redis 一起启动。顺序为 **MySQL → Redis → Golish API → Harness → 工单后端 → 管理平台前端**，每一步等待就绪后才继续。Harness 初始化需要从 Golish API 读取模型配置，因此 API 必须在前。
+
+```sh
+python3 scripts/golish-integration/local-services.py start all \
+  --runtime ../.runtime \
+  --golish-repo /path/to/GolishAI
+```
+
+完成后访问 `http://127.0.0.1:5668/`。这是一套服务的统一启动入口；单独打开浏览器标签页或启动 Java 后端不会触发其他进程。关闭浏览器也不会关闭服务，需要使用下面的 `stop all`。
+
+脚本复用已经运行且身份匹配的服务，不重复启动；全部服务的文件、配置和端口预检通过后才开始启动。Golish API 使用带鉴权的能力接口检查，Harness 检查原生就绪状态，工单后端检查健康状态，前端检查 HTTP 响应。单个服务默认最多等待 240 秒，可用 `--ready-timeout` 调整。启动失败或 Ctrl+C 会按相反顺序回收本次新增进程，保留启动前已有的服务。某个服务无法停止时，停止继续回收它的依赖，不强制杀进程。
+
+统一管理命令如下；`check` 只做预检，不启动服务，`status` 只查看进程与端口。`stop all` 按依赖顺序逆序关闭这套隔离环境，保留数据库、报告和配置，Redis 正常停止时保存数据。
+
+```sh
+python3 scripts/golish-integration/local-services.py check all --runtime ../.runtime --golish-repo /path/to/GolishAI
+python3 scripts/golish-integration/local-services.py status all --runtime ../.runtime --golish-repo /path/to/GolishAI
+python3 scripts/golish-integration/local-services.py stop all --runtime ../.runtime --golish-repo /path/to/GolishAI
+```
+
+前提是已经完成本节的隔离部署：数据库已初始化并应用迁移、Java/前端/Golish 已构建、Harness 的 Node 依赖已安装、私有配置及模型已配置。入口不负责初始化数据库、迁移、构建或安装依赖，默认使用本机 Homebrew 的 Java 17、MySQL 8.4 和 Redis；可通过 `--java-home`、`--mysql-bin`、`--redis-bin`、`--redis-cli` 指定路径。它只管理指定 `.runtime` 的 PID 和固定联调端口；发现外部进程占用时会报错，不接管该进程。此入口面向已配置的 macOS 本机环境，服务器部署仍需按目标环境配置服务管理及网络。
+
+正常启动不包含合成扫描站点；需要重复本机扫描验收时显式加 `--with-fixture`。启动不会新建扫描工单，已获审批且未完成的持久化任务会继续处理。初测报告返回后仍需整改、批准复测和人工验收，统一启动不改变工单状态规则。两边的数据库仍各自独立。
+
+排查某个服务时，也可以使用同一入口单独管理组件：
 
 ```sh
 python3 scripts/golish-integration/local-services.py status shuhe-backend --runtime ../.runtime
@@ -45,6 +71,12 @@ python3 scripts/golish-integration/local-services.py start golish-api --runtime 
 ```
 
 合成站点：`fixture-target.py --repair-flag ../.runtime/fixture-repaired`。标记文件不存在时，公开 `/debug/config` 返回明确标记为合成数据的配置；创建标记文件后返回 403，对所有响应增加安全头，并统一 Server 标识和错误响应，正常根页面和健康接口仍可访问。它没有真实凭据、数据库或出站访问。修复前后分别执行真正的模型测试和原生修复复测，不能向结果表填入模拟“通过”。
+
+统一入口的回归检查使用临时数据目录和随机回环端口，不启动上述正式联调实例：
+
+```sh
+python3 -B -m unittest discover -s scripts/golish-integration -p 'test_local_services.py' -v
+```
 
 验收应检查：审批前没有任务、审批后只产生一个任务；初测报告可下载且工单保持处理中；手动完成被拒绝；修复后复测保存新证据；全部修复才进入待验收；人工验收和关闭可继续进行。生产部署、跨主机网络、真实客户资产、大规模并发和灾备恢复需另行验收。
 
