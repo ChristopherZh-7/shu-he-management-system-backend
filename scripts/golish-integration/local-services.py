@@ -26,8 +26,9 @@ pid = int(pidfile.read_text()) if pidfile.exists() else None
 command = subprocess.run(['ps', '-p', str(pid or 0), '-o', 'command='], capture_output=True, text=True).stdout.strip()
 owned = command and (str(runtime) in command or str(backend) in command or (args.golish_repo and str(args.golish_repo.resolve()) in command))
 if args.action == 'status':
-    print(args.component, 'running' if owned else 'stopped', pid if owned else '')
-    sys.exit(0)
+    state = 'running' if owned else ('unrecognized process' if command else 'stopped')
+    print(args.component, state, pid if command else '')
+    sys.exit(1 if command and not owned else 0)
 if command and not owned:
     raise SystemExit('PID belongs to another process; refusing to signal or replace it')
 if owned and args.action in ['stop', 'restart']:
@@ -62,7 +63,7 @@ if args.component.startswith('golish-'):
         argv = [str(golish / 'build/bin/headless/golish'), 'serve', '--headless', '--skip-auto-setup', '--no-hot-reload', '--base-folder', str(runtime / 'golish')]
     else:
         cwd = golish / 'platform/golish-agent-harness'
-        argv = ['node', 'scripts/start.mjs']
+        argv = ['node', str(cwd / 'scripts/start.mjs')]
 elif args.component == 'shuhe-backend':
     artifact = backend / 'shuhe-server/target/shuhe-server.jar'
     release = runtime / 'releases' / ('shuhe-' + hashlib.sha256(artifact.read_bytes()).hexdigest()[:16] + '.jar')
