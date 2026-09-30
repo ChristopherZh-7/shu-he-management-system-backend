@@ -35,6 +35,9 @@ import cn.shuhe.system.module.ticket.enums.TicketBusinessTypeEnum;
 import cn.shuhe.system.module.ticket.enums.TicketSourceEnum;
 import cn.shuhe.system.module.ticket.enums.TicketStatusEnum;
 import cn.shuhe.system.module.ticket.framework.event.TicketAcceptedEvent;
+import cn.shuhe.system.module.ticket.framework.event.TicketSavingEvent;
+import cn.shuhe.system.module.ticket.framework.event.TicketFinishingEvent;
+import cn.shuhe.system.module.ticket.framework.event.TicketDeletingEvent;
 import cn.shuhe.system.module.ticket.framework.statemachine.TicketStateMachine;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import jakarta.annotation.Resource;
@@ -140,6 +143,8 @@ public class TicketServiceImpl implements TicketService {
             throw exception(TICKET_BUSINESS_TYPE_INVALID);
         }
 
+        eventPublisher.publishEvent(new TicketSavingEvent(businessType, createReqVO.getExtJson()));
+
         // 2. 校验分类（如果有指定）
         if (createReqVO.getCategoryId() != null) {
             TicketCategoryDO category = categoryMapper.selectById(createReqVO.getCategoryId());
@@ -214,6 +219,7 @@ public class TicketServiceImpl implements TicketService {
             throw exception(TICKET_STATUS_INVALID,
                     TicketStatusEnum.nameOf(existing.getStatus()), "修改基本信息");
         }
+        eventPublisher.publishEvent(new TicketSavingEvent(existing.getBusinessType(), updateReqVO.getExtJson()));
         // 仅允许改可编辑字段；assignee / status 由专用接口处理
         TicketDO update = new TicketDO();
         update.setId(existing.getId());
@@ -238,6 +244,7 @@ public class TicketServiceImpl implements TicketService {
         if (!isSuperAdmin(currentUserId)) {
             throw exception(TICKET_NO_PERMISSION);
         }
+        eventPublisher.publishEvent(new TicketDeletingEvent(existing.getId()));
         ticketMapper.deleteById(existing.getId());
     }
 
@@ -523,6 +530,7 @@ public class TicketServiceImpl implements TicketService {
                 && !isSuperAdmin(currentUserId)) {
             throw exception(TICKET_NOT_ASSIGNEE);
         }
+        eventPublisher.publishEvent(new TicketFinishingEvent(ticket.getId()));
         // 1 → 2 进入待验收；finishTime 推迟到验收通过时回写
         Integer toStatus = TicketStateMachine.checkTransition(ticket.getStatus(), TicketActionEnum.FINISH);
 
@@ -546,6 +554,7 @@ public class TicketServiceImpl implements TicketService {
         TicketDO ticket = mustExist(reqVO.getId());
         Long currentUserId = SecurityFrameworkUtils.getLoginUserId();
         ensureCreatorOrAdmin(ticket, currentUserId);
+        eventPublisher.publishEvent(new TicketFinishingEvent(ticket.getId()));
         Integer toStatus = TicketStateMachine.checkTransition(ticket.getStatus(), TicketActionEnum.REVIEW_PASS);
 
         AdminUserRespDTO reviewer = adminUserApi.getUser(currentUserId);
@@ -856,6 +865,15 @@ public class TicketServiceImpl implements TicketService {
             return ticket;
         }
         throw exception(TICKET_NO_PERMISSION);
+    }
+
+    @Override
+    public void validateTicketExecutionApproval(Long id, Long userId) {
+        TicketDO ticket = mustExist(id);
+        ensureDeptLeaderOrAdmin(ticket.getDeptId(), userId);
+        if (!TicketStatusEnum.IN_PROGRESS.getStatus().equals(ticket.getStatus())) {
+            throw exception(TICKET_STATUS_INVALID, TicketStatusEnum.nameOf(ticket.getStatus()), "批准复测");
+        }
     }
 
     // ========== Helpers ==========

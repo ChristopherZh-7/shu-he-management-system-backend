@@ -320,7 +320,8 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
             sec.when(SecurityFrameworkUtils::getLoginUserNickname).thenReturn("Manager");
             when(ticketMapper.selectById(eq(1L))).thenReturn(ticket);
-            when(deptApi.getDept(eq(deptId))).thenReturn(dept);
+            when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(dept.getLeaderUserId());
+            when(deptApi.getDeptListByLeaderUserId(eq(me))).thenReturn(List.of(dept));
             when(adminUserApi.getUserList(eq(Arrays.asList(201L, 202L))))
                     .thenReturn(Arrays.asList(e1, e2));
             when(adminUserApi.getUser(eq(me))).thenReturn(acceptor);
@@ -368,7 +369,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
             when(ticketMapper.selectById(eq(1L))).thenReturn(ticket);
-            when(deptApi.getDept(eq(deptId))).thenReturn(dept);
+            when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(dept.getLeaderUserId());
             when(permissionApi.hasAnyRoles(eq(me), eq("super_admin"))).thenReturn(false);
 
             TicketAcceptReqVO req = new TicketAcceptReqVO();
@@ -392,7 +393,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
             when(ticketMapper.selectById(eq(1L))).thenReturn(ticket);
-            when(deptApi.getDept(eq(deptId))).thenReturn(dept);
+            when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(dept.getLeaderUserId());
             when(adminUserApi.getUserList(eq(Arrays.asList(201L, 999L))))
                     .thenReturn(Collections.singletonList(e1));
 
@@ -415,7 +416,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
             when(ticketMapper.selectById(eq(1L))).thenReturn(ticket);
-            when(deptApi.getDept(eq(deptId))).thenReturn(dept);
+            when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(dept.getLeaderUserId());
 
             TicketAcceptReqVO req = new TicketAcceptReqVO();
             req.setId(1L);
@@ -435,7 +436,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         try (MockedStatic<SecurityFrameworkUtils> sec = mockStatic(SecurityFrameworkUtils.class)) {
             sec.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(me);
             when(ticketMapper.selectById(eq(1L))).thenReturn(ticket);
-            when(deptApi.getDept(eq(deptId))).thenReturn(dept);
+            when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(dept.getLeaderUserId());
 
             TicketAcceptReqVO req = new TicketAcceptReqVO();
             req.setId(1L);
@@ -535,7 +536,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         TicketDO ticket = makeTicket(1L, me, 200L, TicketStatusEnum.PENDING.getStatus());
         ticket.setDeptId(deptId);
         when(permissionApi.hasAnyRoles(eq(me), eq("super_admin"))).thenReturn(false);
-        when(deptApi.getDept(eq(deptId))).thenReturn(makeDept(deptId, 888L)); // 当前用户不是部门负责人
+        when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(888L); // 当前用户不是部门负责人
 
         List<String> actions = ticketService.calculateAvailableActions(ticket, me);
         assertTrue(actions.contains(TicketActionEnum.COMMENT.getAction()), "可评论");
@@ -552,7 +553,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         TicketDO ticket = makeTicket(1L, 100L, null, TicketStatusEnum.PENDING.getStatus());
         ticket.setDeptId(deptId);
         lenient().when(permissionApi.hasAnyRoles(eq(me), eq("super_admin"))).thenReturn(false);
-        when(deptApi.getDept(eq(deptId))).thenReturn(makeDept(deptId, me));
+        when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(me);
 
         List<String> actions = ticketService.calculateAvailableActions(ticket, me);
         assertTrue(actions.contains(TicketActionEnum.ACCEPT.getAction()), "部门负责人可接单");
@@ -564,7 +565,7 @@ class TicketServiceImplTest extends BaseMockitoUnitTest {
         TicketDO ticket = makeTicket(1L, 100L, me, TicketStatusEnum.IN_PROGRESS.getStatus());
         ticket.setDeptId(deptId);
         when(permissionApi.hasAnyRoles(eq(me), eq("super_admin"))).thenReturn(false);
-        lenient().when(deptApi.getDept(eq(deptId))).thenReturn(makeDept(deptId, 888L));
+        lenient().when(deptApi.findLeaderUserIdRecursively(eq(deptId))).thenReturn(888L);
 
         List<String> actions = ticketService.calculateAvailableActions(ticket, me);
         assertTrue(actions.contains(TicketActionEnum.FINISH.getAction()), "处理人可完成");

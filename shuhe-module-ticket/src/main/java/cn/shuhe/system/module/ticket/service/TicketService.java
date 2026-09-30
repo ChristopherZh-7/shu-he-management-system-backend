@@ -55,6 +55,9 @@ public interface TicketService {
      */
     void acceptTicket(@Valid TicketAcceptReqVO reqVO);
 
+    /** Reuse the department approval boundary for an explicit remediation retest. */
+    void validateTicketExecutionApproval(Long id, Long userId);
+
     /** 接单开始；status: 0 → 1。 */
     void startTicket(Long id);
 

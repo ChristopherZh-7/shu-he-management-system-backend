@@ -1,0 +1,11 @@
+# Load separately from the repository; inject secrets through the process environment.
+shuhe:
+  golish:
+    enabled: true
+    base-url: http://127.0.0.1:8116
+    api-key: ${SHUHE_GOLISH_API_KEY}
+    callback-secret: ${SHUHE_GOLISH_CALLBACK_SECRET}
+    storage-directory: ${SHUHE_GOLISH_REPORT_DIRECTORY}
+  bpm:
+    service-launch:
+      enabled: true

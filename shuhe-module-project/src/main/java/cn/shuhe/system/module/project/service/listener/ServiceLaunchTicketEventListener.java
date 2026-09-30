@@ -1,6 +1,7 @@
 package cn.shuhe.system.module.project.service.listener;
 
 import cn.hutool.json.JSONUtil;
+import cn.shuhe.system.module.project.golish.GolishIntegrationService;
 import cn.shuhe.system.module.project.controller.admin.vo.ServiceLaunchSaveReqVO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceItemDO;
 import cn.shuhe.system.module.project.dal.dataobject.ServiceLaunchDO;
@@ -50,6 +51,9 @@ public class ServiceLaunchTicketEventListener {
     private static final String EXT_PLAN_END_TIME = "planEndTime";
 
     @Resource
+    private GolishIntegrationService golish;
+
+    @Resource
     private ServiceLaunchService serviceLaunchService;
 
     @Resource
@@ -72,6 +76,7 @@ public class ServiceLaunchTicketEventListener {
                     "service_launch 类型工单 ext_json 为空，无法落 service_launch（ticketId=" + event.getTicketId() + ")");
         }
 
+        golish.lockApproval(event);
         ServiceLaunchSaveReqVO req = buildServiceLaunchReq(event, ext);
 
         // 1. 创建 service_launch（业务侧自带 isBpmServiceLaunchEnabled 开关；走该开关在 createServiceLaunch
@@ -90,6 +95,7 @@ public class ServiceLaunchTicketEventListener {
         ticketUpdate.setId(event.getTicketId());
         ticketUpdate.setBusinessId(launchId);
         ticketMapper.updateById(ticketUpdate);
+        golish.enqueue(event, roundId);
     }
 
     /**
