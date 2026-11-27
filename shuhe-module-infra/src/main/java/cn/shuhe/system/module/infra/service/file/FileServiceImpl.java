@@ -18,12 +18,14 @@ import cn.shuhe.system.module.infra.framework.file.core.utils.FileTypeUtils;
 import com.google.common.annotations.VisibleForTesting;
 import jakarta.annotation.Resource;
 import lombok.SneakyThrows;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
 import static cn.hutool.core.date.DatePattern.PURE_DATE_PATTERN;
 import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.shuhe.system.module.infra.enums.ErrorCodeConstants.FILE_DIRECT_UPLOAD_DISABLED;
 import static cn.shuhe.system.module.infra.enums.ErrorCodeConstants.FILE_NOT_EXISTS;
 
 /**
@@ -53,6 +55,9 @@ public class FileServiceImpl implements FileService {
 
     @Resource
     private FileMapper fileMapper;
+
+    @Value("${shuhe.infra.file.direct-upload-enabled:false}")
+    private boolean directUploadEnabled;
 
     @Override
     public PageResult<FileDO> getFilePage(FilePageReqVO pageReqVO) {
@@ -127,6 +132,7 @@ public class FileServiceImpl implements FileService {
     @Override
     @SneakyThrows
     public FilePresignedUrlRespVO presignPutUrl(String name, String directory) {
+        validateDirectUploadEnabled();
         // 1. 生成上传的 path，需要保证唯一
         String path = generateUploadPath(name, directory);
 
@@ -146,10 +152,17 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Long createFile(FileCreateReqVO createReqVO) {
+        validateDirectUploadEnabled();
         createReqVO.setUrl(HttpUtils.removeUrlQuery(createReqVO.getUrl())); // 目的：移除私有桶情况下，URL 的签名参数
         FileDO file = BeanUtils.toBean(createReqVO, FileDO.class);
         fileMapper.insert(file);
         return file.getId();
+    }
+
+    private void validateDirectUploadEnabled() {
+        if (!directUploadEnabled) {
+            throw exception(FILE_DIRECT_UPLOAD_DISABLED);
+        }
     }
 
     @Override

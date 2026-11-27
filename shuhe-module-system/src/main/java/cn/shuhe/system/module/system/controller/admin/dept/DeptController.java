@@ -81,6 +81,7 @@ public class DeptController {
 
     @GetMapping(value = {"/list-all-simple", "/simple-list"})
     @Operation(summary = "获取部门精简信息列表", description = "只包含被开启的部门，主要用于前端的下拉选项，不受数据权限限制")
+    @PreAuthorize("@ss.hasAnyPermissions('system:dept:query', 'system:dept:lookup')")
     public CommonResult<List<DeptSimpleRespVO>> getSimpleDeptList() {
         List<DeptDO> list = deptService.getDeptListForSimpleList(
                 new DeptListReqVO().setStatus(CommonStatusEnum.ENABLE.getStatus()));
@@ -91,6 +92,8 @@ public class DeptController {
 
     @GetMapping("/business-dept-list")
     @Operation(summary = "获取业务部门列表（商机用）", description = "过滤掉总经办、人事行政部及其子部门，用于商机补充部门分配")
+    @PreAuthorize("@ss.hasAnyPermissions('system:dept:query', 'system:dept:lookup', "
+            + "'crm:business:create', 'crm:business:update')")
     public CommonResult<List<DeptSimpleRespVO>> getBusinessDeptList() {
         List<DeptDO> allDepts = deptService.getDeptListForSimpleList(
                 new DeptListReqVO().setStatus(CommonStatusEnum.ENABLE.getStatus()));

@@ -31,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
+import static cn.shuhe.system.module.infra.framework.file.core.utils.FileTypeUtils.validateUpload;
 import static cn.shuhe.system.module.infra.framework.file.core.utils.FileTypeUtils.writeAttachment;
 
 @Tag(name = "管理后台 - 文件存储")
@@ -40,21 +41,26 @@ import static cn.shuhe.system.module.infra.framework.file.core.utils.FileTypeUti
 @Slf4j
 public class FileController {
 
+    private static final String UPLOAD_PERMISSION = "@ss.hasAnyPermissions('infra:file:upload', 'infra:file:delete')";
+
     @Resource
     private FileService fileService;
 
     @PostMapping("/upload")
+    @PreAuthorize(UPLOAD_PERMISSION)
     @Operation(summary = "上传文件", description = "模式一：后端上传文件")
     @Parameter(name = "file", description = "文件附件", required = true,
             schema = @Schema(type = "string", format = "binary"))
     public CommonResult<String> uploadFile(@Valid FileUploadReqVO uploadReqVO) throws Exception {
         MultipartFile file = uploadReqVO.getFile();
         byte[] content = IoUtil.readBytes(file.getInputStream());
-        return success(fileService.createFile(content, file.getOriginalFilename(),
-                uploadReqVO.getDirectory(), file.getContentType()));
+        String name = file.getOriginalFilename();
+        String type = validateUpload(content, name);
+        return success(fileService.createFile(content, name, uploadReqVO.getDirectory(), type));
     }
 
     @GetMapping("/presigned-url")
+    @PreAuthorize(UPLOAD_PERMISSION)
     @Operation(summary = "获取文件预签名地址（上传）", description = "模式二：前端上传文件：用于前端直接上传七牛、阿里云 OSS 等文件存储器")
     @Parameters({
             @Parameter(name = "name", description = "文件名称", required = true),
@@ -67,6 +73,7 @@ public class FileController {
     }
 
     @PostMapping("/create")
+    @PreAuthorize(UPLOAD_PERMISSION)
     @Operation(summary = "创建文件", description = "模式二：前端上传文件：配合 presigned-url 接口，记录上传了上传的文件")
     public CommonResult<Long> createFile(@Valid @RequestBody FileCreateReqVO createReqVO) {
         return success(fileService.createFile(createReqVO));

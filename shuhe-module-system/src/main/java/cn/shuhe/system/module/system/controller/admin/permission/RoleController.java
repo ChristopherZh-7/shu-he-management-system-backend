@@ -90,6 +90,7 @@ public class RoleController {
 
     @GetMapping({"/list-all-simple", "/simple-list"})
     @Operation(summary = "获取角色精简信息列表", description = "只包含被开启的角色，主要用于前端的下拉选项")
+    @PreAuthorize("@ss.hasAnyPermissions('system:role:query', 'system:role:lookup', 'system:permission:assign-user-role')")
     public CommonResult<List<RoleRespVO>> getSimpleRoleList() {
         List<RoleDO> list = roleService.getRoleListByStatus(singleton(CommonStatusEnum.ENABLE.getStatus()));
         list.sort(Comparator.comparing(RoleDO::getSort));

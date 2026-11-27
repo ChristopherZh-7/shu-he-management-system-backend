@@ -29,7 +29,8 @@ public class FileUploadReqVO {
         // 1. 不能包含 .. 防止目录穿越
         // 2. 不能以 / 或 \ 开头，防止上传到根目录
         return !StrUtil.contains(directory, "..")
-                && !StrUtil.startWithAny(directory, "/", "\\");
+                && !StrUtil.startWith(directory, "/")
+                && !StrUtil.containsAny(directory, "\\", ":");
     }
 
 }

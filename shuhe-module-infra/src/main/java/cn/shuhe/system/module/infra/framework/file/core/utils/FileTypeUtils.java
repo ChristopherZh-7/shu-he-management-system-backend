@@ -11,6 +11,12 @@ import org.apache.tika.mime.MimeTypeException;
 import org.apache.tika.mime.MimeTypes;
 
 import java.io.IOException;
+import java.util.Set;
+
+import static cn.shuhe.system.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.shuhe.system.module.infra.enums.ErrorCodeConstants.FILE_IS_EMPTY;
+import static cn.shuhe.system.module.infra.enums.ErrorCodeConstants.FILE_UPLOAD_INVALID_NAME;
+import static cn.shuhe.system.module.infra.enums.ErrorCodeConstants.FILE_UPLOAD_UNSUPPORTED_TYPE;
 
 /**
  * 文件类型 Utils
@@ -21,6 +27,46 @@ import java.io.IOException;
 public class FileTypeUtils {
 
     private static final Tika TIKA = new Tika();
+    private static final Set<String> STANDARD_UPLOAD_TYPES = Set.of(
+            "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/tiff",
+            "application/pdf", "text/plain", "text/csv",
+            "application/zip", "application/x-7z-compressed", "application/x-rar-compressed",
+            "application/vnd.rar", "application/gzip",
+            "audio/mpeg", "audio/wav", "audio/mp4", "video/mp4", "video/quicktime", "video/webm");
+    private static final Set<String> OFFICE_UPLOAD_TYPES = Set.of(
+            "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+    private static final Set<String> OFFICE_CONTAINER_TYPES = Set.of(
+            "application/zip", "application/x-tika-ooxml", "application/x-tika-msoffice",
+            "application/x-ole-storage");
+
+    /**
+     * 校验浏览器上传的文件名和实际内容，并返回存储使用的媒体类型。
+     */
+    public static String validateUpload(byte[] content, String name) {
+        if (content.length == 0) {
+            throw exception(FILE_IS_EMPTY);
+        }
+        if (StrUtil.isBlank(name) || name.contains("/") || name.contains("\\") || name.contains(":")
+                || name.chars().anyMatch(Character::isISOControl)) {
+            throw exception(FILE_UPLOAD_INVALID_NAME);
+        }
+
+        String namedType = getMineType(name);
+        String actualType = getMineType(content);
+        if (STANDARD_UPLOAD_TYPES.contains(namedType)
+                && (namedType.equals(actualType) || ("text/csv".equals(namedType) && "text/plain".equals(actualType)))) {
+            return namedType;
+        }
+        // Office 文件的前导内容有时只会被 Tika 识别为其容器格式。
+        if (OFFICE_UPLOAD_TYPES.contains(namedType) && namedType.equals(getMineType(content, name))
+                && (namedType.equals(actualType) || OFFICE_CONTAINER_TYPES.contains(actualType))) {
+            return namedType;
+        }
+        throw exception(FILE_UPLOAD_UNSUPPORTED_TYPE);
+    }
 
     /**
      * 获得文件的 mineType，对于 doc，jar 等文件会有误差
@@ -82,8 +128,9 @@ public class FileTypeUtils {
         // 设置 header 和 contentType
         String mineType = getMineType(content, filename);
         response.setContentType(mineType);
+        response.setHeader("X-Content-Type-Options", "nosniff");
         // 设置内容显示、下载文件名：https://www.cnblogs.com/wq-9/articles/12165056.html
-        if (isImage(mineType)) {
+        if (isImage(mineType) && STANDARD_UPLOAD_TYPES.contains(mineType)) {
             // 参见 https://github.com/YunaiV/ruoyi-vue-pro/issues/692 讨论
             response.setHeader("Content-Disposition", "inline;filename=" + HttpUtils.encodeUtf8(filename));
         } else {

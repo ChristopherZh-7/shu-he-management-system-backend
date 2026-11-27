@@ -37,6 +37,7 @@ import com.mzt.logapi.starter.annotation.LogRecord;
 import jakarta.annotation.Resource;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -84,6 +85,9 @@ public class AdminUserServiceImpl implements AdminUserService {
     @Resource
     private ConfigApi configApi;
 
+    @Value("${shuhe.security.admin-self-registration-enabled:false}")
+    private boolean adminSelfRegistrationEnabled;
+
     @Resource
     @Lazy
     private cn.shuhe.system.module.system.api.dingtalk.DingtalkNotifyApi dingtalkNotifyApi;
@@ -117,7 +121,8 @@ public class AdminUserServiceImpl implements AdminUserService {
     @Override
     public Long registerUser(AuthRegisterReqVO registerReqVO) {
         // 1.1 校验是否开启注册
-        if (ObjUtil.notEqual(configApi.getConfigValueByKey(USER_REGISTER_ENABLED_KEY), "true")) {
+        if (!adminSelfRegistrationEnabled
+                || ObjUtil.notEqual(configApi.getConfigValueByKey(USER_REGISTER_ENABLED_KEY), "true")) {
             throw exception(USER_REGISTER_DISABLED);
         }
         // 1.2 校验正确性

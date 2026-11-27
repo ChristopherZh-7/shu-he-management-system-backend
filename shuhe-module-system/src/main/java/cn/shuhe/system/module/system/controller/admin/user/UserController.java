@@ -131,6 +131,7 @@ public class UserController {
 
     @GetMapping({"/list-all-simple", "/simple-list"})
     @Operation(summary = "获取用户精简信息列表", description = "只包含被开启的用户，主要用于前端的下拉选项")
+    @PreAuthorize("@ss.hasAnyPermissions('system:user:query', 'system:user:lookup')")
     @DataPermission(enable = false)
     public CommonResult<List<UserSimpleRespVO>> getSimpleUserList() {
         List<AdminUserDO> list = userService.getUserListByStatus(CommonStatusEnum.ENABLE.getStatus());
@@ -142,6 +143,8 @@ public class UserController {
 
     @GetMapping("/dept-leader-simple-list")
     @Operation(summary = "获取部门负责人精简列表", description = "只包含部门负责人（管理岗），用于服务项负责人等只能选管理的场景")
+    @PreAuthorize("@ss.hasAnyPermissions('system:user:query', 'system:user:lookup', "
+            + "'project:service-item:create', 'project:service-item:update')")
     public CommonResult<List<UserSimpleRespVO>> getDeptLeaderSimpleList() {
         List<DeptDO> allDepts = deptService.getAllDeptListFromCache();
         Set<Long> leaderUserIds = allDepts.stream()

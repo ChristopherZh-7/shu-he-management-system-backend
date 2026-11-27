@@ -12,18 +12,20 @@ import io.swagger.v3.oas.annotations.Parameters;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
-import jakarta.annotation.security.PermitAll;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import static cn.shuhe.system.framework.common.pojo.CommonResult.success;
+import static cn.shuhe.system.module.infra.framework.file.core.utils.FileTypeUtils.validateUpload;
 
 @Tag(name = "用户 App - 文件存储")
 @RestController
 @RequestMapping("/infra/file")
+@ConditionalOnProperty(prefix = "shuhe.infra.file", name = "app-upload-enabled", havingValue = "true")
 @Validated
 @Slf4j
 public class AppFileController {
@@ -35,12 +37,12 @@ public class AppFileController {
     @Operation(summary = "上传文件")
     @Parameter(name = "file", description = "文件附件", required = true,
             schema = @Schema(type = "string", format = "binary"))
-    @PermitAll
-    public CommonResult<String> uploadFile(AppFileUploadReqVO uploadReqVO) throws Exception {
+    public CommonResult<String> uploadFile(@Valid AppFileUploadReqVO uploadReqVO) throws Exception {
         MultipartFile file = uploadReqVO.getFile();
         byte[] content = IoUtil.readBytes(file.getInputStream());
-        return success(fileService.createFile(content, file.getOriginalFilename(),
-                uploadReqVO.getDirectory(), file.getContentType()));
+        String name = file.getOriginalFilename();
+        String type = validateUpload(content, name);
+        return success(fileService.createFile(content, name, uploadReqVO.getDirectory(), type));
     }
 
     @GetMapping("/presigned-url")
@@ -57,7 +59,6 @@ public class AppFileController {
 
     @PostMapping("/create")
     @Operation(summary = "创建文件", description = "模式二：前端上传文件：配合 presigned-url 接口，记录上传了上传的文件")
-    @PermitAll
     public CommonResult<Long> createFile(@Valid @RequestBody FileCreateReqVO createReqVO) {
         return success(fileService.createFile(createReqVO));
     }
